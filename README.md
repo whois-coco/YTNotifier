@@ -1,6 +1,3 @@
-[README.md](https://github.com/user-attachments/files/27977999/README.md)
-# YTNotifier
-Youtubeの新着動画通知アプリ
 # YTNotifier - YouTube新着動画通知システム
 
 YouTube Data API v3 を利用し、指定チャンネルの新着動画を定期監視・通知する WPF 常駐アプリ。
