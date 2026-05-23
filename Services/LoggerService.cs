@@ -35,12 +35,20 @@ public class LoggerService
         {
             if (!string.IsNullOrEmpty(channelName))
             {
-                // チャンネル名付きエントリ:
-                // 同じチャンネルの既存エントリを全て削除して最新1件のみ保持
-                var old = Entries
+                // チャンネル名付き: 同じチャンネルの既存エントリを全削除して最新1件のみ保持
+                var toRemove = Entries
                     .Where(e => e.ChannelName == channelName)
                     .ToList();
-                foreach (var e in old)
+                foreach (var e in toRemove)
+                    Entries.Remove(e);
+            }
+            else
+            {
+                // システムメッセージ: 同じメッセージの既存エントリを全削除して最新1件のみ保持
+                var toRemove = Entries
+                    .Where(e => string.IsNullOrEmpty(e.ChannelName) && e.Message == message)
+                    .ToList();
+                foreach (var e in toRemove)
                     Entries.Remove(e);
             }
 

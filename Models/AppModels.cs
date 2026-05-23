@@ -40,6 +40,9 @@ public class AppSettings
 
     [JsonProperty("windowMaximized")]
     public bool WindowMaximized { get; set; } = false;
+
+    [JsonProperty("alwaysOnTop")]
+    public bool AlwaysOnTop { get; set; } = false;
 }
 
 public class ChannelInfo

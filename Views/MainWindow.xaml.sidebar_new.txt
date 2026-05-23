@@ -1,0 +1,112 @@
+        <!-- ===== サイドバー ===== -->
+        <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
+                ClipToBounds="True">
+            <DockPanel>
+
+                <!-- ステータス＋折り畳みボタン -->
+                <Border DockPanel.Dock="Top"
+                        Height="48"
+                        BorderBrush="{DynamicResource SidebarBorderBrush}"
+                        BorderThickness="0,0,0,1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="44"/>
+                        </Grid.ColumnDefinitions>
+                        <!-- ステータスバッジ（展開時のみ） -->
+                        <Border x:Name="StatusBadge"
+                                Grid.Column="0"
+                                Background="{DynamicResource SidebarStatusBgBrush}"
+                                CornerRadius="3" Padding="8,4"
+                                Margin="8,0,0,0"
+                                HorizontalAlignment="Left" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="6" Height="6" Margin="0,0,6,0"
+                                         VerticalAlignment="Center">
+                                    <Ellipse.Fill>
+                                        <SolidColorBrush x:Name="StatusDot" Color="#94A3B8"/>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <TextBlock x:Name="StatusText" Text="停止中"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SidebarTextBrush}"/>
+                            </StackPanel>
+                        </Border>
+                        <!-- 折り畳みボタン: 常に右端44px列の中央 -->
+                        <Button x:Name="SidebarToggleButton"
+                                Grid.Column="1"
+                                Click="SidebarToggle_Click"
+                                Width="44" Height="48"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                ToolTip="メニューを折り畳む">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" Background="Transparent">
+                                        <TextBlock x:Name="ToggleIcon" Text="◀"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource SidebarTextBrush}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background"
+                                                    Value="{DynamicResource SidebarHoverBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <!-- ナビゲーション -->
+                <StackPanel DockPanel.Dock="Top" Margin="0,8,0,0">
+                    <Border x:Name="MenuLabelWrap" Visibility="Visible">
+                        <TextBlock x:Name="MenuLabel" Text="MENU" FontSize="9" FontWeight="Bold"
+                                   Foreground="{DynamicResource SidebarSectionBrush}"
+                                   Margin="16,0,0,6"/>
+                    </Border>
+                    <Button x:Name="NavWatch" Tag="📋" Content="監視リスト"
+                            Style="{StaticResource NavButtonActive}"
+                            Click="Nav_Click"/>
+                    <Button x:Name="NavLog" Tag="📝" Content="動作ログ"
+                            Style="{StaticResource NavButton}"
+                            Click="Nav_Click"/>
+                    <Button x:Name="NavSettings" Tag="⚙" Content="基本設定"
+                            Style="{StaticResource NavButton}"
+                            Click="Nav_Click"/>
+                </StackPanel>
+
+                <!-- 区切り -->
+                <Border DockPanel.Dock="Top" Height="1"
+                        Background="{DynamicResource SidebarBorderBrush}" Margin="0,8"/>
+
+                <!-- アクション -->
+                <StackPanel DockPanel.Dock="Top">
+                    <Border x:Name="ActionsLabelWrap" Visibility="Visible">
+                        <TextBlock x:Name="ActionsLabel" Text="ACTIONS" FontSize="9" FontWeight="Bold"
+                                   Foreground="{DynamicResource SidebarSectionBrush}"
+                                   Margin="16,0,0,6"/>
+                    </Border>
+                    <Button Tag="🔄" Content="今すぐチェック"
+                            Style="{StaticResource NavButton}"
+                            x:Name="ManualCheckButton"
+                            Click="ManualCheckButton_Click"/>
+                    <Button x:Name="MonitorToggleButton" Tag="▶" Content="監視開始"
+                            Style="{StaticResource NavButton}"
+                            Click="MonitorToggleButton_Click"/>
+                </StackPanel>
+
+                <!-- バージョン -->
+                <Border DockPanel.Dock="Bottom" Height="40"
+                        BorderBrush="{DynamicResource SidebarBorderBrush}" BorderThickness="0,1,0,0">
+                    <TextBlock x:Name="VersionText" Text="v1.0.0" FontSize="11"
+                               Foreground="{DynamicResource SidebarVersionBrush}"
+                               VerticalAlignment="Center" Margin="16,0,0,0"/>
+                </Border>
+
+            </DockPanel>
+        </Border>

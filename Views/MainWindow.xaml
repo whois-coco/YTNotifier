@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="YTNotifier" Height="740" Width="980"
-        MinHeight="580" MinWidth="800"
+        MinHeight="580" MinWidth="580"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BackgroundBrush}"
         WindowStyle="None"
@@ -22,37 +22,52 @@
     <Window.Resources>
         <!-- サイドバーナビボタン -->
         <Style x:Key="NavButton" TargetType="Button">
-            <Setter Property="Background"                Value="Transparent"/>
-            <Setter Property="Foreground"                Value="{DynamicResource SidebarTextBrush}"/>
-            <Setter Property="BorderThickness"           Value="0"/>
-            <Setter Property="Padding"                   Value="16,10"/>
-            <Setter Property="FontSize"                  Value="13"/>
-            <Setter Property="Cursor"                    Value="Hand"/>
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Background"             Value="Transparent"/>
+            <Setter Property="BorderThickness"        Value="0"/>
+            <Setter Property="Padding"                Value="0"/>
+            <Setter Property="Height"                 Value="40"/>
+            <Setter Property="HorizontalAlignment"    Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Cursor"                 Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd"
-                                Background="{TemplateBinding Background}"
-                                Padding="{TemplateBinding Padding}">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="Icon"
-                                           Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
-                                           FontSize="14" Width="22"
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                ClipToBounds="True">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="44"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="NavIcon"
+                                           Grid.Column="0"
+                                           Text="{Binding Tag,
+                                               RelativeSource={RelativeSource TemplatedParent}}"
+                                           FontSize="15"
+                                           HorizontalAlignment="Center"
                                            VerticalAlignment="Center"
-                                           Margin="0,0,10,0"
                                            Foreground="{DynamicResource SidebarTextBrush}"/>
-                                <ContentPresenter x:Name="Content" VerticalAlignment="Center"/>
-                            </StackPanel>
+                                <TextBlock x:Name="NavLabel"
+                                           Grid.Column="1"
+                                           Text="{TemplateBinding Content}"
+                                           FontSize="13"
+                                           Margin="0,0,8,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource SidebarTextBrush}"/>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="Background"
                                         Value="{DynamicResource SidebarHoverBrush}"/>
-                                <Setter TargetName="Icon" Property="Foreground"
+                                <Setter TargetName="NavIcon" Property="Foreground"
                                         Value="{DynamicResource TextPrimaryBrush}"/>
-                                <Setter Property="Foreground"
+                                <Setter TargetName="NavLabel" Property="Foreground"
                                         Value="{DynamicResource TextPrimaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="Content" Value="">
+                                <Setter TargetName="NavLabel" Property="Visibility"
+                                        Value="Collapsed"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -63,28 +78,43 @@
         <!-- アクティブナビ: 左に青ライン -->
         <Style x:Key="NavButtonActive" TargetType="Button" BasedOn="{StaticResource NavButton}">
             <Setter Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
-            <Setter Property="Foreground" Value="White"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid>
-                            <Border Background="{DynamicResource SidebarHoverBrush}"
-                                    Padding="{TemplateBinding Padding}">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
-                                               FontSize="14" Width="22"
+                        <Grid ClipToBounds="True">
+                            <Border Background="{DynamicResource SidebarHoverBrush}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="44"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="NavIcon"
+                                               Grid.Column="0"
+                                               Text="{Binding Tag,
+                                                   RelativeSource={RelativeSource TemplatedParent}}"
+                                               FontSize="15"
+                                               HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
-                                               Margin="0,0,10,0"
                                                Foreground="{DynamicResource SidebarActiveTextBrush}"/>
-                                    <ContentPresenter VerticalAlignment="Center"
-                                                      TextBlock.Foreground="{DynamicResource SidebarActiveTextBrush}"/>
-                                </StackPanel>
+                                    <TextBlock x:Name="NavLabel"
+                                               Grid.Column="1"
+                                               Text="{TemplateBinding Content}"
+                                               FontSize="13"
+                                               Margin="0,0,8,0"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource SidebarActiveTextBrush}"/>
+                                </Grid>
                             </Border>
-                            <!-- アクティブインジケーター -->
                             <Border Width="3" HorizontalAlignment="Left"
                                     Background="{DynamicResource SidebarActiveBrush}"
                                     CornerRadius="0,2,2,0"/>
                         </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Content" Value="">
+                                <Setter TargetName="NavLabel" Property="Visibility"
+                                        Value="Collapsed"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -104,14 +134,15 @@
                 MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="200"/>
+                    <ColumnDefinition x:Name="TitleBarLogoCol" Width="200" MinWidth="44"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- アプリ名 -->
+                <!-- アプリ名（サイドバー幅に追従・クリップ） -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal"
-                            VerticalAlignment="Center" Margin="16,0">
+                            VerticalAlignment="Center" Margin="12,0"
+                            ClipToBounds="True">
                     <Border Width="20" Height="20" CornerRadius="3"
                             Background="{DynamicResource AccentBrush}"
                             Margin="0,0,8,0">
@@ -119,8 +150,11 @@
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
                     </Border>
-                    <TextBlock Text="YTNotifier" FontSize="13" FontWeight="Bold"
-                               Foreground="{DynamicResource SidebarTitleBrush}" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TitleText" Text="YTNotifier" FontSize="13" FontWeight="Bold"
+                               Foreground="{DynamicResource SidebarTitleBrush}"
+                               VerticalAlignment="Center"
+                               Visibility="Visible"
+                               TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
 
                 <!-- ドラッグ領域 -->
@@ -207,40 +241,81 @@
         <!-- ===== メインレイアウト（タイトルバー下） ===== -->
         <Grid Grid.Row="1">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="200"/>
+            <ColumnDefinition x:Name="SidebarColumn" Width="200" MinWidth="0"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
         <!-- ===== サイドバー ===== -->
-        <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}">
+        <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
+                ClipToBounds="True">
             <DockPanel>
 
-                <!-- ステータス -->
+                <!-- ステータス＋折り畳みボタン -->
                 <Border DockPanel.Dock="Top"
-                        Padding="16,12,16,12"
+                        Height="48"
                         BorderBrush="{DynamicResource SidebarBorderBrush}"
                         BorderThickness="0,0,0,1">
-                    <Border Background="{DynamicResource SidebarStatusBgBrush}" CornerRadius="3"
-                            Padding="8,5" HorizontalAlignment="Left">
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse Width="6" Height="6" Margin="0,0,6,0"
-                                     VerticalAlignment="Center">
-                                <Ellipse.Fill>
-                                    <SolidColorBrush x:Name="StatusDot" Color="#94A3B8"/>
-                                </Ellipse.Fill>
-                            </Ellipse>
-                            <TextBlock x:Name="StatusText" Text="停止中"
-                                       FontSize="11" FontWeight="SemiBold"
-                                       Foreground="#94A3B8"/>
-                        </StackPanel>
-                    </Border>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="44"/>
+                        </Grid.ColumnDefinitions>
+                        <!-- ステータスバッジ（展開時のみ） -->
+                        <Border x:Name="StatusBadge"
+                                Grid.Column="0"
+                                Background="{DynamicResource SidebarStatusBgBrush}"
+                                CornerRadius="3" Padding="8,4"
+                                Margin="8,0,0,0"
+                                HorizontalAlignment="Left" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="6" Height="6" Margin="0,0,6,0"
+                                         VerticalAlignment="Center">
+                                    <Ellipse.Fill>
+                                        <SolidColorBrush x:Name="StatusDot" Color="#94A3B8"/>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <TextBlock x:Name="StatusText" Text="停止中"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SidebarTextBrush}"/>
+                            </StackPanel>
+                        </Border>
+                        <!-- 折り畳みボタン: 常に右端44px列の中央 -->
+                        <Button x:Name="SidebarToggleButton"
+                                Grid.Column="1"
+                                Click="SidebarToggle_Click"
+                                Width="44" Height="48"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                ToolTip="メニューを折り畳む">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" Background="Transparent">
+                                        <TextBlock x:Name="ToggleIcon" Text="◀"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource SidebarTextBrush}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background"
+                                                    Value="{DynamicResource SidebarHoverBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
                 </Border>
 
                 <!-- ナビゲーション -->
                 <StackPanel DockPanel.Dock="Top" Margin="0,8,0,0">
-                    <TextBlock Text="MENU" FontSize="9" FontWeight="Bold"
-                               Foreground="{DynamicResource SidebarSectionBrush}"
-                               Margin="16,0,0,6"/>
+                    <Border x:Name="MenuLabelWrap" Visibility="Visible">
+                        <TextBlock x:Name="MenuLabel" Text="MENU" FontSize="9" FontWeight="Bold"
+                                   Foreground="{DynamicResource SidebarSectionBrush}"
+                                   Margin="16,0,0,6"/>
+                    </Border>
                     <Button x:Name="NavWatch" Tag="📋" Content="監視リスト"
                             Style="{StaticResource NavButtonActive}"
                             Click="Nav_Click"/>
@@ -258,9 +333,11 @@
 
                 <!-- アクション -->
                 <StackPanel DockPanel.Dock="Top">
-                    <TextBlock Text="ACTIONS" FontSize="9" FontWeight="Bold"
-                               Foreground="{DynamicResource SidebarSectionBrush}"
-                               Margin="16,0,0,6"/>
+                    <Border x:Name="ActionsLabelWrap" Visibility="Visible">
+                        <TextBlock x:Name="ActionsLabel" Text="ACTIONS" FontSize="9" FontWeight="Bold"
+                                   Foreground="{DynamicResource SidebarSectionBrush}"
+                                   Margin="16,0,0,6"/>
+                    </Border>
                     <Button Tag="🔄" Content="今すぐチェック"
                             Style="{StaticResource NavButton}"
                             x:Name="ManualCheckButton"
@@ -271,13 +348,16 @@
                 </StackPanel>
 
                 <!-- バージョン -->
-                <Border DockPanel.Dock="Bottom" Padding="16,12"
+                <Border DockPanel.Dock="Bottom" Height="40"
                         BorderBrush="{DynamicResource SidebarBorderBrush}" BorderThickness="0,1,0,0">
-                    <TextBlock Text="v1.0.0" FontSize="11" Foreground="{DynamicResource SidebarVersionBrush}"/>
+                    <TextBlock x:Name="VersionText" Text="v1.0.0" FontSize="11"
+                               Foreground="{DynamicResource SidebarVersionBrush}"
+                               VerticalAlignment="Center" Margin="16,0,0,0"/>
                 </Border>
 
             </DockPanel>
         </Border>
+
 
         <!-- ===== メインコンテンツ ===== -->
         <Grid Grid.Column="1" Background="{DynamicResource BackgroundBrush}">
@@ -728,7 +808,7 @@
                                           Unchecked="TrayToggle_Changed"/>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
+                            <Grid Margin="0,0,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -745,6 +825,25 @@
                                           VerticalAlignment="Center"
                                           Checked="StartupToggle_Changed"
                                           Unchecked="StartupToggle_Changed"/>
+                            </Grid>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="常に前面に表示" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="ウィンドウを常に最前面に固定" FontSize="11"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <CheckBox x:Name="AlwaysOnTopToggle" Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          VerticalAlignment="Center"
+                                          Checked="AlwaysOnTopToggle_Changed"
+                                          Unchecked="AlwaysOnTopToggle_Changed"/>
                             </Grid>
                         </StackPanel>
                     </Border>

@@ -148,6 +148,9 @@ public partial class MainWindow : Window
         var match = intervalItems.FirstOrDefault(i => i.Tag?.ToString() == s.CheckIntervalMinutes.ToString());
         IntervalComboBox.SelectedItem = match ?? intervalItems[1];
 
+        AlwaysOnTopToggle.IsChecked = s.AlwaysOnTop;
+        Topmost = s.AlwaysOnTop;
+
         // チャンネル追加エリアをデフォルト折り畳み
         AddChannelBody.Visibility = Visibility.Collapsed;
         AddChannelChevron.Text = "▼";
@@ -177,8 +180,8 @@ public partial class MainWindow : Window
         // 外側ボタン（行全体がクリッカブル）
         var btn = new Button
         {
-            Height = 84,
-            Margin = new Thickness(0, 0, 0, 4),
+            Height = 60,
+            Margin = new Thickness(0, 0, 0, 2),
             Padding = new Thickness(0),
             BorderThickness = new Thickness(0),
             Background = Brushes.Transparent,
@@ -264,31 +267,12 @@ public partial class MainWindow : Window
         SetDynamicBrush(unreadBadge, Border.BackgroundProperty, "AccentBrush");
         nameRow.Children.Add(unreadBadge);
         info.Children.Add(nameRow);
-        var subText = new TextBlock
-        {
-            Text = $"{ch.ChannelHandle} · {ch.SubscriberCount} 登録者",
-            FontSize = 11,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            TextWrapping = TextWrapping.NoWrap,
-            Margin = new Thickness(0, 2, 0, 0)
-        };
-        SetDynamicBrush(subText, TextBlock.ForegroundProperty, "TextMutedBrush");
-        info.Children.Add(subText);
 
-        var lastText = new TextBlock
-        {
-            Text = $"最終確認: {ch.LastCheckedText}",
-            FontSize = 11,
-            TextWrapping = TextWrapping.NoWrap,
-            Margin = new Thickness(0, 2, 0, 0)
-        };
-        SetDynamicBrush(lastText, TextBlock.ForegroundProperty, "TextMutedBrush");
-        info.Children.Add(lastText);
         // 種別トグルを info の下部に追加
         var kindRow = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Margin = new Thickness(0, 4, 0, 0)
+            Margin = new Thickness(0, 2, 0, 0)
         };
         kindRow.Children.Add(MakeKindToggle("動画", ch.NotifyVideo, v =>
         {
@@ -460,6 +444,75 @@ public partial class MainWindow : Window
         }
     }
 
+    // ===== サイドバー折り畳み =====
+    private bool _sidebarCollapsed = false;
+
+    private void SidebarToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _sidebarCollapsed = !_sidebarCollapsed;
+
+        if (_sidebarCollapsed)
+        {
+            // 折り畳み: 44px（アイコン列のみ）
+            SidebarColumn.Width    = new GridLength(44);
+            TitleBarLogoCol.Width  = new GridLength(44);
+
+            // セクションラベル・ステータス非表示
+            MenuLabelWrap.Visibility    = Visibility.Collapsed;
+            ActionsLabelWrap.Visibility = Visibility.Collapsed;
+            StatusBadge.Visibility      = Visibility.Collapsed;
+
+            // ラベルテキストを空にする（Content="" トリガーで NavLabel が Collapsed）
+            NavWatch.Content            = "";
+            NavLog.Content              = "";
+            NavSettings.Content         = "";
+            ManualCheckButton.Content   = "";
+            MonitorToggleButton.Content = "";
+
+            // バージョンテキストも非表示
+            if (FindName("VersionText") is System.Windows.Controls.TextBlock vt)
+                vt.Visibility = Visibility.Collapsed;
+
+            SidebarToggleButton.ToolTip = "メニューを展開する";
+            UpdateToggleIcon("▶");
+        }
+        else
+        {
+            // 展開: 200px
+            SidebarColumn.Width    = new GridLength(200);
+            TitleBarLogoCol.Width  = new GridLength(200);
+
+            // セクションラベル・ステータス表示
+            MenuLabelWrap.Visibility    = Visibility.Visible;
+            ActionsLabelWrap.Visibility = Visibility.Visible;
+            StatusBadge.Visibility      = Visibility.Visible;
+
+            // ラベルテキスト復元
+            NavWatch.Content          = "監視リスト";
+            NavLog.Content            = "動作ログ";
+            NavSettings.Content       = "基本設定";
+            ManualCheckButton.Content = "今すぐチェック";
+
+            // バージョンテキスト表示
+            if (FindName("VersionText") is System.Windows.Controls.TextBlock vt)
+                vt.Visibility = Visibility.Visible;
+
+            // 監視状態に応じてテキストを復元
+            UpdateMonitorStatus(MonitorService.Instance.IsRunning);
+
+            SidebarToggleButton.ToolTip = "メニューを折り畳む";
+            UpdateToggleIcon("◀");
+        }
+    }
+
+    private void UpdateToggleIcon(string icon)
+    {
+        // ToggleButton 内の TextBlock を探して更新
+        if (SidebarToggleButton.Template?.FindName("ToggleIcon", SidebarToggleButton)
+            is System.Windows.Controls.TextBlock tb)
+            tb.Text = icon;
+    }
+
     // ===== カスタムタイトルバー =====
 
     // Win32 API: WindowChrome 環境での確実なドラッグ移動
@@ -523,6 +576,10 @@ public partial class MainWindow : Window
             PageSettings.Visibility = Visibility.Visible;
             NavSettings.Style = (Style)FindResource("NavButtonActive");
         }
+
+        // 折り畳み時もクリックしたら展開する
+        if (_sidebarCollapsed)
+            SidebarToggle_Click(sender, e);
     }
 
     // ===== ADD CHANNEL 折り畳み =====
@@ -795,6 +852,14 @@ public partial class MainWindow : Window
     private void TrayToggle_Changed(object sender, RoutedEventArgs e)
     {
         SettingsService.Instance.Settings.MinimizeToTray = TrayToggle.IsChecked == true;
+        SettingsService.Instance.SaveSettings();
+    }
+
+    private void AlwaysOnTopToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        var enabled = AlwaysOnTopToggle.IsChecked == true;
+        Topmost = enabled;
+        SettingsService.Instance.Settings.AlwaysOnTop = enabled;
         SettingsService.Instance.SaveSettings();
     }
 
