@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="YTNotifier" Height="740" Width="980"
-        MinHeight="580" MinWidth="580"
+        MinHeight="460" MinWidth="460"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BackgroundBrush}"
         WindowStyle="None"
@@ -134,7 +134,7 @@
                 MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition x:Name="TitleBarLogoCol" Width="200" MinWidth="44"/>
+                    <ColumnDefinition Width="Auto" MinWidth="44"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
@@ -241,7 +241,7 @@
         <!-- ===== メインレイアウト（タイトルバー下） ===== -->
         <Grid Grid.Row="1">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition x:Name="SidebarColumn" Width="200" MinWidth="0"/>
+            <ColumnDefinition x:Name="SidebarColumn" Width="120" MinWidth="0"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
@@ -316,7 +316,7 @@
                                    Foreground="{DynamicResource SidebarSectionBrush}"
                                    Margin="16,0,0,6"/>
                     </Border>
-                    <Button x:Name="NavWatch" Tag="📋" Content="監視リスト"
+                    <Button x:Name="NavWatch" Tag="📋" Content="確認リスト"
                             Style="{StaticResource NavButtonActive}"
                             Click="Nav_Click"/>
                     <Button x:Name="NavLog" Tag="📝" Content="動作ログ"
@@ -347,13 +347,7 @@
                             Click="MonitorToggleButton_Click"/>
                 </StackPanel>
 
-                <!-- バージョン -->
-                <Border DockPanel.Dock="Bottom" Height="40"
-                        BorderBrush="{DynamicResource SidebarBorderBrush}" BorderThickness="0,1,0,0">
-                    <TextBlock x:Name="VersionText" Text="v1.0.0" FontSize="11"
-                               Foreground="{DynamicResource SidebarVersionBrush}"
-                               VerticalAlignment="Center" Margin="16,0,0,0"/>
-                </Border>
+
 
             </DockPanel>
         </Border>
@@ -362,7 +356,7 @@
         <!-- ===== メインコンテンツ ===== -->
         <Grid Grid.Column="1" Background="{DynamicResource BackgroundBrush}">
 
-            <!-- 監視リスト -->
+            <!-- 確認リスト -->
             <DockPanel x:Name="PageWatch" Margin="24,20">
 
                 <!-- ページヘッダー -->
@@ -376,7 +370,7 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="監視リスト" FontSize="20" FontWeight="Bold"
+                            <TextBlock Text="確認リスト" FontSize="20" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
                             <TextBlock x:Name="ChannelCountText" Text="0 チャンネル"
                                        FontSize="12"
@@ -397,7 +391,7 @@
                         <Button HorizontalAlignment="Stretch"
                                 HorizontalContentAlignment="Stretch"
                                 Style="{StaticResource IconButton}"
-                                Padding="16,12"
+                                Padding="16,8"
                                 Click="AddChannelHeader_Click">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -847,6 +841,25 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <!-- バージョン情報 -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="ABOUT" Style="{StaticResource SectionHeader}"/>
+                            <TextBlock Text="YTNotifier" FontSize="14" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock Text="v1.0.0" FontSize="12"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Margin="0,4,0,0"/>
+                            <TextBlock Text="YouTube新着動画通知アプリ" FontSize="12"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Margin="0,2,0,0"/>
+                            <TextBlock Text="YouTube Data API v3 使用" FontSize="11"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+
                 </StackPanel>
             </ScrollViewer>
 

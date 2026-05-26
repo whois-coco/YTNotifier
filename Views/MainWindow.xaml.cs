@@ -194,6 +194,25 @@ public partial class MainWindow : Window
         };
         btn.Click += ChannelRow_Click;
 
+        // 右クリックメニュー: NEWバッジを外す
+        var ctxMenu = new System.Windows.Controls.ContextMenu();
+        var clearBadgeItem = new System.Windows.Controls.MenuItem
+        {
+            Header = "🔔 NEWバッジを消す",
+            Tag = ch
+        };
+        clearBadgeItem.Click += (s, ev) =>
+        {
+            if (s is System.Windows.Controls.MenuItem mi && mi.Tag is ChannelInfo c)
+            {
+                c.HasUnread = false;
+                SettingsService.Instance.UpdateChannel(c);
+                RefreshChannelList();
+            }
+        };
+        ctxMenu.Items.Add(clearBadgeItem);
+        btn.ContextMenu = ctxMenu;
+
         // ホバー背景用 Border
         var border = new Border
         {
@@ -455,7 +474,6 @@ public partial class MainWindow : Window
         {
             // 折り畳み: 44px（アイコン列のみ）
             SidebarColumn.Width    = new GridLength(44);
-            TitleBarLogoCol.Width  = new GridLength(44);
 
             // セクションラベル・ステータス非表示
             MenuLabelWrap.Visibility    = Visibility.Collapsed;
@@ -469,9 +487,7 @@ public partial class MainWindow : Window
             ManualCheckButton.Content   = "";
             MonitorToggleButton.Content = "";
 
-            // バージョンテキストも非表示
-            if (FindName("VersionText") is System.Windows.Controls.TextBlock vt)
-                vt.Visibility = Visibility.Collapsed;
+
 
             SidebarToggleButton.ToolTip = "メニューを展開する";
             UpdateToggleIcon("▶");
@@ -479,8 +495,7 @@ public partial class MainWindow : Window
         else
         {
             // 展開: 200px
-            SidebarColumn.Width    = new GridLength(200);
-            TitleBarLogoCol.Width  = new GridLength(200);
+            SidebarColumn.Width    = new GridLength(120);
 
             // セクションラベル・ステータス表示
             MenuLabelWrap.Visibility    = Visibility.Visible;
@@ -488,14 +503,12 @@ public partial class MainWindow : Window
             StatusBadge.Visibility      = Visibility.Visible;
 
             // ラベルテキスト復元
-            NavWatch.Content          = "監視リスト";
+            NavWatch.Content          = "確認リスト";
             NavLog.Content            = "動作ログ";
             NavSettings.Content       = "基本設定";
             ManualCheckButton.Content = "今すぐチェック";
 
-            // バージョンテキスト表示
-            if (FindName("VersionText") is System.Windows.Controls.TextBlock vt)
-                vt.Visibility = Visibility.Visible;
+
 
             // 監視状態に応じてテキストを復元
             UpdateMonitorStatus(MonitorService.Instance.IsRunning);
@@ -577,9 +590,7 @@ public partial class MainWindow : Window
             NavSettings.Style = (Style)FindResource("NavButtonActive");
         }
 
-        // 折り畳み時もクリックしたら展開する
-        if (_sidebarCollapsed)
-            SidebarToggle_Click(sender, e);
+
     }
 
     // ===== ADD CHANNEL 折り畳み =====
