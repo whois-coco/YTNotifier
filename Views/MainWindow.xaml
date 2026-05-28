@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="YTNotifier" Height="740" Width="980"
-        MinHeight="460" MinWidth="460"
+        MinHeight="460" MinWidth="360"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BackgroundBrush}"
         WindowStyle="None"
@@ -848,7 +848,7 @@
                             <TextBlock Text="ABOUT" Style="{StaticResource SectionHeader}"/>
                             <TextBlock Text="YTNotifier" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            <TextBlock Text="v1.0.0" FontSize="12"
+                            <TextBlock Text="v1.1.0" FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,4,0,0"/>
                             <TextBlock Text="YouTube新着動画通知アプリ" FontSize="12"
