@@ -565,8 +565,16 @@
             </DockPanel>
 
             <!-- 動作ログ -->
-            <DockPanel x:Name="PageLog" Visibility="Collapsed" Margin="24,20">
-                <Border DockPanel.Dock="Top"
+            <Grid x:Name="PageLog" Visibility="Collapsed" Margin="24,20">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*" MinHeight="100"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="200"/>
+                </Grid.RowDefinitions>
+
+                <!-- ヘッダー Row=0 -->
+                <Border Grid.Row="0"
                         BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="0,0,0,1"
                         Padding="0,0,0,16" Margin="0,0,0,16">
@@ -587,18 +595,18 @@
                             <Button Style="{StaticResource SecondaryButton}"
                                     Content="フォルダを開く" Padding="12,7"
                                     Margin="0,0,8,0" Click="OpenLogFolder_Click"/>
-                            <Button Style="{StaticResource IconButton}"
-                                    Click="ClearLog_Click" ToolTip="クリア" Padding="8">
-                                <TextBlock Text="🗑" FontSize="14"/>
-                            </Button>
+                            <Button Style="{StaticResource SecondaryButton}"
+                                    Click="ClearLog_Click" Padding="10,7"
+                                    Content="🗑 クリア"/>
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <Border BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1" CornerRadius="4" Padding="0">
-                    <Border Background="{DynamicResource LogBackgroundBrush}"
-                            CornerRadius="4">
+                <!-- 動作ログ本体 Row=1 -->
+                <Border Grid.Row="1"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="4">
+                    <Border Background="{DynamicResource LogBackgroundBrush}" CornerRadius="4">
                         <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14">
                             <ItemsControl x:Name="LogList">
                                 <ItemsControl.ItemTemplate>
@@ -646,7 +654,92 @@
                         </ScrollViewer>
                     </Border>
                 </Border>
-            </DockPanel>
+
+                <!-- エラーログヘッダー Row=2 -->
+                <Border Grid.Row="2"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="0,16,0,10" Margin="0,16,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="エラーログ" FontSize="15" FontWeight="Bold"
+                                       Foreground="{DynamicResource ErrorBrush}"/>
+                            <TextBlock Text="警告・エラーのみ表示" FontSize="11"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
+                                Content="🗑 クリア" Padding="10,7"
+                                VerticalAlignment="Center"
+                                Click="ClearErrorLog_Click"/>
+                    </Grid>
+                </Border>
+
+                <!-- エラーログ本体 Row=3 -->
+                <Border Grid.Row="3"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="4">
+                    <Border Background="{DynamicResource LogBackgroundBrush}" CornerRadius="4">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14">
+                            <StackPanel>
+                                <TextBlock x:Name="ErrorLogEmpty"
+                                           Text="エラーは発生していません"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           HorizontalAlignment="Center"
+                                           Margin="0,12,0,12"/>
+                                <ItemsControl x:Name="ErrorLogList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,3">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="58"/>
+                                                    <ColumnDefinition Width="52"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0"
+                                                           Text="{Binding FormattedTime, Mode=OneWay}"
+                                                           FontFamily="Cascadia Code, Consolas"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource TextMutedBrush}"
+                                                           VerticalAlignment="Center"/>
+                                                <Border Grid.Column="1" CornerRadius="2"
+                                                        Padding="5,1" Margin="0,0,6,0"
+                                                        VerticalAlignment="Center">
+                                                    <Border.Background>
+                                                        <SolidColorBrush Color="{Binding LevelColor, Mode=OneWay}"/>
+                                                    </Border.Background>
+                                                    <TextBlock Text="{Binding LevelText, Mode=OneWay}"
+                                                               FontSize="9" FontWeight="Bold"
+                                                               Foreground="White"
+                                                               HorizontalAlignment="Center"/>
+                                                </Border>
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                                    <TextBlock FontFamily="Cascadia Code, Consolas"
+                                                               FontSize="11"
+                                                               Foreground="{DynamicResource PrimaryBrush}"
+                                                               Text="{Binding ChannelName, Mode=OneWay, StringFormat='[{0}] '}"
+                                                               VerticalAlignment="Center"/>
+                                                    <TextBlock FontFamily="Cascadia Code, Consolas"
+                                                               FontSize="11"
+                                                               Foreground="{DynamicResource ErrorBrush}"
+                                                               Text="{Binding Message, Mode=OneWay}"
+                                                               VerticalAlignment="Center"
+                                                               TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Border>
+            </Grid>
 
             <!-- 基本設定 -->
             <ScrollViewer x:Name="PageSettings" Visibility="Collapsed"
@@ -848,7 +941,7 @@
                             <TextBlock Text="ABOUT" Style="{StaticResource SectionHeader}"/>
                             <TextBlock Text="YTNotifier" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            <TextBlock Text="v1.1.0" FontSize="12"
+                            <TextBlock Text="v1.2.0" FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,4,0,0"/>
                             <TextBlock Text="YouTube新着動画通知アプリ" FontSize="12"

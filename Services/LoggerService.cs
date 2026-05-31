@@ -65,8 +65,16 @@ public class LoggerService
 
     public void Info(string msg, string? ch = null)    => Log(msg, LogLevel.Info,    ch);
     public void Success(string msg, string? ch = null) => Log(msg, LogLevel.Success, ch);
-    public void Warning(string msg, string? ch = null) => Log(msg, LogLevel.Warning, ch);
-    public void Error(string msg, string? ch = null)   => Log(msg, LogLevel.Error,   ch);
+    public void Warning(string msg, string? ch = null)
+    {
+        Log(msg, LogLevel.Warning, ch);
+        LogError(msg, LogLevel.Warning, ch);
+    }
+    public void Error(string msg, string? ch = null)
+    {
+        Log(msg, LogLevel.Error, ch);
+        LogError(msg, LogLevel.Error, ch);
+    }
 
     private void WriteToFile(LogEntry entry)
     {
@@ -85,5 +93,31 @@ public class LoggerService
     public void ClearUiLog()
     {
         Application.Current?.Dispatcher.Invoke(() => Entries.Clear());
+    }
+
+    // ===== エラーログ専用コレクション（ローテーションなし・全件保持） =====
+    public ObservableCollection<LogEntry> ErrorEntries { get; } = new();
+
+    public void LogError(string message, LogLevel level, string? channelName = null)
+    {
+        var entry = new LogEntry
+        {
+            Timestamp   = DateTime.Now,
+            Level       = level,
+            Message     = message,
+            ChannelName = channelName
+        };
+
+        Application.Current?.Dispatcher.Invoke(() =>
+        {
+            ErrorEntries.Insert(0, entry);
+        });
+
+        WriteToFile(entry);
+    }
+
+    public void ClearErrorLog()
+    {
+        Application.Current?.Dispatcher.Invoke(() => ErrorEntries.Clear());
     }
 }

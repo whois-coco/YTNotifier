@@ -19,6 +19,11 @@ using Orientation   = System.Windows.Controls.Orientation;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using VerticalAlignment   = System.Windows.VerticalAlignment;
 using Cursors             = System.Windows.Input.Cursors;
+using TextBox             = System.Windows.Controls.TextBox;
+using MouseEventArgs      = System.Windows.Input.MouseEventArgs;
+using DragEventArgs       = System.Windows.DragEventArgs;
+using DragDropEffects     = System.Windows.DragDropEffects;
+using DataObject          = System.Windows.DataObject;
 
 namespace YTNotifier.Views;
 
@@ -45,11 +50,24 @@ public partial class MainWindow : Window
 
         try { LoadSettings(); } catch (Exception ex) { LoggerService.Instance.Error($"設定読込エラー: {ex.Message}"); }
         try { RefreshChannelList(); } catch (Exception ex) { LoggerService.Instance.Error($"チャンネルリストエラー: {ex.Message}"); }
+
+        // ChannelList に D&D ドロップを登録
+        ChannelList.AllowDrop  = true;
+        ChannelList.Background = Brushes.Transparent;
+        ChannelList.DragOver  += ChannelList_DragOver;
+        ChannelList.Drop      += ChannelList_Drop;
         try
         {
             // 起動時にログをクリアして実行中のログのみ表示
             LoggerService.Instance.ClearUiLog();
-            LogList.ItemsSource = LoggerService.Instance.Entries;
+            LoggerService.Instance.ClearErrorLog();
+            LogList.ItemsSource      = LoggerService.Instance.Entries;
+            ErrorLogList.ItemsSource = LoggerService.Instance.ErrorEntries;
+            LoggerService.Instance.ErrorEntries.CollectionChanged += (_, _) =>
+            {
+                ErrorLogEmpty.Visibility = LoggerService.Instance.ErrorEntries.Count == 0
+                    ? Visibility.Visible : Visibility.Collapsed;
+            };
         } catch { }
 
 
@@ -151,6 +169,13 @@ public partial class MainWindow : Window
         AlwaysOnTopToggle.IsChecked = s.AlwaysOnTop;
         Topmost = s.AlwaysOnTop;
 
+        // サイドバー折り畳み状態を復元
+        if (s.SidebarCollapsed)
+        {
+            _sidebarCollapsed = false; // SidebarToggle_Click が反転するため false にしておく
+            SidebarToggle_Click(this, new RoutedEventArgs());
+        }
+
         // チャンネル追加エリアをデフォルト折り畳み
         AddChannelBody.Visibility = Visibility.Collapsed;
         AddChannelChevron.Text = "▼";
@@ -177,25 +202,25 @@ public partial class MainWindow : Window
 
     private UIElement CreateChannelRow(ChannelInfo ch)
     {
-        // 外側ボタン（行全体がクリッカブル）
-        var btn = new Button
+        // 外側 Border（Button を使わない → MouseMove が確実に発火する）
+        var btn = new Border
         {
             Height = 60,
             Margin = new Thickness(0, 0, 0, 2),
-            Padding = new Thickness(0),
-            BorderThickness = new Thickness(0),
-            Background = Brushes.Transparent,
-            Cursor = System.Windows.Input.Cursors.Hand,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Stretch,
-            Tag = ch,
-            ToolTip = "クリックして最新動画を開く"
+            Cursor = System.Windows.Input.Cursors.SizeAll,
+            Tag = ch
         };
-        btn.Click += ChannelRow_Click;
 
-        // 右クリックメニュー: NEWバッジを外す
+        // D&D イベントを Border に直接登録
+        // PreviewMouseMove を使って ScrollViewer のイベント消費を回避
+        btn.PreviewMouseMove += ChannelRow_MouseMove;
+        btn.PreviewMouseLeftButtonDown += ChannelRow_PreviewMouseDown;
+        btn.PreviewMouseLeftButtonUp += ChannelRow_MouseUp;
+
+        // 右クリックメニュー
         var ctxMenu = new System.Windows.Controls.ContextMenu();
+
         var clearBadgeItem = new System.Windows.Controls.MenuItem
         {
             Header = "🔔 NEWバッジを消す",
@@ -210,18 +235,30 @@ public partial class MainWindow : Window
                 RefreshChannelList();
             }
         };
-        ctxMenu.Items.Add(clearBadgeItem);
-        btn.ContextMenu = ctxMenu;
 
-        // ホバー背景用 Border
-        var border = new Border
+        var renameItem = new System.Windows.Controls.MenuItem
         {
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(12, 0, 12, 0),
+            Header = "✏ 名称を変更",
+            Tag = ch
         };
+        renameItem.Click += (s, ev) =>
+        {
+            if (s is System.Windows.Controls.MenuItem mi && mi.Tag is ChannelInfo c)
+                ShowRenameDialog(c);
+        };
+
+        // btn 自体が Border なので直接スタイル設定
+        var border = btn; // 同じ参照
+        border.CornerRadius = new CornerRadius(4);
+        border.Padding = new Thickness(12, 0, 12, 0);
         SetDynamicBrush(border, Border.BackgroundProperty, "SurfaceAltBrush");
-        btn.MouseEnter += (_, _) => SetDynamicBrush(border, Border.BackgroundProperty, "HoverBrush");
-        btn.MouseLeave += (_, _) => SetDynamicBrush(border, Border.BackgroundProperty, "SurfaceAltBrush");
+        border.MouseEnter += (_, _) => SetDynamicBrush(border, Border.BackgroundProperty, "HoverBrush");
+        border.MouseLeave += (_, _) => SetDynamicBrush(border, Border.BackgroundProperty, "SurfaceAltBrush");
+
+        ctxMenu.Items.Add(clearBadgeItem);
+        ctxMenu.Items.Add(new System.Windows.Controls.Separator());
+        ctxMenu.Items.Add(renameItem);
+        border.ContextMenu = ctxMenu;
 
         // 内部グリッド
         var grid = new Grid { VerticalAlignment = VerticalAlignment.Center };
@@ -229,14 +266,23 @@ public partial class MainWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        // アイコン
+        // アイコン（クリックで最新動画を開く）
         var iconBorder = new Border
         {
             Width = 44, Height = 44,
             CornerRadius = new CornerRadius(22),
             Margin = new Thickness(0, 0, 12, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            Clip = new EllipseGeometry(new System.Windows.Point(22, 22), 22, 22)
+            Clip = new EllipseGeometry(new System.Windows.Point(22, 22), 22, 22),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = "クリックして最新動画を開く"
+        };
+        iconBorder.Tag = ch;
+        iconBorder.PreviewMouseLeftButtonDown += (s, e) => e.Handled = true; // ドラッグ防止
+        iconBorder.MouseLeftButtonUp += async (s, ev) =>
+        {
+            if (s is Border ib && ib.Tag is ChannelInfo c)
+                await OpenChannelLatestVideo(c);
         };
         if (!string.IsNullOrEmpty(ch.ThumbnailUrl))
         {
@@ -337,45 +383,6 @@ public partial class MainWindow : Window
         delBtn.Click += DeleteChannel_Click;
 
         // 上下移動ボタン
-        var upIcon = new TextBlock { Text = "▲", FontSize = 10 };
-        SetDynamicBrush(upIcon, TextBlock.ForegroundProperty, "TextMutedBrush");
-        var upBtn = new Button
-        {
-            Content = upIcon,
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(4, 2, 4, 2),
-            Cursor = System.Windows.Input.Cursors.Hand,
-            VerticalAlignment = VerticalAlignment.Center,
-            Tag = ch,
-            ToolTip = "上へ移動"
-        };
-        upBtn.Click += MoveChannelUp_Click;
-
-        var downIcon = new TextBlock { Text = "▼", FontSize = 10 };
-        SetDynamicBrush(downIcon, TextBlock.ForegroundProperty, "TextMutedBrush");
-        var downBtn = new Button
-        {
-            Content = downIcon,
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(4, 2, 4, 2),
-            Cursor = System.Windows.Input.Cursors.Hand,
-            VerticalAlignment = VerticalAlignment.Center,
-            Tag = ch,
-            ToolTip = "下へ移動"
-        };
-        downBtn.Click += MoveChannelDown_Click;
-
-        var movePanel = new StackPanel
-        {
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 0, 0, 0)
-        };
-        movePanel.Children.Add(upBtn);
-        movePanel.Children.Add(downBtn);
-
-        actions.Children.Add(movePanel);
         actions.Children.Add(delBtn);
         Grid.SetColumn(actions, 2);
 
@@ -384,7 +391,6 @@ public partial class MainWindow : Window
         grid.Children.Add(actions);
 
         border.Child = grid;
-        btn.Content = border;
         return btn;
     }
 
@@ -466,6 +472,10 @@ public partial class MainWindow : Window
     // ===== サイドバー折り畳み =====
     private bool _sidebarCollapsed = false;
 
+    // D&D 状態管理
+    private ChannelInfo? _dragSource = null;
+    private int          _dragSourceIndex = -1;
+
     private void SidebarToggle_Click(object sender, RoutedEventArgs e)
     {
         _sidebarCollapsed = !_sidebarCollapsed;
@@ -516,6 +526,10 @@ public partial class MainWindow : Window
             SidebarToggleButton.ToolTip = "メニューを折り畳む";
             UpdateToggleIcon("◀");
         }
+
+        // 折り畳み状態を保存
+        SettingsService.Instance.Settings.SidebarCollapsed = _sidebarCollapsed;
+        SettingsService.Instance.SaveSettings();
     }
 
     private void UpdateToggleIcon(string icon)
@@ -581,7 +595,7 @@ public partial class MainWindow : Window
         }
         else if (sender == NavLog)
         {
-            PageLog.Visibility = Visibility.Visible;
+            PageLog.Visibility      = Visibility.Visible;
             NavLog.Style = (Style)FindResource("NavButtonActive");
         }
         else if (sender == NavSettings)
@@ -601,11 +615,9 @@ public partial class MainWindow : Window
         AddChannelChevron.Text = _addChannelExpanded ? "▲" : "▼";
     }
 
-    // ===== チャンネル行クリック（最新の通常動画を開く・未読クリア） =====
-    private async void ChannelRow_Click(object sender, RoutedEventArgs e)
+    // ===== チャンネルアイコンクリック（最新動画を開く・未読クリア） =====
+    private async Task OpenChannelLatestVideo(ChannelInfo ch)
     {
-        if (sender is not Button btn || btn.Tag is not ChannelInfo ch) return;
-
         // 未読フラグをクリア
         if (ch.HasUnread)
         {
@@ -677,6 +689,7 @@ public partial class MainWindow : Window
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
+    // 後方互換のため残す（未使用だが削除するとビルドエラーになる可能性）
     private static string KindLabel(VideoKind kind) => kind switch
     {
         VideoKind.Short => "Short",
@@ -684,25 +697,187 @@ public partial class MainWindow : Window
         _               => "動画"
     };
 
-    // ===== チャンネル上下移動 =====
-    private void MoveChannelUp_Click(object sender, RoutedEventArgs e)
+    // ===== ドラッグアンドドロップ =====
+    private System.Windows.Point _dragStartPoint;
+    private bool _isDragging = false;
+
+    private void ChannelRow_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        e.Handled = true;
-        if (sender is Button btn && btn.Tag is ChannelInfo ch)
+        if (e.ChangedButton != MouseButton.Left) return;
+        _dragStartPoint = e.GetPosition(null);
+        _isDragging     = false;
+        _dragSource     = null;
+
+        if (sender is FrameworkElement fe && fe.Tag is ChannelInfo src)
         {
-            SettingsService.Instance.MoveChannelUp(ch.ChannelId);
-            RefreshChannelList();
+            _dragSource      = src;
+            _dragSourceIndex = SettingsService.Instance.Channels
+                .FindIndex(ch2 => ch2.ChannelId == src.ChannelId);
         }
     }
 
-    private void MoveChannelDown_Click(object sender, RoutedEventArgs e)
+    private void ChannelRow_MouseMove(object sender, MouseEventArgs e)
     {
-        e.Handled = true;
-        if (sender is Button btn && btn.Tag is ChannelInfo ch)
+        if (e.LeftButton != MouseButtonState.Pressed || _dragSource == null || _isDragging)
+            return;
+
+        var diff = _dragStartPoint - e.GetPosition(null);
+        if (Math.Abs(diff.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(diff.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
+        _isDragging = true;
+
+        if (sender is Border rowBorder)
         {
-            SettingsService.Instance.MoveChannelDown(ch.ChannelId);
-            RefreshChannelList();
+            rowBorder.Opacity = 0.5;
+            var data = new DataObject("ChannelDrag", _dragSource.ChannelId);
+            DragDrop.DoDragDrop(rowBorder, data, DragDropEffects.Move);
+            rowBorder.Opacity = 1.0;
         }
+
+        _isDragging = false;
+    }
+
+    private void ChannelRow_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        _dragSource      = null;
+        _dragSourceIndex = -1;
+        _isDragging      = false;
+        e.Handled        = false; // 上位に伝播させる
+    }
+
+    // ChannelList StackPanel 全体でドロップを受け取る
+    private void ChannelList_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent("ChannelDrag")
+            ? DragDropEffects.Move
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void ChannelList_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent("ChannelDrag")) return;
+
+        var sourceId = e.Data.GetData("ChannelDrag") as string;
+        if (string.IsNullOrEmpty(sourceId)) return;
+
+        var channels = SettingsService.Instance.Channels;
+        var srcIdx   = channels.FindIndex(c => c.ChannelId == sourceId);
+        if (srcIdx < 0) return;
+
+        var dropPos = e.GetPosition(ChannelList);
+        int dstIdx  = channels.Count - 1;
+        double cumY = 0;
+
+        for (int i = 0; i < ChannelList.Children.Count; i++)
+        {
+            if (ChannelList.Children[i] is not FrameworkElement child) continue;
+            // ActualHeight + Margin.Bottom で正確な行の占有高さを計算
+            double rowH   = child.ActualHeight + child.Margin.Bottom;
+            double rowTop = cumY;
+            cumY += rowH;
+            if (dropPos.Y <= cumY)
+            {
+                dstIdx = dropPos.Y > rowTop + rowH / 2
+                    ? Math.Min(i + 1, channels.Count - 1)
+                    : i;
+                break;
+            }
+        }
+
+        if (dstIdx == srcIdx) return;
+
+        var dragCh = channels[srcIdx];
+        channels.RemoveAt(srcIdx);
+        if (dstIdx > srcIdx) dstIdx--;
+        channels.Insert(dstIdx, dragCh);
+        SettingsService.Instance.SaveChannels();
+        RefreshChannelList();
+
+        _dragSource      = null;
+        _dragSourceIndex = -1;
+        e.Handled        = true;
+    }
+
+    // ===== チャンネル名称変更 =====
+    private void ShowRenameDialog(ChannelInfo ch)
+    {
+        var dlg = new Window
+        {
+            Title = "名称を変更",
+            Width = 360,
+            Height = 160,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStyle = WindowStyle.None,
+        };
+        SetDynamicBrush(dlg, Window.BackgroundProperty, "SurfaceBrush");
+
+        var root = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6) };
+        SetDynamicBrush(root, Border.BorderBrushProperty, "BorderBrush");
+
+        var panel = new StackPanel { Margin = new Thickness(20) };
+
+        var label = new TextBlock { Text = "チャンネルの表示名を入力してください", FontSize = 12, Margin = new Thickness(0, 0, 0, 8) };
+        SetDynamicBrush(label, TextBlock.ForegroundProperty, "TextSecondaryBrush");
+
+        var input = new TextBox
+        {
+            Text = ch.ChannelName,
+            FontSize = 13,
+            Margin = new Thickness(0, 0, 0, 14),
+            Style = (Style)Application.Current.Resources["ModernTextBox"]
+        };
+
+        var btnRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+
+        var cancelBtn = new Button
+        {
+            Content = "キャンセル",
+            Margin = new Thickness(0, 0, 8, 0),
+            Style = (Style)Application.Current.Resources["SecondaryButton"],
+            Padding = new Thickness(14, 7, 14, 7)
+        };
+        cancelBtn.Click += (_, _) => dlg.Close();
+
+        var okBtn = new Button
+        {
+            Content = "変更",
+            Style = (Style)Application.Current.Resources["PrimaryButton"],
+            Padding = new Thickness(14, 7, 14, 7),
+            IsDefault = true
+        };
+        okBtn.Click += (_, _) =>
+        {
+            var newName = input.Text.Trim();
+            if (!string.IsNullOrEmpty(newName))
+            {
+                ch.ChannelName = newName;
+                SettingsService.Instance.UpdateChannel(ch);
+                LoggerService.Instance.Info($"名称を変更しました → {newName}", ch.ChannelName);
+                RefreshChannelList();
+            }
+            dlg.Close();
+        };
+
+        input.KeyDown += (s, e) =>
+        {
+            if (e.Key == Key.Enter) okBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            if (e.Key == Key.Escape) dlg.Close();
+        };
+
+        btnRow.Children.Add(cancelBtn);
+        btnRow.Children.Add(okBtn);
+        panel.Children.Add(label);
+        panel.Children.Add(input);
+        panel.Children.Add(btnRow);
+        root.Child = panel;
+        dlg.Content = root;
+        dlg.ShowDialog();
+        input.Focus();
     }
 
     // ===== チャンネル削除 =====
@@ -911,6 +1086,12 @@ public partial class MainWindow : Window
         var dir = Path.Combine(SettingsService.Instance.AppDataDir, "logs");
         Directory.CreateDirectory(dir);
         Process.Start(new ProcessStartInfo("explorer.exe", dir) { UseShellExecute = true });
+    }
+
+    private void ClearErrorLog_Click(object sender, RoutedEventArgs e)
+    {
+        LoggerService.Instance.ClearErrorLog();
+        ErrorLogEmpty.Visibility = Visibility.Visible;
     }
 
     private void ClearLog_Click(object sender, RoutedEventArgs e)
