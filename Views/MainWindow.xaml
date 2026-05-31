@@ -319,6 +319,13 @@
                     <Button x:Name="NavWatch" Tag="📋" Content="確認リスト"
                             Style="{StaticResource NavButtonActive}"
                             Click="Nav_Click"/>
+                    <Button Tag="🔄" Content="今すぐチェック"
+                            Style="{StaticResource NavButton}"
+                            x:Name="ManualCheckButton"
+                            Click="ManualCheckButton_Click"/>
+                    <Button x:Name="MonitorToggleButton" Tag="⏸" Content="監視停止"
+                            Style="{StaticResource NavButton}"
+                            Click="MonitorToggleButton_Click"/>
                     <Button x:Name="NavLog" Tag="📝" Content="動作ログ"
                             Style="{StaticResource NavButton}"
                             Click="Nav_Click"/>
@@ -327,24 +334,12 @@
                             Click="Nav_Click"/>
                 </StackPanel>
 
-                <!-- 区切り -->
-                <Border DockPanel.Dock="Top" Height="1"
-                        Background="{DynamicResource SidebarBorderBrush}" Margin="0,8"/>
-
-                <!-- アクション -->
+                <!-- 区切りと ActionsLabel は不要になったが折り畳み制御のため残す -->
+                <Border DockPanel.Dock="Top" Height="0"/>
                 <StackPanel DockPanel.Dock="Top">
-                    <Border x:Name="ActionsLabelWrap" Visibility="Visible">
-                        <TextBlock x:Name="ActionsLabel" Text="ACTIONS" FontSize="9" FontWeight="Bold"
-                                   Foreground="{DynamicResource SidebarSectionBrush}"
-                                   Margin="16,0,0,6"/>
+                    <Border x:Name="ActionsLabelWrap" Visibility="Collapsed">
+                        <TextBlock x:Name="ActionsLabel" Text="" FontSize="9"/>
                     </Border>
-                    <Button Tag="🔄" Content="今すぐチェック"
-                            Style="{StaticResource NavButton}"
-                            x:Name="ManualCheckButton"
-                            Click="ManualCheckButton_Click"/>
-                    <Button x:Name="MonitorToggleButton" Tag="▶" Content="監視開始"
-                            Style="{StaticResource NavButton}"
-                            Click="MonitorToggleButton_Click"/>
                 </StackPanel>
 
 
@@ -941,7 +936,7 @@
                             <TextBlock Text="ABOUT" Style="{StaticResource SectionHeader}"/>
                             <TextBlock Text="YTNotifier" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            <TextBlock Text="v1.2.1" FontSize="12"
+                            <TextBlock Text="v1.2.2" FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,4,0,0"/>
                             <TextBlock Text="YouTube新着動画通知アプリ" FontSize="12"

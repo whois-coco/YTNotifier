@@ -171,6 +171,15 @@ public class YouTubeApiClient
         if (secs > 0 && secs <= 150)
             return VideoKind.Short;
 
+        // #Shorts タグが含まれている場合もShort扱い
+        bool hasShortTag = title.Contains("#Shorts", StringComparison.OrdinalIgnoreCase)
+                        || title.Contains("#Short",  StringComparison.OrdinalIgnoreCase)
+                        || description.Contains("#Shorts", StringComparison.OrdinalIgnoreCase)
+                        || tags.Any(t => t.Equals("Shorts", StringComparison.OrdinalIgnoreCase)
+                                      || t.Equals("Short",  StringComparison.OrdinalIgnoreCase));
+        if (hasShortTag)
+            return VideoKind.Short;
+
         return VideoKind.Video;
     }
 

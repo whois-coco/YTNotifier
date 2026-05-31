@@ -54,6 +54,23 @@ public class MonitorService : IDisposable
     private static void OnToastActivated(ToastNotificationActivatedEventArgsCompat e)
     {
         var args = ToastArguments.Parse(e.Argument);
+
+        // channelId が含まれていれば NEWバッジをクリア
+        if (args.TryGetValue("channelId", out var channelId) && !string.IsNullOrEmpty(channelId))
+        {
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                var ch = SettingsService.Instance.Channels
+                    .FirstOrDefault(c => c.ChannelId == channelId);
+                if (ch != null && ch.HasUnread)
+                {
+                    ch.HasUnread = false;
+                    SettingsService.Instance.UpdateChannel(ch);
+                    Instance.ChannelUpdated?.Invoke();
+                }
+            });
+        }
+
         if (args.TryGetValue("url", out var url) && !string.IsNullOrEmpty(url))
         {
             Application.Current?.Dispatcher.Invoke(() =>
@@ -134,7 +151,7 @@ public class MonitorService : IDisposable
             if (SettingsService.Instance.Settings.ShowDesktopNotification)
             {
                 var videoUrl = $"https://www.youtube.com/watch?v={video.VideoId}";
-                ShowToastNotification(channel.ChannelName, video.Title, video.KindLabel, videoUrl);
+                ShowToastNotification(channel.ChannelName, video.Title, video.KindLabel, videoUrl, channel.ChannelId);
             }
         }
         catch (Exception ex)
@@ -145,7 +162,8 @@ public class MonitorService : IDisposable
 
     // ===== トースト通知送信 =====
     private static void ShowToastNotification(
-        string channelName, string videoTitle, string kindLabel, string videoUrl)
+        string channelName, string videoTitle, string kindLabel, string videoUrl,
+        string channelId = "")
     {
         try
         {
@@ -153,6 +171,7 @@ public class MonitorService : IDisposable
                 .AddText($"📺 {channelName}  [{kindLabel}]")
                 .AddText(videoTitle)
                 .AddArgument("url", videoUrl)
+                .AddArgument("channelId", channelId)
                 .Show();
 
             LoggerService.Instance.Info($"通知送信: {videoTitle}");
