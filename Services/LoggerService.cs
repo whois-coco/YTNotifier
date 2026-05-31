@@ -95,6 +95,50 @@ public class LoggerService
         Application.Current?.Dispatcher.Invoke(() => Entries.Clear());
     }
 
+    // ===== ログメンテナンス =====
+    /// <summary>指定日数より古いログファイルを削除する</summary>
+    public (int deleted, long freedBytes) CleanOldLogs(int retentionDays)
+    {
+        int deleted = 0;
+        long freed  = 0;
+        try
+        {
+            var cutoff = DateTime.Now.AddDays(-retentionDays);
+            foreach (var file in Directory.GetFiles(_logDir, "*.log"))
+            {
+                var info = new FileInfo(file);
+                if (info.LastWriteTime < cutoff)
+                {
+                    freed += info.Length;
+                    File.Delete(file);
+                    deleted++;
+                }
+            }
+        }
+        catch { }
+        return (deleted, freed);
+    }
+
+    /// <summary>ログフォルダの統計情報を取得する</summary>
+    public (int fileCount, long totalBytes, DateTime? oldest, DateTime? newest) GetLogStats()
+    {
+        try
+        {
+            var files = Directory.GetFiles(_logDir, "*.log")
+                .Select(f => new FileInfo(f))
+                .OrderBy(f => f.LastWriteTime)
+                .ToList();
+            if (files.Count == 0) return (0, 0, null, null);
+            return (
+                files.Count,
+                files.Sum(f => f.Length),
+                files.First().LastWriteTime,
+                files.Last().LastWriteTime
+            );
+        }
+        catch { return (0, 0, null, null); }
+    }
+
     // ===== エラーログ専用コレクション（ローテーションなし・全件保持） =====
     public ObservableCollection<LogEntry> ErrorEntries { get; } = new();
 

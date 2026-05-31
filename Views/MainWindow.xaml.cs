@@ -248,6 +248,25 @@ public partial class MainWindow : Window
 
         AddChannelBody.Visibility = Visibility.Collapsed;
         AddChannelChevron.Text    = "▼";
+
+        // クォータ情報を表示
+        UpdateQuotaInfo();
+
+        // ログメンテナンス設定
+        AutoCleanLogsToggle.IsChecked = s.AutoCleanLogs;
+        var retItems = LogRetentionComboBox.Items.Cast<ComboBoxItem>().ToList();
+        LogRetentionComboBox.SelectedItem =
+            retItems.FirstOrDefault(i => i.Tag?.ToString() == s.LogRetentionDays.ToString())
+            ?? retItems[2]; // デフォルト30日
+        RefreshLogStats();
+
+        // 自動削除
+        if (s.AutoCleanLogs && s.LogRetentionDays > 0)
+        {
+            var (deleted, _) = LoggerService.Instance.CleanOldLogs(s.LogRetentionDays);
+            if (deleted > 0)
+                LoggerService.Instance.Info($"起動時ログ自動削除: {deleted}件");
+        }
     }
 
     // ===== ヘルパー =====
@@ -270,6 +289,45 @@ public partial class MainWindow : Window
         EmptyState.Visibility = channels.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         foreach (var ch in channels)
             ChannelList.Children.Add(CreateChannelRow(ch));
+
+        // チャンネル数変化時に間隔を自動調整
+        AutoAdjustIntervalForQuota();
+    }
+
+    private void AutoAdjustIntervalForQuota()
+    {
+        var s        = SettingsService.Instance.Settings;
+        var channels = SettingsService.Instance.Channels.Count;
+        if (channels == 0) return;
+
+        var (safe, recommended) = ApiQuotaHelper.ValidateInterval(s.CheckIntervalMinutes, channels);
+        if (!safe)
+        {
+            // 推奨値に自動調整
+            var recItem = IntervalComboBox?.Items.Cast<ComboBoxItem>()
+                .FirstOrDefault(i => i.Tag?.ToString() == recommended.ToString());
+            if (recItem != null && IntervalComboBox != null)
+                IntervalComboBox.SelectedItem = recItem;
+            LoggerService.Instance.Warning(
+                $"チャンネル数増加によりAPI超過リスク → 監視間隔を{recommended}分に自動調整");
+        }
+        UpdateQuotaInfo();
+    }
+
+    private void UpdateQuotaInfo()
+    {
+        try
+        {
+            if (QuotaInfoText == null) return;
+            var channels = SettingsService.Instance.Channels.Count;
+            var interval = SettingsService.Instance.Settings.CheckIntervalMinutes;
+            var daily    = ApiQuotaHelper.EstimateDailyUnits(interval, channels);
+            var pct      = daily * 100.0 / ApiQuotaHelper.DailyLimit;
+            var color    = pct >= 90 ? "ErrorBrush" : pct >= 70 ? "WarningBrush" : "SuccessBrush";
+            QuotaInfoText.Text = $"推定消費量: {daily:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日 ({pct:F0}%)";
+            SetDynamicBrush(QuotaInfoText, TextBlock.ForegroundProperty, color);
+        }
+        catch { }
     }
 
     private UIElement CreateChannelRow(ChannelInfo ch)
@@ -865,13 +923,31 @@ public partial class MainWindow : Window
 
     private void IntervalComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (IntervalComboBox.SelectedItem is ComboBoxItem item &&
-            int.TryParse(item.Tag?.ToString(), out var minutes))
+        if (IntervalComboBox.SelectedItem is not ComboBoxItem item) return;
+        if (!int.TryParse(item.Tag?.ToString(), out var minutes)) return;
+
+        var channels = SettingsService.Instance.Channels.Count;
+        var (safe, recommended) = ApiQuotaHelper.ValidateInterval(minutes, channels);
+
+        if (!safe)
         {
-            SettingsService.Instance.Settings.CheckIntervalMinutes = minutes;
-            SettingsService.Instance.SaveSettings();
-            MonitorService.Instance.RestartWithNewInterval();
+            // 超過する場合は推奨値に自動修正
+            var recItem = IntervalComboBox.Items.Cast<ComboBoxItem>()
+                .FirstOrDefault(i => i.Tag?.ToString() == recommended.ToString());
+            if (recItem != null && recItem != item)
+            {
+                IntervalComboBox.SelectedItem = recItem;
+                MessageBox.Show(
+                    $"チャンネル数 {channels} 件では {minutes} 分間隔だと\n1日のAPIクォータ（10,000ユニット）を超過します。\n\n自動的に {recommended} 分間隔に調整しました。",
+                    "API クォータ超過防止", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return; // 再帰的に SelectionChanged が呼ばれる
+            }
         }
+
+        SettingsService.Instance.Settings.CheckIntervalMinutes = minutes;
+        SettingsService.Instance.SaveSettings();
+        MonitorService.Instance.RestartWithNewInterval();
+        UpdateQuotaInfo();
     }
 
     private void TestNotification_Click(object sender, RoutedEventArgs e)
@@ -888,6 +964,54 @@ public partial class MainWindow : Window
     }
 
     private void ClearLog_Click(object sender, RoutedEventArgs e)      => LoggerService.Instance.ClearUiLog();
+
+    // ===== ログメンテナンス =====
+    private void RefreshLogStats()
+    {
+        var (count, bytes, oldest, newest) = LoggerService.Instance.GetLogStats();
+        if (count == 0)
+        {
+            LogStatsText.Text = "ログファイルはありません";
+            return;
+        }
+        var mb = bytes / 1024.0 / 1024.0;
+        var sizeStr = mb >= 1 ? $"{mb:F1} MB" : $"{bytes / 1024.0:F0} KB";
+        LogStatsText.Text = $"ファイル数: {count} 件  合計サイズ: {sizeStr}\n最古: {oldest:yyyy/MM/dd}  最新: {newest:yyyy/MM/dd}";
+    }
+
+    private void AutoCleanLogsToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        SettingsService.Instance.Settings.AutoCleanLogs = AutoCleanLogsToggle.IsChecked == true;
+        SettingsService.Instance.SaveSettings();
+    }
+
+    private void LogRetentionComboBox_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (LogRetentionComboBox.SelectedItem is ComboBoxItem item &&
+            int.TryParse(item.Tag?.ToString(), out var days))
+        {
+            SettingsService.Instance.Settings.LogRetentionDays = days;
+            SettingsService.Instance.SaveSettings();
+        }
+    }
+
+    private void CleanLogsNow_Click(object sender, RoutedEventArgs e)
+    {
+        var days = SettingsService.Instance.Settings.LogRetentionDays;
+        if (days == 0)
+        {
+            LogCleanResultText.Text = "保持期間が「無制限」のため削除しません";
+            return;
+        }
+        var (deleted, freed) = LoggerService.Instance.CleanOldLogs(days);
+        var mb = freed / 1024.0 / 1024.0;
+        var sizeStr = mb >= 1 ? $"{mb:F1} MB" : $"{freed / 1024.0:F0} KB";
+        LogCleanResultText.Text = deleted > 0
+            ? $"✅ {deleted} 件削除（{sizeStr} 解放）"
+            : "削除対象のログファイルはありませんでした";
+        LoggerService.Instance.Info($"ログ手動削除: {deleted}件 ({sizeStr})");
+        RefreshLogStats();
+    }
     private void ClearErrorLog_Click(object sender, RoutedEventArgs e)
     {
         LoggerService.Instance.ClearErrorLog();

@@ -46,6 +46,12 @@ public class AppSettings
 
     [JsonProperty("sidebarCollapsed")]
     public bool SidebarCollapsed { get; set; } = false;
+
+    [JsonProperty("logRetentionDays")]
+    public int LogRetentionDays { get; set; } = 30;
+
+    [JsonProperty("autoCleanLogs")]
+    public bool AutoCleanLogs { get; set; } = false;
 }
 
 public class ChannelInfo

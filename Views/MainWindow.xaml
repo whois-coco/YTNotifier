@@ -588,9 +588,6 @@
                         <StackPanel Grid.Column="1" Orientation="Horizontal"
                                     VerticalAlignment="Bottom">
                             <Button Style="{StaticResource SecondaryButton}"
-                                    Content="フォルダを開く" Padding="12,7"
-                                    Margin="0,0,8,0" Click="OpenLogFolder_Click"/>
-                            <Button Style="{StaticResource SecondaryButton}"
                                     Click="ClearLog_Click" Padding="10,7"
                                     Content="🗑 クリア"/>
                         </StackPanel>
@@ -805,6 +802,17 @@
                                     <ComboBoxItem Content="60分"      Tag="60" Style="{StaticResource ModernComboBoxItem}"/>
                                 </ComboBox>
                             </Grid>
+                            <!-- クォータ情報 -->
+                            <Border Background="{DynamicResource SurfaceAltBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="4"
+                                    Padding="10,8" Margin="0,0,0,0">
+                                <TextBlock x:Name="QuotaInfoText"
+                                           FontSize="12"
+                                           Text="推定消費量: 計算中..."
+                                           Foreground="{DynamicResource TextMutedBrush}"/>
+                            </Border>
+
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
                             <Grid Margin="0,0,0,0">
                                 <Grid.ColumnDefinitions>
@@ -930,13 +938,112 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- ログメンテナンス -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="LOG MAINTENANCE" Style="{StaticResource SectionHeader}"/>
+                            <TextBlock Text="ログメンテナンス" FontSize="14" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       Margin="0,0,0,12"/>
+
+                            <!-- ログ統計 -->
+                            <Border Background="{DynamicResource SurfaceAltBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="4"
+                                    Padding="12,10" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock x:Name="LogStatsText"
+                                               Text="ログ情報を読み込み中..."
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 自動削除設定 -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="自動ログ削除" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="起動時に古いログを自動削除" FontSize="11"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <CheckBox x:Name="AutoCleanLogsToggle" Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          VerticalAlignment="Center"
+                                          Checked="AutoCleanLogsToggle_Changed"
+                                          Unchecked="AutoCleanLogsToggle_Changed"/>
+                            </Grid>
+
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+
+                            <!-- 保持日数 -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="160"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="ログ保持期間" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="指定日数より古いログを削除対象にする" FontSize="11"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <ComboBox x:Name="LogRetentionComboBox" Grid.Column="1"
+                                          Style="{StaticResource ModernComboBox}"
+                                          SelectionChanged="LogRetentionComboBox_Changed">
+                                    <ComboBoxItem Content="1日"  Tag="1"   Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="3日"  Tag="3"   Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="5日"  Tag="5"   Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="7日"  Tag="7"   Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="14日" Tag="14"  Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="30日（推奨）" Tag="30" Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="60日" Tag="60"  Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="90日" Tag="90"  Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="無制限" Tag="0" Style="{StaticResource ModernComboBoxItem}"/>
+                                </ComboBox>
+                            </Grid>
+
+                            <!-- 手動削除ボタン -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="今すぐ削除" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock x:Name="LogCleanResultText" FontSize="11"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="0,2,0,0"
+                                               Text="保持期間より古いログファイルを削除します"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
+                                        Content="🗑 削除実行" Padding="14,7"
+                                        Margin="0,0,8,0"
+                                        VerticalAlignment="Center"
+                                        Click="CleanLogsNow_Click"/>
+                                <Button Grid.Column="2" Style="{StaticResource SecondaryButton}"
+                                        Content="📁 フォルダを開く" Padding="14,7"
+                                        VerticalAlignment="Center"
+                                        Click="OpenLogFolder_Click"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
                     <!-- バージョン情報 -->
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
                             <TextBlock Text="ABOUT" Style="{StaticResource SectionHeader}"/>
                             <TextBlock Text="YTNotifier" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            <TextBlock Text="v1.2.2" FontSize="12"
+                            <TextBlock Text="v1.3.0" FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,4,0,0"/>
                             <TextBlock Text="YouTube新着動画通知アプリ" FontSize="12"
