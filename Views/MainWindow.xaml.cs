@@ -1,12 +1,14 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Windows.Documents;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
 using YTNotifier.Models;
 using YTNotifier.Services;
 using Application   = System.Windows.Application;
@@ -24,8 +26,67 @@ using MouseEventArgs      = System.Windows.Input.MouseEventArgs;
 using DragEventArgs       = System.Windows.DragEventArgs;
 using DragDropEffects     = System.Windows.DragDropEffects;
 using DataObject          = System.Windows.DataObject;
+using Size                = System.Windows.Size;
+using Rectangle           = System.Windows.Shapes.Rectangle;
+using Path                = System.IO.Path;
 
 namespace YTNotifier.Views;
+
+// ===== ドラッグプレビュー用 Adorner =====
+public class DragAdorner : Adorner
+{
+    private readonly UIElement _child;
+    private double _offsetX;
+    private double _offsetY;
+
+    public DragAdorner(UIElement adornedElement, UIElement child, double offsetX, double offsetY)
+        : base(adornedElement)
+    {
+        _child   = child;
+        _offsetX = offsetX;
+        _offsetY = offsetY;
+        IsHitTestVisible = false;
+
+        var layer = AdornerLayer.GetAdornerLayer(adornedElement);
+        layer?.Add(this);
+    }
+
+    public void UpdatePosition(double x, double y)
+    {
+        _offsetX = x;
+        _offsetY = y;
+        InvalidateArrange();
+    }
+
+    public void Detach()
+    {
+        var layer = AdornerLayer.GetAdornerLayer(AdornedElement);
+        layer?.Remove(this);
+    }
+
+    protected override Size MeasureOverride(Size constraint)
+    {
+        _child.Measure(constraint);
+        return _child.DesiredSize;
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        _child.Arrange(new Rect(finalSize));
+        return finalSize;
+    }
+
+    public override GeneralTransform GetDesiredTransform(GeneralTransform transform)
+    {
+        var result = new GeneralTransformGroup();
+        result.Children.Add(base.GetDesiredTransform(transform));
+        result.Children.Add(new TranslateTransform(_offsetX, _offsetY));
+        return result;
+    }
+
+    protected override Visual GetVisualChild(int index) => _child;
+    protected override int VisualChildrenCount => 1;
+}
 
 public partial class MainWindow : Window
 {
@@ -473,8 +534,9 @@ public partial class MainWindow : Window
     private bool _sidebarCollapsed = false;
 
     // D&D 状態管理
-    private ChannelInfo? _dragSource = null;
-    private int          _dragSourceIndex = -1;
+    private ChannelInfo?  _dragSource = null;
+    private int           _dragSourceIndex = -1;
+    private DragAdorner?  _dragAdorner = null;
 
     private void SidebarToggle_Click(object sender, RoutedEventArgs e)
     {
@@ -730,13 +792,69 @@ public partial class MainWindow : Window
 
         if (sender is Border rowBorder)
         {
-            rowBorder.Opacity = 0.5;
+            // Adorner プレビューを作成
+            AttachDragAdorner(rowBorder, e.GetPosition(ChannelList));
+
+            rowBorder.Opacity = 0.4;
             var data = new DataObject("ChannelDrag", _dragSource.ChannelId);
+
+            // DragOver で Adorner を更新するためイベント登録
+            ChannelList.PreviewDragOver += OnDragOverUpdateAdorner;
+
             DragDrop.DoDragDrop(rowBorder, data, DragDropEffects.Move);
+
+            ChannelList.PreviewDragOver -= OnDragOverUpdateAdorner;
             rowBorder.Opacity = 1.0;
+            DetachDragAdorner();
         }
 
         _isDragging = false;
+    }
+
+    private void AttachDragAdorner(Border source, System.Windows.Point startPos)
+    {
+        // VisualBrush でソース行をそのままキャプチャ
+        var visualBrush = new VisualBrush(source)
+        {
+            Stretch = Stretch.None,
+            AlignmentX = AlignmentX.Left,
+            AlignmentY = AlignmentY.Top
+        };
+
+        var visual = new Rectangle
+        {
+            Width   = source.ActualWidth,
+            Height  = source.ActualHeight,
+            Fill    = visualBrush,
+            Opacity = 0.85,
+            Effect  = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                BlurRadius   = 12,
+                ShadowDepth  = 4,
+                Opacity      = 0.4,
+                Direction    = 270
+            }
+        };
+
+        _dragAdorner = new DragAdorner(
+            ChannelScrollViewer,
+            visual,
+            startPos.X,
+            startPos.Y - source.ActualHeight / 2
+        );
+    }
+
+    private void DetachDragAdorner()
+    {
+        _dragAdorner?.Detach();
+        _dragAdorner = null;
+    }
+
+    private void OnDragOverUpdateAdorner(object sender, DragEventArgs e)
+    {
+        if (_dragAdorner == null) return;
+        var pos = e.GetPosition(ChannelScrollViewer);
+        _dragAdorner.UpdatePosition(pos.X, pos.Y - 30);
     }
 
     private void ChannelRow_MouseUp(object sender, MouseButtonEventArgs e)
