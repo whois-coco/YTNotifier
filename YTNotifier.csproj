@@ -11,17 +11,44 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <UseWindowsForms>true</UseWindowsForms>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
-    <!-- Self-Contained 発行時にXAMLリソースを確実に含める -->
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+    <!-- XAMLキャッシュを無効化 -->
+    <XamlDebuggingInformation>true</XamlDebuggingInformation>
   </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Google.Apis.YouTube.v3" Version="1.68.0.3513" />
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-
   </ItemGroup>
+
   <ItemGroup>
     <Resource Include="Resources\app.ico" />
     <Resource Include="Resources\app_warn.ico" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Page Update="Views\MainWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Update="Themes\CommonStyles.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Update="Themes\LightTheme.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Update="Themes\DarkTheme.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+
+  <!-- 発行前にobjフォルダのBAMLキャッシュを削除するターゲット -->
+  <Target Name="CleanBamlCache" BeforeTargets="BeforeBuild">
+    <ItemGroup>
+      <BamlFiles Include="$(IntermediateOutputPath)**\*.baml" />
+    </ItemGroup>
+    <Delete Files="@(BamlFiles)" />
+  </Target>
 </Project>
