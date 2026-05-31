@@ -167,16 +167,8 @@ public class YouTubeApiClient
         //    - タイトル・説明・タグに #Shorts/#shorts を含む
         //    または
         //    - 60秒以内（明確にShort尺）
-        bool hasShortTag = title.Contains("#Shorts", StringComparison.OrdinalIgnoreCase)
-                        || title.Contains("#Short",  StringComparison.OrdinalIgnoreCase)
-                        || description.Contains("#Shorts", StringComparison.OrdinalIgnoreCase)
-                        || tags.Any(t => t.Equals("Shorts", StringComparison.OrdinalIgnoreCase)
-                                      || t.Equals("Short",  StringComparison.OrdinalIgnoreCase));
-
-        bool isShortDuration = secs > 0 && secs <= 180;
-        bool isDefinitelyShort = secs > 0 && secs <= 60;
-
-        if (isDefinitelyShort || (isShortDuration && hasShortTag))
+        // 2分30秒（150秒）以内は無条件でShort扱い
+        if (secs > 0 && secs <= 150)
             return VideoKind.Short;
 
         return VideoKind.Video;

@@ -941,7 +941,7 @@
                             <TextBlock Text="ABOUT" Style="{StaticResource SectionHeader}"/>
                             <TextBlock Text="YTNotifier" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            <TextBlock Text="v1.2.0" FontSize="12"
+                            <TextBlock Text="v1.2.1" FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,4,0,0"/>
                             <TextBlock Text="YouTube新着動画通知アプリ" FontSize="12"
