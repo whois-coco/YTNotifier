@@ -372,6 +372,13 @@
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,2,0,0"/>
                         </StackPanel>
+                        <Button x:Name="EditModeButton"
+                                Grid.Column="1"
+                                Content="✏ 編集"
+                                Style="{StaticResource SecondaryButton}"
+                                Padding="14,7"
+                                VerticalAlignment="Center"
+                                Click="EditModeButton_Click"/>
                     </Grid>
                 </Border>
 
@@ -1043,7 +1050,7 @@
                             <TextBlock Text="ABOUT" Style="{StaticResource SectionHeader}"/>
                             <TextBlock Text="YTNotifier" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            <TextBlock Text="v1.3.0" FontSize="12"
+                            <TextBlock Text="v1.4.0" FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,4,0,0"/>
                             <TextBlock Text="YouTube新着動画通知アプリ" FontSize="12"

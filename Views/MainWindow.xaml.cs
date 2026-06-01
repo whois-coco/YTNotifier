@@ -16,6 +16,7 @@ using Brush               = System.Windows.Media.Brush;
 using Brushes             = System.Windows.Media.Brushes;
 using Button              = System.Windows.Controls.Button;
 using Cursors             = System.Windows.Input.Cursors;
+using Cursor              = System.Windows.Input.Cursor;
 using DataObject          = System.Windows.DataObject;
 using DragDropEffects     = System.Windows.DragDropEffects;
 using DragEventArgs       = System.Windows.DragEventArgs;
@@ -92,6 +93,13 @@ public partial class MainWindow : Window
     private ChannelInfo? _previewChannel;
     private bool _addChannelExpanded = false;
     private bool _sidebarCollapsed   = false;
+
+    // 編集モード
+    private bool _editMode = false;
+
+    // ドロップ位置インジケーター
+    private Border? _dropIndicator = null;
+    private int     _dropIndicatorIndex = -1;
 
     // D&D
     private ChannelInfo?  _dragSource      = null;
@@ -280,6 +288,61 @@ public partial class MainWindow : Window
         _               => "動画"
     };
 
+    // ===== 編集モード =====
+    private void EditModeButton_Click(object sender, RoutedEventArgs e)
+    {
+        _editMode = !_editMode;
+
+        EditModeButton.Content = _editMode ? "✅ 完了" : "✏ 編集";
+        SetDynamicBrush(EditModeButton, Button.BackgroundProperty,
+            _editMode ? "PrimaryBrush" : "SurfaceElevatedBrush");
+        EditModeButton.Foreground = _editMode
+            ? Brushes.White
+            : (Brush)Application.Current.Resources["TextPrimaryBrush"];
+
+        // 全チャンネル行のカーソル・アイコン・種別トグルの有効状態を切替
+        foreach (var child in ChannelList.Children.OfType<Border>())
+        {
+            child.Cursor = _editMode ? Cursors.Hand : Cursors.Arrow;
+            SetRowInteractive(child, !_editMode);
+        }
+
+        if (_editMode)
+            LoggerService.Instance.Info("編集モード開始：ドラッグでチャンネルを並び替えられます");
+        else
+            LoggerService.Instance.Info("編集モード終了");
+    }
+
+    private static void SetRowInteractive(Border row, bool enabled)
+    {
+        if (row.Child is not Grid grid) return;
+
+        // Col0: アイコン Border
+        foreach (var el in grid.Children.OfType<Border>())
+        {
+            if (Grid.GetColumn(el) == 0)
+            {
+                el.IsHitTestVisible = enabled;
+                el.Opacity = enabled ? 1.0 : 0.5;
+            }
+        }
+
+        // Col1: 情報パネル（StackPanel）内の種別トグル
+        foreach (var el in grid.Children.OfType<StackPanel>())
+        {
+            if (Grid.GetColumn(el) != 1) continue;
+            // 種別トグルは2番目の子（kindRow）
+            foreach (var child in el.Children.OfType<StackPanel>())
+            {
+                foreach (var toggle in child.Children.OfType<Border>())
+                {
+                    toggle.IsHitTestVisible = enabled;
+                    toggle.Opacity = enabled ? 1.0 : 0.5;
+                }
+            }
+        }
+    }
+
     // ===== チャンネルリスト =====
     private void RefreshChannelList()
     {
@@ -289,6 +352,14 @@ public partial class MainWindow : Window
         EmptyState.Visibility = channels.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         foreach (var ch in channels)
             ChannelList.Children.Add(CreateChannelRow(ch));
+
+        // 編集モード中ならカーソル・インタラクション状態を再適用
+        if (_editMode)
+            foreach (var child in ChannelList.Children.OfType<Border>())
+            {
+                child.Cursor = Cursors.Hand;
+                SetRowInteractive(child, false);
+            }
 
         // チャンネル数変化時に間隔を自動調整
         AutoAdjustIntervalForQuota();
@@ -337,7 +408,7 @@ public partial class MainWindow : Window
             Height              = ChannelRowHeight,
             Margin              = new Thickness(0, 0, 0, ChannelRowMarginBottom),
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            Cursor              = Cursors.SizeAll,
+            Cursor              = Cursors.Arrow,
             CornerRadius        = new CornerRadius(4),
             Padding             = new Thickness(12, 0, 12, 0),
             Tag                 = ch
@@ -1055,6 +1126,7 @@ public partial class MainWindow : Window
 
     private void ChannelRow_MouseMove(object sender, MouseEventArgs e)
     {
+        if (!_editMode) return;
         if (e.LeftButton != MouseButtonState.Pressed || _dragSource == null || _isDragging) return;
 
         var diff = _dragStartPoint - e.GetPosition(null);
@@ -1066,11 +1138,15 @@ public partial class MainWindow : Window
         {
             AttachDragAdorner(rowBorder, e.GetPosition(ChannelList));
             rowBorder.Opacity = 0.4;
+            // ドラッグ中は手を閉じたカーソル
+            Mouse.OverrideCursor = Cursors.ScrollAll;
             ChannelList.PreviewDragOver += OnDragOverUpdateAdorner;
             DragDrop.DoDragDrop(rowBorder, new DataObject("ChannelDrag", _dragSource.ChannelId), DragDropEffects.Move);
             ChannelList.PreviewDragOver -= OnDragOverUpdateAdorner;
+            Mouse.OverrideCursor = null;
             rowBorder.Opacity = 1.0;
             DetachDragAdorner();
+            HideDropIndicator();
         }
         _isDragging = false;
     }
@@ -1103,14 +1179,61 @@ public partial class MainWindow : Window
         _dragAdorner.UpdatePosition(pos.X, pos.Y - 30);
     }
 
+    private void ShowDropIndicator(int insertIndex)
+    {
+        if (_dropIndicatorIndex == insertIndex) return;
+        HideDropIndicator();
+        _dropIndicatorIndex = insertIndex;
+        _dropIndicator = new Border
+        {
+            Height              = 2,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            IsHitTestVisible    = false,
+            Margin              = new Thickness(8, 0, 8, 0)
+        };
+        SetDynamicBrush(_dropIndicator, Border.BackgroundProperty, "PrimaryBrush");
+        var idx = Math.Min(insertIndex, ChannelList.Children.Count);
+        ChannelList.Children.Insert(idx, _dropIndicator);
+    }
+
+    private void HideDropIndicator()
+    {
+        if (_dropIndicator != null && ChannelList.Children.Contains(_dropIndicator))
+            ChannelList.Children.Remove(_dropIndicator);
+        _dropIndicator      = null;
+        _dropIndicatorIndex = -1;
+    }
+
+    private int CalcDropIndex(double posY)
+    {
+        double cumY  = 0;
+        int    count = 0;
+        foreach (var child in ChannelList.Children.OfType<FrameworkElement>())
+        {
+            if (child == _dropIndicator) continue;
+            double rowH   = child.ActualHeight + child.Margin.Bottom;
+            double rowTop = cumY;
+            cumY += rowH;
+            if (posY <= cumY)
+                return posY > rowTop + rowH / 2 ? count + 1 : count;
+            count++;
+        }
+        return count;
+    }
+
     private void ChannelList_DragOver(object sender, DragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent("ChannelDrag") ? DragDropEffects.Move : DragDropEffects.None;
+        if (!e.Data.GetDataPresent("ChannelDrag")) { e.Effects = DragDropEffects.None; return; }
+        e.Effects = DragDropEffects.Move;
+        var dropPos = e.GetPosition(ChannelList);
+        ShowDropIndicator(CalcDropIndex(dropPos.Y));
         e.Handled = true;
     }
 
     private void ChannelList_Drop(object sender, DragEventArgs e)
     {
+        HideDropIndicator();
+
         if (!e.Data.GetDataPresent("ChannelDrag")) return;
         var sourceId = e.Data.GetData("ChannelDrag") as string;
         if (string.IsNullOrEmpty(sourceId)) return;
@@ -1119,24 +1242,10 @@ public partial class MainWindow : Window
         var srcIdx   = channels.FindIndex(c => c.ChannelId == sourceId);
         if (srcIdx < 0) return;
 
-        var dropPos = e.GetPosition(ChannelList);
-        int dstIdx  = channels.Count - 1;
-        double cumY = 0;
+        int dstIdx = CalcDropIndex(e.GetPosition(ChannelList).Y);
 
-        for (int i = 0; i < ChannelList.Children.Count; i++)
-        {
-            if (ChannelList.Children[i] is not FrameworkElement child) continue;
-            double rowH   = child.ActualHeight + child.Margin.Bottom;
-            double rowTop = cumY;
-            cumY += rowH;
-            if (dropPos.Y <= cumY)
-            {
-                dstIdx = dropPos.Y > rowTop + rowH / 2 ? Math.Min(i + 1, channels.Count - 1) : i;
-                break;
-            }
-        }
-
-        if (dstIdx == srcIdx) return;
+        // インジケーター除去後のインデックス調整
+        if (dstIdx == srcIdx || dstIdx == srcIdx + 1) return;
 
         var ch = channels[srcIdx];
         channels.RemoveAt(srcIdx);

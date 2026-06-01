@@ -14,20 +14,23 @@ public class MonitorService : IDisposable
 
     private readonly YouTubeApiClient _youtubeClient = new();
     private Timer? _timer;
-    private bool _isRunning = false;
+    private bool _isRunning  = false;
     private bool _isChecking = false;
 
     public event Action<bool>? StatusChanged;
-    public event Action? ChannelUpdated;   // 未読バッジ更新用
+    public event Action? ChannelUpdated;
     public bool IsRunning => _isRunning;
+
+    private MonitorService()
+    {
+        // トースト通知クリックハンドラはインスタンス生成時に1回だけ登録
+        ToastNotificationManagerCompat.OnActivated += OnToastActivated;
+    }
 
     public void Start()
     {
         if (_isRunning) return;
         _isRunning = true;
-
-        // トースト通知のクリックハンドラを登録（アプリ起動時に1回だけ）
-        ToastNotificationManagerCompat.OnActivated += OnToastActivated;
 
         var interval = TimeSpan.FromMinutes(SettingsService.Instance.Settings.CheckIntervalMinutes);
         _timer = new Timer(async _ => await CheckAllChannelsAsync(), null, TimeSpan.Zero, interval);
