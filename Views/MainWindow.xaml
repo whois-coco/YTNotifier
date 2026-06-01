@@ -319,10 +319,6 @@
                     <Button x:Name="NavWatch" Tag="📋" Content="確認リスト"
                             Style="{StaticResource NavButtonActive}"
                             Click="Nav_Click"/>
-                    <Button Tag="🔄" Content="今すぐチェック"
-                            Style="{StaticResource NavButton}"
-                            x:Name="ManualCheckButton"
-                            Click="ManualCheckButton_Click"/>
                     <Button x:Name="MonitorToggleButton" Tag="⏸" Content="監視停止"
                             Style="{StaticResource NavButton}"
                             Click="MonitorToggleButton_Click"/>
@@ -363,6 +359,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="確認リスト" FontSize="20" FontWeight="Bold"
@@ -372,8 +369,16 @@
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,2,0,0"/>
                         </StackPanel>
-                        <Button x:Name="EditModeButton"
+                        <Button x:Name="InlineCheckButton"
                                 Grid.Column="1"
+                                Content="🔄 今すぐチェック"
+                                Style="{StaticResource SecondaryButton}"
+                                Padding="14,7"
+                                Margin="0,0,8,0"
+                                VerticalAlignment="Center"
+                                Click="ManualCheckButton_Click"/>
+                        <Button x:Name="EditModeButton"
+                                Grid.Column="2"
                                 Content="✏ 編集"
                                 Style="{StaticResource SecondaryButton}"
                                 Padding="14,7"
@@ -382,145 +387,14 @@
                     </Grid>
                 </Border>
 
-                <!-- チャンネル追加（折り畳み） -->
-                <Border DockPanel.Dock="Bottom"
-                        Background="{DynamicResource SurfaceBrush}"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="4">
-                    <StackPanel>
-                        <!-- ヘッダー -->
-                        <Button HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Stretch"
-                                Style="{StaticResource IconButton}"
-                                Padding="16,8"
-                                Click="AddChannelHeader_Click">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="+" FontSize="16" FontWeight="Bold"
-                                               Foreground="{DynamicResource PrimaryBrush}"
-                                               Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="チャンネルを追加" FontSize="13"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               VerticalAlignment="Center"/>
-                                </StackPanel>
-                                <TextBlock x:Name="AddChannelChevron" Grid.Column="1"
-                                           Text="▼" FontSize="10"
-                                           Foreground="{DynamicResource TextMutedBrush}"
-                                           VerticalAlignment="Center"/>
-                            </Grid>
-                        </Button>
-
-                        <!-- コンテンツ -->
-                        <Border x:Name="AddChannelBody"
-                                Visibility="Collapsed"
-                                BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="0,1,0,0"
-                                Padding="16,14">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="180"/>
-                                </Grid.ColumnDefinitions>
-
-                                <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                                    <TextBlock Text="チャンネルID / ハンドル / URL"
-                                               Style="{StaticResource FieldLabel}"/>
-                                    <Grid Margin="0,0,0,10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Grid Grid.Column="0" Margin="0,0,8,0">
-                                            <TextBox x:Name="ChannelInputBox"
-                                                     Style="{StaticResource ModernTextBox}"
-                                                     KeyDown="ChannelInputBox_KeyDown"
-                                                     TextChanged="ChannelInputBox_TextChanged"/>
-                                            <TextBlock x:Name="ChannelInputPlaceholder"
-                                                       Text="@handle / UCxxxxxxx / URL..."
-                                                       Foreground="{DynamicResource TextMutedBrush}"
-                                                       FontSize="13" Margin="12,0,0,0"
-                                                       VerticalAlignment="Center"
-                                                       IsHitTestVisible="False"/>
-                                        </Grid>
-                                        <Button Grid.Column="1" x:Name="PreviewButton"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Content="検索" Padding="14,8"
-                                                Click="PreviewChannel_Click"/>
-                                    </Grid>
-                                    <TextBlock x:Name="PreviewStatusText" FontSize="12"
-                                               Margin="0,0,0,10"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Text="チャンネルIDまたはハンドル名を入力してください"
-                                               TextWrapping="Wrap"/>
-                                    <Button x:Name="AddChannelButton"
-                                            Style="{StaticResource PrimaryButton}"
-                                            Content="追加する" Padding="16,8"
-                                            HorizontalAlignment="Left"
-                                            IsEnabled="False" Click="AddChannel_Click"/>
-                                </StackPanel>
-
-                                <!-- プレビュー -->
-                                <Border Grid.Column="1"
-                                        Background="{DynamicResource SurfaceAltBrush}"
-                                        BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="4" Padding="14">
-                                    <StackPanel>
-                                        <TextBlock Text="PREVIEW"
-                                                   Style="{StaticResource SectionHeader}"/>
-                                        <Border x:Name="PreviewEmptyState">
-                                            <StackPanel HorizontalAlignment="Center"
-                                                        Margin="0,10,0,0">
-                                                <TextBlock Text="🔍" FontSize="24"
-                                                           HorizontalAlignment="Center"/>
-                                                <TextBlock Text="ここに表示" FontSize="12"
-                                                           Foreground="{DynamicResource TextMutedBrush}"
-                                                           HorizontalAlignment="Center"
-                                                           Margin="0,4,0,0"/>
-                                            </StackPanel>
-                                        </Border>
-                                        <StackPanel x:Name="PreviewContent" Visibility="Collapsed">
-                                            <Border Width="44" Height="44" CornerRadius="22"
-                                                    HorizontalAlignment="Center" Margin="0,4,0,8">
-                                                <Border.Clip>
-                                                    <EllipseGeometry Center="22,22"
-                                                                     RadiusX="22" RadiusY="22"/>
-                                                </Border.Clip>
-                                                <Image x:Name="PreviewThumbnail"
-                                                       Stretch="UniformToFill"/>
-                                            </Border>
-                                            <TextBlock x:Name="PreviewName" FontSize="13"
-                                                       FontWeight="Bold"
-                                                       Foreground="{DynamicResource TextPrimaryBrush}"
-                                                       TextAlignment="Center"
-                                                       TextWrapping="Wrap"/>
-                                            <TextBlock x:Name="PreviewHandle" FontSize="11"
-                                                       Foreground="{DynamicResource TextMutedBrush}"
-                                                       TextAlignment="Center" Margin="0,2,0,6"/>
-                                            <Border Background="{DynamicResource PrimaryLightBrush}"
-                                                    BorderBrush="{DynamicResource PrimaryBrush}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="3" Padding="8,3"
-                                                    HorizontalAlignment="Center">
-                                                <TextBlock x:Name="PreviewSubs" FontSize="11"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource PrimaryBrush}"/>
-                                            </Border>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                            </Grid>
-                        </Border>
-                    </StackPanel>
-                </Border>
-
-                <Border DockPanel.Dock="Bottom" Height="12"/>
+                <!-- チャンネル追加ボタン -->
+                <Button DockPanel.Dock="Bottom"
+                        Style="{StaticResource SecondaryButton}"
+                        Content="＋ チャンネルを追加"
+                        Padding="16,10"
+                        Margin="0,8,0,0"
+                        FontSize="13"
+                        Click="AddChannelHeader_Click"/>
 
                 <!-- チャンネルリスト -->
                 <Grid>
@@ -754,7 +628,6 @@
                     <!-- API設定 -->
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="API KEY" Style="{StaticResource SectionHeader}"/>
                             <TextBlock Text="YouTube Data API v3" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,12"/>
@@ -783,7 +656,6 @@
                     <!-- 監視設定 -->
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="MONITORING" Style="{StaticResource SectionHeader}"/>
                             <TextBlock Text="監視設定" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,12"/>
@@ -792,13 +664,9 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="160"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="チェック間隔" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="チェック間隔" FontSize="13" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="新着動画をチェックする間隔" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
+
                                 <ComboBox x:Name="IntervalComboBox" Grid.Column="1"
                                           Style="{StaticResource ModernComboBox}"
                                           SelectionChanged="IntervalComboBox_SelectionChanged">
@@ -826,13 +694,9 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="デスクトップ通知" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="デスクトップ通知" FontSize="13" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="Windowsトースト通知で新着を表示" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
+
                                 <CheckBox x:Name="NotificationToggle" Grid.Column="1"
                                           Style="{StaticResource ToggleSwitch}"
                                           VerticalAlignment="Center"
@@ -845,13 +709,9 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="通知テスト" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="通知テスト" FontSize="13" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="テスト通知を送信して動作確認" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
+
                                 <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
                                         Content="🔔 送信" Padding="14,7"
                                         VerticalAlignment="Center"
@@ -863,7 +723,6 @@
                     <!-- アプリ設定 -->
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="APPLICATION" Style="{StaticResource SectionHeader}"/>
                             <TextBlock Text="アプリ設定" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,12"/>
@@ -872,13 +731,9 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="ダークモード" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="ダークモード" FontSize="13" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="アプリのテーマを切り替え" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
+
                                 <CheckBox x:Name="DarkModeToggle" Grid.Column="1"
                                           Style="{StaticResource ToggleSwitch}"
                                           VerticalAlignment="Center"
@@ -891,13 +746,9 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="タスクトレイに格納" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="タスクトレイに格納" FontSize="13" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="×ボタンでトレイに常駐" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
+
                                 <CheckBox x:Name="TrayToggle" Grid.Column="1"
                                           Style="{StaticResource ToggleSwitch}"
                                           VerticalAlignment="Center"
@@ -910,13 +761,9 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="スタートアップ起動" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="スタートアップ起動" FontSize="13" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="Windows起動時に自動起動" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
+
                                 <CheckBox x:Name="StartupToggle" Grid.Column="1"
                                           Style="{StaticResource ToggleSwitch}"
                                           VerticalAlignment="Center"
@@ -929,13 +776,9 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="常に前面に表示" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="常に前面に表示" FontSize="13" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="ウィンドウを常に最前面に固定" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
+
                                 <CheckBox x:Name="AlwaysOnTopToggle" Grid.Column="1"
                                           Style="{StaticResource ToggleSwitch}"
                                           VerticalAlignment="Center"
@@ -948,7 +791,6 @@
                     <!-- ログメンテナンス -->
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="LOG MAINTENANCE" Style="{StaticResource SectionHeader}"/>
                             <TextBlock Text="ログメンテナンス" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,12"/>
@@ -972,13 +814,9 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="自動ログ削除" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="自動ログ削除" FontSize="13" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="起動時に古いログを自動削除" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
+
                                 <CheckBox x:Name="AutoCleanLogsToggle" Grid.Column="1"
                                           Style="{StaticResource ToggleSwitch}"
                                           VerticalAlignment="Center"
@@ -994,13 +832,9 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="160"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="ログ保持期間" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="ログ保持期間" FontSize="13" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="指定日数より古いログを削除対象にする" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
+
                                 <ComboBox x:Name="LogRetentionComboBox" Grid.Column="1"
                                           Style="{StaticResource ModernComboBox}"
                                           SelectionChanged="LogRetentionComboBox_Changed">
@@ -1023,14 +857,9 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="今すぐ削除" FontSize="13" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock x:Name="LogCleanResultText" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,2,0,0"
-                                               Text="保持期間より古いログファイルを削除します"/>
-                                </StackPanel>
+                                <TextBlock x:Name="LogCleanResultText" FontSize="11"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           VerticalAlignment="Center" Text=""/>
                                 <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
                                         Content="🗑 削除実行" Padding="14,7"
                                         Margin="0,0,8,0"
@@ -1050,7 +879,7 @@
                             <TextBlock Text="ABOUT" Style="{StaticResource SectionHeader}"/>
                             <TextBlock Text="YTNotifier" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            <TextBlock Text="v1.4.0" FontSize="12"
+                            <TextBlock Text="v1.5.0" FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,4,0,0"/>
                             <TextBlock Text="YouTube新着動画通知アプリ" FontSize="12"

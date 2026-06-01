@@ -89,9 +89,6 @@ public partial class MainWindow : Window
     private const double ChannelRowMarginBottom = 2;
 
     // ===== フィールド =====
-    private readonly YouTubeApiClient _youtubeClient = new();
-    private ChannelInfo? _previewChannel;
-    private bool _addChannelExpanded = false;
     private bool _sidebarCollapsed   = false;
 
     // 編集モード
@@ -135,6 +132,7 @@ public partial class MainWindow : Window
         try { RefreshChannelList(); }
         catch (Exception ex) { LoggerService.Instance.Error($"チャンネルリストエラー: {ex.Message}"); }
 
+        UpdateMinWidth();
         InitChannelListDragDrop();
         InitLogBindings();
         InitMonitor();
@@ -254,8 +252,6 @@ public partial class MainWindow : Window
             SidebarToggle_Click(this, new RoutedEventArgs());
         }
 
-        AddChannelBody.Visibility = Visibility.Collapsed;
-        AddChannelChevron.Text    = "▼";
 
         // クォータ情報を表示
         UpdateQuotaInfo();
@@ -775,7 +771,6 @@ public partial class MainWindow : Window
             NavWatch.Content            = "";
             NavLog.Content              = "";
             NavSettings.Content         = "";
-            ManualCheckButton.Content   = "";
             MonitorToggleButton.Content = "";
             SidebarToggleButton.ToolTip = "メニューを展開する";
             UpdateToggleIcon("▶");
@@ -789,15 +784,23 @@ public partial class MainWindow : Window
             NavWatch.Content          = "確認リスト";
             NavLog.Content            = "動作ログ";
             NavSettings.Content       = "基本設定";
-            ManualCheckButton.Content = "今すぐチェック";
             UpdateMonitorStatus(MonitorService.Instance.IsRunning);
             SidebarToggleButton.ToolTip = "メニューを折り畳む";
             UpdateToggleIcon("◀");
             UpdateToggleIconColor(false); // 展開時は常にデフォルト色
         }
 
+        UpdateMinWidth();
         SettingsService.Instance.Settings.SidebarCollapsed = _sidebarCollapsed;
         SettingsService.Instance.SaveSettings();
+    }
+
+    private void UpdateMinWidth()
+    {
+        const int contentMinWidth  = 410;
+        MinWidth = _sidebarCollapsed
+            ? contentMinWidth + SidebarCollapsedWidth
+            : contentMinWidth + SidebarExpandedWidth;
     }
 
     private void UpdateToggleIcon(string icon)
@@ -855,88 +858,21 @@ public partial class MainWindow : Window
     // ===== チャンネル追加 =====
     private void AddChannelHeader_Click(object sender, RoutedEventArgs e)
     {
-        _addChannelExpanded       = !_addChannelExpanded;
-        AddChannelBody.Visibility = _addChannelExpanded ? Visibility.Visible : Visibility.Collapsed;
-        AddChannelChevron.Text    = _addChannelExpanded ? "▲" : "▼";
+        var dlg = new AddChannelWindow { Owner = this };
+        dlg.ShowDialog();
+        if (dlg.ChannelAdded)
+            RefreshChannelList();
     }
 
-    private async void PreviewChannel_Click(object sender, RoutedEventArgs e)
-    {
-        var input = ChannelInputBox.Text.Trim();
-        if (string.IsNullOrEmpty(input)) return;
-
-        PreviewButton.IsEnabled      = false;
-        PreviewStatusText.Text       = "🔍 チャンネル情報を取得中...";
-        PreviewContent.Visibility    = Visibility.Collapsed;
-        PreviewEmptyState.Visibility = Visibility.Visible;
-
-        try
-        {
-            if (string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKey))
-            {
-                PreviewStatusText.Text = "⚠ APIキーが設定されていません。";
-                return;
-            }
-
-            _previewChannel = await _youtubeClient.FetchChannelInfoAsync(input);
-            if (_previewChannel == null)
-            {
-                PreviewStatusText.Text     = "❌ チャンネルが見つかりませんでした。";
-                AddChannelButton.IsEnabled = false;
-                return;
-            }
-
-            PreviewName.Text   = _previewChannel.ChannelName;
-            PreviewHandle.Text = _previewChannel.ChannelHandle;
-            PreviewSubs.Text   = $"{_previewChannel.SubscriberCount} 登録者";
-            if (!string.IsNullOrEmpty(_previewChannel.ThumbnailUrl))
-                PreviewThumbnail.Source = new BitmapImage(new Uri(_previewChannel.ThumbnailUrl));
-
-            PreviewContent.Visibility    = Visibility.Visible;
-            PreviewEmptyState.Visibility = Visibility.Collapsed;
-
-            bool exists = SettingsService.Instance.Channels.Any(c => c.ChannelId == _previewChannel.ChannelId);
-            PreviewStatusText.Text     = exists ? "⚠ このチャンネルは既に追加されています。" : $"✅ 「{_previewChannel.ChannelName}」が見つかりました。";
-            AddChannelButton.IsEnabled = !exists;
-        }
-        catch (Exception ex) { PreviewStatusText.Text = $"❌ エラー: {ex.Message}"; AddChannelButton.IsEnabled = false; }
-        finally { PreviewButton.IsEnabled = true; }
-    }
-
-    private void ChannelInputBox_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter) PreviewChannel_Click(sender, e);
-    }
-
-    private void ChannelInputBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (ChannelInputPlaceholder != null)
-            ChannelInputPlaceholder.Visibility =
-                string.IsNullOrEmpty(ChannelInputBox.Text) ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void AddChannel_Click(object sender, RoutedEventArgs e)
-    {
-        if (_previewChannel == null) return;
-        SettingsService.Instance.AddChannel(_previewChannel);
-        LoggerService.Instance.Success("チャンネルを追加しました", _previewChannel.ChannelName);
-        RefreshChannelList();
-        ChannelInputBox.Text         = string.Empty;
-        PreviewContent.Visibility    = Visibility.Collapsed;
-        PreviewEmptyState.Visibility = Visibility.Visible;
-        PreviewStatusText.Text       = "チャンネルIDまたはハンドル名を入力してプレビューを確認してください";
-        AddChannelButton.IsEnabled   = false;
-        _previewChannel              = null;
-    }
 
     // ===== アクションボタン =====
     private async void ManualCheckButton_Click(object sender, RoutedEventArgs e)
     {
-        ManualCheckButton.IsEnabled = false;
+        InlineCheckButton.IsEnabled = false;
         Nav_Click(NavWatch, e);
         await MonitorService.Instance.ManualCheckAsync();
         RefreshChannelList();
-        ManualCheckButton.IsEnabled = true;
+        InlineCheckButton.IsEnabled = true;
     }
 
     private void MonitorToggleButton_Click(object sender, RoutedEventArgs e)
