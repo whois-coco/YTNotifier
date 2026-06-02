@@ -1045,11 +1045,65 @@ public partial class MainWindow : Window
         SettingsService.Instance.SaveSettings();
     }
 
+    // ===== Ctrl+リサイズで MinWidth を 330px まで縮小可能 =====
+    private const double CtrlMinWidth = 330;
+    private double _normalMinWidth  = 0;
+    private double _normalMinHeight = 0;
+
+    protected override void OnKeyDown(System.Windows.Input.KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Key == System.Windows.Input.Key.LeftCtrl ||
+            e.Key == System.Windows.Input.Key.RightCtrl)
+        {
+            _normalMinWidth  = MinWidth;
+            _normalMinHeight = MinHeight;
+            MinWidth  = CtrlMinWidth;
+            // MinHeight はそのまま（縦は制限しない）
+        }
+    }
+
+    protected override void OnKeyUp(System.Windows.Input.KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        if (e.Key == System.Windows.Input.Key.LeftCtrl ||
+            e.Key == System.Windows.Input.Key.RightCtrl)
+        {
+            // MinWidth/MinHeight を元に戻す
+            MinWidth  = _normalMinWidth;
+            MinHeight = _normalMinHeight;
+
+            // Ctrl解放時点でサイズが最小値を下回っていたら即座に修正
+            if (_normalMinWidth  > 0 && Width  < _normalMinWidth)  Width  = _normalMinWidth;
+            if (_normalMinHeight > 0 && Height < _normalMinHeight) Height = _normalMinHeight;
+        }
+    }
+
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+
+        // Ctrl非押下中: 最小サイズを下回ったら即座に強制復元
+        if (System.Windows.Input.Keyboard.IsKeyDown(System.Windows.Input.Key.LeftCtrl) ||
+            System.Windows.Input.Keyboard.IsKeyDown(System.Windows.Input.Key.RightCtrl))
+            return;
+
+        bool changed = false;
+        double w = Width, h = Height;
+        if (_normalMinWidth  > 0 && w < _normalMinWidth)  { w = _normalMinWidth;  changed = true; }
+        if (_normalMinHeight > 0 && h < _normalMinHeight) { h = _normalMinHeight; changed = true; }
+        if (changed) { Width = w; Height = h; }
+    }
+
     private void UpdateMinWidth()
     {
         MinWidth = _sidebarCollapsed
             ? 405
-            : 410 + SidebarExpandedWidth;   // 410 + 120 = 530
+            : 410 + SidebarExpandedWidth;
+
+        // _normalMinWidth/_normalMinHeight を常に最新値に同期
+        _normalMinWidth  = MinWidth;
+        _normalMinHeight = MinHeight > 0 ? MinHeight : 300;
 
         // 折り畳み時にウィンドウ幅が MinWidth を超えていたら縮める
         if (_sidebarCollapsed && Width > MinWidth)

@@ -919,6 +919,10 @@
                                        Margin="0,0,0,4"/>
                             <TextBlock Text="YouTube Data API v3 使用" FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"/>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <TextBlock Text="Created by Coco" FontSize="12"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Margin="0,2,0,0"/>
                         </StackPanel>
                     </ScrollViewer>
 
