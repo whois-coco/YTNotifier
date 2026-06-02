@@ -234,14 +234,17 @@ public partial class MainWindow : Window
     private void LoadSettings()
     {
         var s = SettingsService.Instance.Settings;
+        _actualApiKey                 = s.ApiKey;
         ApiKeyBox.Text                = s.ApiKey;
+        UpdateApiKeyState(!string.IsNullOrEmpty(s.ApiKey));
         DarkModeToggle.IsChecked      = s.IsDarkMode;
         NotificationToggle.IsChecked  = s.ShowDesktopNotification;
         TrayToggle.IsChecked          = s.MinimizeToTray;
         StartupToggle.IsChecked       = s.StartWithWindows;
-        AlwaysOnTopToggle.IsChecked      = s.AlwaysOnTop;
-        Topmost                          = s.AlwaysOnTop;
+        AlwaysOnTopToggle.IsChecked       = s.AlwaysOnTop;
+        Topmost                           = s.AlwaysOnTop;
         NotificationSoundToggle.IsChecked = s.NotificationSound;
+        UpdatePinButton(s.AlwaysOnTop);
 
         var items = IntervalComboBox.Items.Cast<ComboBoxItem>().ToList();
         IntervalComboBox.SelectedItem = items.FirstOrDefault(
@@ -751,13 +754,24 @@ public partial class MainWindow : Window
     // ===== 監視ステータス =====
     private void UpdateMonitorStatus(bool isRunning)
     {
-        StatusText.Text = isRunning ? "監視中" : "停止中";
-        SetDynamicBrush(StatusText, System.Windows.Controls.TextBlock.ForegroundProperty,
-            isRunning ? "SuccessBrush" : "SidebarTextBrush");
-        StatusDot.Color = ((SolidColorBrush)Application.Current.Resources[
-            isRunning ? "SuccessBrush" : "SidebarTextBrush"]).Color;
-        MonitorToggleButton.Tag     = isRunning ? "⏸" : "▶";
-        MonitorToggleButton.Content = isRunning ? "監視停止" : "監視開始";
+        // StatusBadge は Button テンプレート内の要素を FindName で取得
+        if (StatusBadge.Template?.FindName("StatusText", StatusBadge)
+            is System.Windows.Controls.TextBlock st)
+        {
+            st.Text = isRunning ? "監視中" : "停止中";
+            SetDynamicBrush(st, System.Windows.Controls.TextBlock.ForegroundProperty,
+                isRunning ? "SuccessBrush" : "SidebarTextBrush");
+        }
+        if (StatusBadge.Template?.FindName("StatusDot", StatusBadge)
+            is SolidColorBrush dot)
+        {
+            dot.Color = ((SolidColorBrush)Application.Current.Resources[
+                isRunning ? "SuccessBrush" : "SidebarTextBrush"]).Color;
+        }
+        SetDynamicBrush(StatusBadge, System.Windows.Controls.Button.BackgroundProperty,
+            isRunning ? "SidebarStatusBgBrush" : "SidebarStatusBgBrush");
+        StatusBadge.ToolTip = isRunning ? "クリックして監視を停止" : "クリックして監視を開始";
+
         if (_sidebarCollapsed)
             UpdateToggleIconColor(isRunning);
     }
@@ -776,7 +790,6 @@ public partial class MainWindow : Window
             NavWatch.Content            = "";
             NavLog.Content              = "";
             NavSettings.Content         = "";
-            MonitorToggleButton.Content = "";
             SidebarToggleButton.ToolTip = "メニューを展開する";
             UpdateToggleIcon("▶");
             UpdateToggleIconColor(MonitorService.Instance.IsRunning);
@@ -887,14 +900,56 @@ public partial class MainWindow : Window
     {
         if (MonitorService.Instance.IsRunning) MonitorService.Instance.Stop();
         else MonitorService.Instance.Start();
+        Nav_Click(NavLog, e);
     }
 
     // ===== 設定ハンドラ =====
     private void SaveApiKey_Click(object sender, RoutedEventArgs e)
     {
-        SettingsService.Instance.Settings.ApiKey = ApiKeyBox.Text.Trim();
+        if (SaveApiKeyButton.Content?.ToString() == "変更")
+        {
+            // 変更ボタン → 編集可能にする
+            UpdateApiKeyState(false);
+            ApiKeyBox.Focus();
+            return;
+        }
+
+        // 保存ボタン
+        var key = ApiKeyBox.IsReadOnly ? _actualApiKey : ApiKeyBox.Text.Trim();
+        if (string.IsNullOrEmpty(key)) return;
+        _actualApiKey = key;
+        SettingsService.Instance.Settings.ApiKey = key;
         SettingsService.Instance.SaveSettings();
         LoggerService.Instance.Success("APIキーを保存しました");
+        UpdateApiKeyState(true);
+    }
+
+    private string _actualApiKey = "";
+
+    private void UpdateApiKeyState(bool saved)
+    {
+        if (saved)
+        {
+            _actualApiKey     = ApiKeyBox.Text.Trim();
+            // マスク文字で中央表示
+            ApiKeyBox.Text      = new string('●', Math.Min(_actualApiKey.Length, 32));
+            ApiKeyBox.IsReadOnly = true;
+            ApiKeyBox.TextAlignment = System.Windows.TextAlignment.Center;
+        }
+        else
+        {
+            ApiKeyBox.Text      = _actualApiKey;
+            ApiKeyBox.IsReadOnly = false;
+            ApiKeyBox.TextAlignment = System.Windows.TextAlignment.Left;
+            ApiKeyBox.Focus();
+            ApiKeyBox.SelectAll();
+        }
+        SaveApiKeyButton.Content = saved ? "変更" : "保存";
+        SetDynamicBrush(SaveApiKeyButton, Button.BackgroundProperty,
+            saved ? "SurfaceElevatedBrush" : "PrimaryBrush");
+        SaveApiKeyButton.Foreground = saved
+            ? (Brush)Application.Current.Resources["TextPrimaryBrush"]
+            : Brushes.White;
     }
 
     private void DarkModeToggle_Changed(object sender, RoutedEventArgs e)
@@ -932,6 +987,31 @@ public partial class MainWindow : Window
         Topmost = enabled;
         SettingsService.Instance.Settings.AlwaysOnTop = enabled;
         SettingsService.Instance.SaveSettings();
+        UpdatePinButton(enabled);
+    }
+
+    private void PinButton_Click(object sender, RoutedEventArgs e)
+    {
+        var enabled = !SettingsService.Instance.Settings.AlwaysOnTop;
+        Topmost = enabled;
+        SettingsService.Instance.Settings.AlwaysOnTop = enabled;
+        SettingsService.Instance.SaveSettings();
+        AlwaysOnTopToggle.IsChecked = enabled;
+        UpdatePinButton(enabled);
+    }
+
+    private void UpdatePinButton(bool pinned)
+    {
+        if (PinButton.Template?.FindName("PinIcon", PinButton)
+            is System.Windows.Controls.TextBlock icon)
+        {
+            icon.Opacity = 1.0;
+            if (pinned)
+                icon.Foreground = (Brush)Application.Current.Resources["ErrorBrush"];
+            else
+                SetDynamicBrush(icon, System.Windows.Controls.TextBlock.ForegroundProperty, "SidebarTextBrush");
+        }
+        PinButton.ToolTip = pinned ? "常に前面に表示: ON（クリックで解除）" : "常に前面に表示: OFF";
     }
 
     private void StartupToggle_Changed(object sender, RoutedEventArgs e)

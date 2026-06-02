@@ -260,25 +260,43 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="44"/>
                         </Grid.ColumnDefinitions>
-                        <!-- ステータスバッジ（展開時のみ） -->
-                        <Border x:Name="StatusBadge"
+                        <!-- ステータスバッジ（クリックで監視トグル） -->
+                        <Button x:Name="StatusBadge"
                                 Grid.Column="0"
                                 Background="{DynamicResource SidebarStatusBgBrush}"
-                                CornerRadius="3" Padding="8,4"
+                                BorderThickness="0"
+                                Padding="8,5"
                                 Margin="8,0,0,0"
-                                HorizontalAlignment="Left" VerticalAlignment="Center">
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="6" Height="6" Margin="0,0,6,0"
-                                         VerticalAlignment="Center">
-                                    <Ellipse.Fill>
-                                        <SolidColorBrush x:Name="StatusDot" Color="#94A3B8"/>
-                                    </Ellipse.Fill>
-                                </Ellipse>
-                                <TextBlock x:Name="StatusText" Text="停止中"
-                                           FontSize="11" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource SidebarTextBrush}"/>
-                            </StackPanel>
-                        </Border>
+                                HorizontalAlignment="Left" VerticalAlignment="Center"
+                                Cursor="Hand"
+                                ToolTip="クリックして監視を開始/停止"
+                                Click="MonitorToggleButton_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd"
+                                            Background="{TemplateBinding Background}"
+                                            CornerRadius="3"
+                                            Padding="{TemplateBinding Padding}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse Width="7" Height="7" Margin="0,0,6,0"
+                                                     VerticalAlignment="Center">
+                                                <Ellipse.Fill>
+                                                    <SolidColorBrush x:Name="StatusDot" Color="#94A3B8"/>
+                                                </Ellipse.Fill>
+                                            </Ellipse>
+                                            <TextBlock x:Name="StatusText" Text="停止中"
+                                                       FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource SidebarTextBrush}"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Opacity" Value="0.8"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
                         <!-- 折り畳みボタン: 常に右端44px列の中央 -->
                         <Button x:Name="SidebarToggleButton"
                                 Grid.Column="1"
@@ -309,6 +327,38 @@
                     </Grid>
                 </Border>
 
+                <!-- ピンボタン（サイドバー左下） -->
+                <Border DockPanel.Dock="Bottom"
+                        Height="44"
+                        BorderBrush="{DynamicResource SidebarBorderBrush}"
+                        BorderThickness="0,1,0,0">
+                    <Button x:Name="PinButton"
+                            Width="44" Height="44"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            HorizontalAlignment="Left"
+                            Click="PinButton_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Bd" Background="Transparent"
+                                        Width="44" Height="44">
+                                    <TextBlock x:Name="PinIcon" Text="⚲"
+                                               FontSize="18"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background"
+                                                Value="{DynamicResource SidebarHoverBrush}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </Border>
+
                 <!-- ナビゲーション -->
                 <StackPanel DockPanel.Dock="Top" Margin="0,8,0,0">
                     <Border x:Name="MenuLabelWrap" Visibility="Visible">
@@ -319,9 +369,7 @@
                     <Button x:Name="NavWatch" Tag="📋" Content="確認リスト"
                             Style="{StaticResource NavButtonActive}"
                             Click="Nav_Click"/>
-                    <Button x:Name="MonitorToggleButton" Tag="⏸" Content="監視停止"
-                            Style="{StaticResource NavButton}"
-                            Click="MonitorToggleButton_Click"/>
+
                     <Button x:Name="NavLog" Tag="📝" Content="動作ログ"
                             Style="{StaticResource NavButton}"
                             Click="Nav_Click"/>
@@ -639,9 +687,13 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBox x:Name="ApiKeyBox" Grid.Column="0"
                                          Style="{StaticResource ModernTextBox}"
+                                         IsReadOnly="True"
+                                         TextAlignment="Center"
                                          Margin="0,0,8,0"/>
-                                <Button Grid.Column="1" Style="{StaticResource PrimaryButton}"
-                                        Content="保存" Padding="16,8"
+                                <Button x:Name="SaveApiKeyButton"
+                                        Grid.Column="1"
+                                        Style="{StaticResource PrimaryButton}"
+                                        Content="保存" Padding="12,8"
                                         Click="SaveApiKey_Click"/>
                             </Grid>
                             <TextBlock FontSize="12" Foreground="{DynamicResource TextMutedBrush}">
@@ -664,7 +716,7 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="160"/>
                                 </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="チェック間隔" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="チェック間隔" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
 
                                 <ComboBox x:Name="IntervalComboBox" Grid.Column="1"
@@ -694,7 +746,7 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="デスクトップ通知" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="デスクトップ通知" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
 
                                 <CheckBox x:Name="NotificationToggle" Grid.Column="1"
@@ -709,7 +761,7 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="通知音" FontSize="13" FontWeight="SemiBold"
+                                <TextBlock Text="通知音" FontSize="12" FontWeight="SemiBold"
                                            Foreground="{DynamicResource TextPrimaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <CheckBox x:Name="NotificationSoundToggle" Grid.Column="1"
@@ -724,7 +776,7 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="通知テスト" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="通知テスト" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
 
                                 <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
@@ -746,7 +798,7 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="ダークモード" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="ダークモード" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
 
                                 <CheckBox x:Name="DarkModeToggle" Grid.Column="1"
@@ -761,7 +813,7 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="タスクトレイに格納" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="タスクトレイに格納" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
 
                                 <CheckBox x:Name="TrayToggle" Grid.Column="1"
@@ -776,7 +828,7 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="スタートアップ起動" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="スタートアップ起動" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
 
                                 <CheckBox x:Name="StartupToggle" Grid.Column="1"
@@ -785,21 +837,10 @@
                                           Checked="StartupToggle_Changed"
                                           Unchecked="StartupToggle_Changed"/>
                             </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="常に前面に表示" FontSize="13" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
-
-                                <CheckBox x:Name="AlwaysOnTopToggle" Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitch}"
-                                          VerticalAlignment="Center"
-                                          Checked="AlwaysOnTopToggle_Changed"
-                                          Unchecked="AlwaysOnTopToggle_Changed"/>
-                            </Grid>
+                            <!-- AlwaysOnTopToggle は非表示（ピンボタンで制御） -->
+                            <CheckBox x:Name="AlwaysOnTopToggle" Visibility="Collapsed"
+                                      Checked="AlwaysOnTopToggle_Changed"
+                                      Unchecked="AlwaysOnTopToggle_Changed"/>
                         </StackPanel>
                     </Border>
 
@@ -829,7 +870,7 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="自動ログ削除" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="自動ログ削除" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
 
                                 <CheckBox x:Name="AutoCleanLogsToggle" Grid.Column="1"
@@ -847,7 +888,7 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="160"/>
                                 </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="ログ保持期間" FontSize="13" FontWeight="SemiBold"
+                                                                    <TextBlock Text="ログ保持期間" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
 
                                 <ComboBox x:Name="LogRetentionComboBox" Grid.Column="1"
@@ -911,6 +952,7 @@
 
         </Grid>
         </Grid><!-- メインレイアウト -->
+
     </Grid><!-- ルートGrid -->
     </Border><!-- ウィンドウ外枠 -->
 </Window>
