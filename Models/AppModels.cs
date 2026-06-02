@@ -47,6 +47,9 @@ public class AppSettings
     [JsonProperty("notificationSound")]
     public bool NotificationSound { get; set; } = true;
 
+    [JsonProperty("compactMode")]
+    public bool CompactMode { get; set; } = false;
+
     [JsonProperty("sidebarCollapsed")]
     public bool SidebarCollapsed { get; set; } = false;
 

@@ -86,6 +86,7 @@ public partial class MainWindow : Window
     private const int    SidebarExpandedWidth  = 120;
     private const int    SidebarCollapsedWidth = 44;
     private const int    ChannelRowHeight      = 60;
+    private const int    ChannelRowHeightCompact = 36;
     private const double ChannelRowMarginBottom = 2;
 
     // ===== フィールド =====
@@ -244,6 +245,7 @@ public partial class MainWindow : Window
         AlwaysOnTopToggle.IsChecked       = s.AlwaysOnTop;
         Topmost                           = s.AlwaysOnTop;
         NotificationSoundToggle.IsChecked = s.NotificationSound;
+        CompactModeToggle.IsChecked        = s.CompactMode;
         UpdatePinButton(s.AlwaysOnTop);
 
         var items = IntervalComboBox.Items.Cast<ComboBoxItem>().ToList();
@@ -334,7 +336,6 @@ public partial class MainWindow : Window
         foreach (var el in grid.Children.OfType<StackPanel>())
         {
             if (Grid.GetColumn(el) != 1) continue;
-            // 種別トグルは2番目の子（kindRow）
             foreach (var child in el.Children.OfType<StackPanel>())
             {
                 foreach (var toggle in child.Children.OfType<Border>())
@@ -406,14 +407,14 @@ public partial class MainWindow : Window
 
     private UIElement CreateChannelRow(ChannelInfo ch)
     {
+        var compact = SettingsService.Instance.Settings.CompactMode;
         var row = new Border
         {
-            Height              = ChannelRowHeight,
+            Height              = compact ? ChannelRowHeightCompact : ChannelRowHeight,
             Margin              = new Thickness(0, 0, 0, ChannelRowMarginBottom),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Cursor              = Cursors.Arrow,
             CornerRadius        = new CornerRadius(4),
-            Padding             = new Thickness(12, 0, 12, 0),
             Tag                 = ch
         };
         SetDynamicBrush(row, Border.BackgroundProperty, "SurfaceAltBrush");
@@ -428,26 +429,79 @@ public partial class MainWindow : Window
         // 右クリックメニュー
         row.ContextMenu = BuildChannelContextMenu(ch);
 
-        // レイアウト
-        var grid = new Grid { VerticalAlignment = VerticalAlignment.Center };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(56) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        if (compact)
+        {
+            // コンパクトモード: [アイコン小] [チャンネル名]
+            var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 8, 0) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        var iconBorder   = BuildIconBorder(ch);
-        var infoPanel    = BuildInfoPanel(ch);
-        var actionsPanel = BuildActionsPanel(ch);
+            var iconSmall = BuildIconBorderCompact(ch);
+            var nameText  = new TextBlock
+            {
+                Text              = ch.ChannelName,
+                FontSize          = 12,
+                FontWeight        = FontWeights.SemiBold,
+                TextTrimming      = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin            = new Thickness(8, 0, 0, 0)
+            };
+            SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
 
-        Grid.SetColumn(iconBorder,   0);
-        Grid.SetColumn(infoPanel,    1);
-        Grid.SetColumn(actionsPanel, 2);
+            Grid.SetColumn(iconSmall, 0);
+            Grid.SetColumn(nameText,  1);
 
-        grid.Children.Add(iconBorder);
-        grid.Children.Add(infoPanel);
-        grid.Children.Add(actionsPanel);
+            grid.Children.Add(iconSmall);
+            grid.Children.Add(nameText);
+            row.Child = grid;
+        }
+        else
+        {
+            // 通常モード: [アイコン] [情報] [アクション]
+            var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 12, 0) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(56) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        row.Child = grid;
+            var iconBorder   = BuildIconBorder(ch);
+            var infoPanel    = BuildInfoPanel(ch);
+            var actionsPanel = BuildActionsPanel(ch);
+
+            Grid.SetColumn(iconBorder,   0);
+            Grid.SetColumn(infoPanel,    1);
+            Grid.SetColumn(actionsPanel, 2);
+
+            grid.Children.Add(iconBorder);
+            grid.Children.Add(infoPanel);
+            grid.Children.Add(actionsPanel);
+            row.Child = grid;
+        }
         return row;
+    }
+
+    private static Border BuildIconBorderCompact(ChannelInfo ch)
+    {
+        const int size = 22; // 通常44の半分
+        var iconBorder = new Border
+        {
+            Width             = size, Height = size,
+            CornerRadius      = new CornerRadius(size / 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            Clip              = new EllipseGeometry(new System.Windows.Point(size / 2, size / 2), size / 2, size / 2),
+        };
+        if (!string.IsNullOrEmpty(ch.ThumbnailUrl))
+        {
+            try
+            {
+                iconBorder.Child = new System.Windows.Controls.Image
+                {
+                    Source  = new BitmapImage(new Uri(ch.ThumbnailUrl)),
+                    Stretch = Stretch.UniformToFill
+                };
+            }
+            catch { }
+        }
+        return iconBorder;
     }
 
     private static Border BuildIconBorder(ChannelInfo ch)
@@ -501,19 +555,7 @@ public partial class MainWindow : Window
         };
         SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
 
-        var badge = new Border
-        {
-            CornerRadius      = new CornerRadius(4),
-            Padding           = new Thickness(5, 1, 5, 1),
-            Margin            = new Thickness(6, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Visibility        = ch.HasUnread ? Visibility.Visible : Visibility.Collapsed,
-            Child             = new TextBlock { Text = "NEW", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.White }
-        };
-        SetDynamicBrush(badge, Border.BackgroundProperty, "AccentBrush");
-
         nameRow.Children.Add(nameText);
-        nameRow.Children.Add(badge);
         info.Children.Add(nameRow);
 
         // 種別トグル
@@ -972,6 +1014,13 @@ public partial class MainWindow : Window
     {
         SettingsService.Instance.Settings.ShowDesktopNotification = NotificationToggle.IsChecked == true;
         SettingsService.Instance.SaveSettings();
+    }
+
+    private void CompactModeToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        SettingsService.Instance.Settings.CompactMode = CompactModeToggle.IsChecked == true;
+        SettingsService.Instance.SaveSettings();
+        RefreshChannelList();
     }
 
     private void NotificationSoundToggle_Changed(object sender, RoutedEventArgs e)

@@ -808,6 +808,21 @@
                                           Unchecked="DarkModeToggle_Changed"/>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="コンパクトモード" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <CheckBox x:Name="CompactModeToggle" Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          VerticalAlignment="Center"
+                                          Checked="CompactModeToggle_Changed"
+                                          Unchecked="CompactModeToggle_Changed"/>
+                            </Grid>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
                             <Grid Margin="0,0,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
