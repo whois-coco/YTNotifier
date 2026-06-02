@@ -797,10 +797,13 @@ public partial class MainWindow : Window
 
     private void UpdateMinWidth()
     {
-        const int contentMinWidth  = 410;
         MinWidth = _sidebarCollapsed
-            ? contentMinWidth + SidebarCollapsedWidth
-            : contentMinWidth + SidebarExpandedWidth;
+            ? 405
+            : 410 + SidebarExpandedWidth;   // 410 + 120 = 530
+
+        // 折り畳み時にウィンドウ幅が MinWidth を超えていたら縮める
+        if (_sidebarCollapsed && Width > MinWidth)
+            Width = MinWidth;
     }
 
     private void UpdateToggleIcon(string icon)

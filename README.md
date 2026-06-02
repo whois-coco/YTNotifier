@@ -1,4 +1,4 @@
-# YTNotifier v1.5.0 - YouTube新着動画通知システム
+# YTNotifier v1.5.1 - YouTube新着動画通知システム
 
 YouTube Data API v3 を利用し、指定チャンネルの新着動画を定期監視・通知する WPF 常駐アプリ。
 
@@ -19,13 +19,13 @@ YouTube Data API v3 を利用し、指定チャンネルの新着動画を定期
 ```bash
 cd YTNotifier
 dotnet restore
-dotnet build -c Release
+dotnet build
 ```
 
 ### 2. 発行（Self-Contained）
 
 ```bash
-dotnet publish -c Release -r win-x64 --self-contained -o ./publish
+dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
 ```
 
 ### 3. アイコンの準備
@@ -118,7 +118,7 @@ YTNotifier/
 - 1〜60分間隔（設定変更可）でチャンネルを**並列チェック**
 - 複数の新着があっても通知は**最新1件のみ**（多重通知防止）
 - 動画種別を `videos.list` + `liveStreamingDetails` で正確に判定
-  - Short: 2分30秒（150秒）以内
+  - Short: 2分30秒（150秒）以内、またはタイトル・説明・タグに `#Shorts` / `#Short` を含む
   - ライブ/アーカイブ: `liveStreamingDetails` フィールドが存在する動画
 - **NEW バッジ**: 新着検出時にチャンネル名横に表示、クリック or 右クリックメニューで消去
 - Windows トースト通知をクリックで動画をブラウザ再生
@@ -189,6 +189,15 @@ YouTube Data API v3 の無料枠は **10,000ユニット/日**。
 ---
 
 ## 変更履歴
+
+### v1.5.1
+- チャンネル追加ウィンドウのサイズを固定（520×190px）
+- チャンネル追加ウィンドウのレイアウトをフラットUIに統一
+- チャンネル追加ウィンドウのプレビュー欄を左側に配置
+- 基本設定の各項目から説明文・セクションヘッダーを削除
+- 「今すぐチェック」ボタンを確認リストページ内に移動（サイドバーから削除）
+- サイドバーの開閉状態に応じてウィンドウ最小幅を動的に変更
+  - サイドバー展開時: 530px / 折り畳み時: 405px
 
 ### v1.5.0
 - APIクォータ自動管理機能を追加

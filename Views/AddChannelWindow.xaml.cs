@@ -55,7 +55,7 @@ public partial class AddChannelWindow : Window
 
         PreviewButton.IsEnabled      = false;
         PreviewStatusText.Text       = "🔍 チャンネル情報を取得中...";
-        PreviewContent.Visibility    = Visibility.Collapsed;
+        PreviewThumbnail.Visibility  = Visibility.Collapsed;
         PreviewEmptyState.Visibility = Visibility.Visible;
 
         try
@@ -74,14 +74,12 @@ public partial class AddChannelWindow : Window
                 return;
             }
 
-            PreviewName.Text   = _previewChannel.ChannelName;
-            PreviewHandle.Text = _previewChannel.ChannelHandle;
-            PreviewSubs.Text   = $"{_previewChannel.SubscriberCount} 登録者";
             if (!string.IsNullOrEmpty(_previewChannel.ThumbnailUrl))
+            {
                 PreviewThumbnail.Source = new BitmapImage(new Uri(_previewChannel.ThumbnailUrl));
-
-            PreviewContent.Visibility    = Visibility.Visible;
-            PreviewEmptyState.Visibility = Visibility.Collapsed;
+                PreviewThumbnail.Visibility  = Visibility.Visible;
+                PreviewEmptyState.Visibility = Visibility.Collapsed;
+            }
 
             bool exists = SettingsService.Instance.Channels.Any(c => c.ChannelId == _previewChannel.ChannelId);
             PreviewStatusText.Text     = exists ? "⚠ このチャンネルは既に追加されています。" : $"✅ 「{_previewChannel.ChannelName}」が見つかりました。";
