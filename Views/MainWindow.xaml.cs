@@ -294,11 +294,14 @@ public partial class MainWindow : Window
         _editMode = !_editMode;
 
         EditModeButton.Content = _editMode ? "✅ 完了" : "✏ 編集";
-        SetDynamicBrush(EditModeButton, Button.BackgroundProperty,
-            _editMode ? "PrimaryBrush" : "SurfaceElevatedBrush");
-        EditModeButton.Foreground = _editMode
-            ? Brushes.White
-            : (Brush)Application.Current.Resources["TextPrimaryBrush"];
+        if (_editMode)
+        {
+            EditModeButton.Style = (Style)Application.Current.Resources["PrimaryButton"];
+        }
+        else
+        {
+            EditModeButton.Style = (Style)Application.Current.Resources["SecondaryButton"];
+        }
 
         // 全チャンネル行のカーソル・アイコン・種別トグルの有効状態を切替
         foreach (var child in ChannelList.Children.OfType<Border>())
@@ -765,8 +768,9 @@ public partial class MainWindow : Window
         if (StatusBadge.Template?.FindName("StatusDot", StatusBadge)
             is SolidColorBrush dot)
         {
-            dot.Color = ((SolidColorBrush)Application.Current.Resources[
-                isRunning ? "SuccessBrush" : "SidebarTextBrush"]).Color;
+            var brush = Application.Current.TryFindResource(
+                isRunning ? "SuccessBrush" : "SidebarTextBrush") as SolidColorBrush;
+            if (brush != null) dot.Color = brush.Color;
         }
         SetDynamicBrush(StatusBadge, System.Windows.Controls.Button.BackgroundProperty,
             isRunning ? "SidebarStatusBgBrush" : "SidebarStatusBgBrush");
@@ -947,9 +951,10 @@ public partial class MainWindow : Window
         SaveApiKeyButton.Content = saved ? "変更" : "保存";
         SetDynamicBrush(SaveApiKeyButton, Button.BackgroundProperty,
             saved ? "SurfaceElevatedBrush" : "PrimaryBrush");
-        SaveApiKeyButton.Foreground = saved
-            ? (Brush)Application.Current.Resources["TextPrimaryBrush"]
-            : Brushes.White;
+        if (saved)
+            SetDynamicBrush(SaveApiKeyButton, Button.ForegroundProperty, "TextPrimaryBrush");
+        else
+            SaveApiKeyButton.Foreground = Brushes.White;
     }
 
     private void DarkModeToggle_Changed(object sender, RoutedEventArgs e)
