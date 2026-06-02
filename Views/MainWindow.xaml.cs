@@ -239,8 +239,9 @@ public partial class MainWindow : Window
         NotificationToggle.IsChecked  = s.ShowDesktopNotification;
         TrayToggle.IsChecked          = s.MinimizeToTray;
         StartupToggle.IsChecked       = s.StartWithWindows;
-        AlwaysOnTopToggle.IsChecked   = s.AlwaysOnTop;
-        Topmost                       = s.AlwaysOnTop;
+        AlwaysOnTopToggle.IsChecked      = s.AlwaysOnTop;
+        Topmost                          = s.AlwaysOnTop;
+        NotificationSoundToggle.IsChecked = s.NotificationSound;
 
         var items = IntervalComboBox.Items.Cast<ComboBoxItem>().ToList();
         IntervalComboBox.SelectedItem = items.FirstOrDefault(
@@ -607,6 +608,10 @@ public partial class MainWindow : Window
     }
 
     // ===== チャンネル操作 =====
+    // トースト通知クリック時に MonitorService から呼び出すための static ラッパー
+    public static async Task OpenChannelLatestVideoFromToastAsync(ChannelInfo ch)
+        => await OpenChannelLatestVideoAsync(ch);
+
     private static async Task OpenChannelLatestVideoAsync(ChannelInfo ch)
     {
         if (ch.HasUnread)
@@ -906,6 +911,12 @@ public partial class MainWindow : Window
     private void NotificationToggle_Changed(object sender, RoutedEventArgs e)
     {
         SettingsService.Instance.Settings.ShowDesktopNotification = NotificationToggle.IsChecked == true;
+        SettingsService.Instance.SaveSettings();
+    }
+
+    private void NotificationSoundToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        SettingsService.Instance.Settings.NotificationSound = NotificationSoundToggle.IsChecked == true;
         SettingsService.Instance.SaveSettings();
     }
 

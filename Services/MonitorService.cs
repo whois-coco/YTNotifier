@@ -58,27 +58,26 @@ public class MonitorService : IDisposable
     {
         var args = ToastArguments.Parse(e.Argument);
 
-        // channelId が含まれていれば NEWバッジをクリア
-        if (args.TryGetValue("channelId", out var channelId) && !string.IsNullOrEmpty(channelId))
-        {
-            Application.Current?.Dispatcher.Invoke(() =>
-            {
-                var ch = SettingsService.Instance.Channels
-                    .FirstOrDefault(c => c.ChannelId == channelId);
-                if (ch != null && ch.HasUnread)
-                {
-                    ch.HasUnread = false;
-                    SettingsService.Instance.UpdateChannel(ch);
-                    Instance.ChannelUpdated?.Invoke();
-                }
-            });
-        }
+        if (!args.TryGetValue("channelId", out var channelId) || string.IsNullOrEmpty(channelId))
+            return;
 
-        if (args.TryGetValue("url", out var url) && !string.IsNullOrEmpty(url))
+        Application.Current?.Dispatcher.Invoke(async () =>
         {
-            Application.Current?.Dispatcher.Invoke(() =>
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }));
-        }
+            var ch = SettingsService.Instance.Channels
+                .FirstOrDefault(c => c.ChannelId == channelId);
+            if (ch == null) return;
+
+            // NEWバッジをクリア
+            if (ch.HasUnread)
+            {
+                ch.HasUnread = false;
+                SettingsService.Instance.UpdateChannel(ch);
+                Instance.ChannelUpdated?.Invoke();
+            }
+
+            // アイコンクリックと同じ挙動：有効な種別の最新動画を開く
+            await YTNotifier.Views.MainWindow.OpenChannelLatestVideoFromToastAsync(ch);
+        });
     }
 
     // ===== チャンネル一括チェック =====
@@ -151,11 +150,13 @@ public class MonitorService : IDisposable
             SettingsService.Instance.UpdateChannel(channel);
             ChannelUpdated?.Invoke();
 
-            if (SettingsService.Instance.Settings.ShowDesktopNotification)
-            {
-                var videoUrl = $"https://www.youtube.com/watch?v={video.VideoId}";
-                ShowToastNotification(channel.ChannelName, video.Title, video.KindLabel, videoUrl, channel.ChannelId);
-            }
+            var settings  = SettingsService.Instance.Settings;
+            var videoUrl2 = $"https://www.youtube.com/watch?v={video.VideoId}";
+
+            if (settings.ShowDesktopNotification)
+                ShowToastNotification(channel.ChannelName, video.Title, video.KindLabel, videoUrl2, channel.ChannelId);
+            else if (settings.NotificationSound)
+                PlayNotificationSound();
         }
         catch (Exception ex)
         {
@@ -170,12 +171,21 @@ public class MonitorService : IDisposable
     {
         try
         {
-            new ToastContentBuilder()
+            var settings = SettingsService.Instance.Settings;
+
+            var builder = new ToastContentBuilder()
                 .AddText($"📺 {channelName}  [{kindLabel}]")
                 .AddText(videoTitle)
                 .AddArgument("url", videoUrl)
-                .AddArgument("channelId", channelId)
-                .Show();
+                .AddArgument("channelId", channelId);
+
+            // トースト通知は常にサイレント（音は PlayNotificationSound で制御）
+            builder.AddAudio(null, silent: true);
+            builder.Show();
+
+            // 通知音ON なら再生
+            if (settings.NotificationSound)
+                PlayNotificationSound();
 
             LoggerService.Instance.Info($"通知送信: {videoTitle}");
         }
@@ -185,15 +195,59 @@ public class MonitorService : IDisposable
         }
     }
 
-    public void SendTestNotification()
+    // ===== 通知音再生 =====
+    // Resources\notification.wav があればそれを、なければ Windows の notify.wav を使用
+    private static void PlayNotificationSound()
     {
         try
         {
-            new ToastContentBuilder()
-                .AddText("📺 YTNotifier  [テスト]")
-                .AddText("通知テスト：正常に動作しています")
-                .AddArgument("url", "https://www.youtube.com")
-                .Show();
+            // カスタムWAV優先
+            var exeDir  = System.IO.Path.GetDirectoryName(
+                System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "";
+            var custom  = System.IO.Path.Combine(exeDir, "Resources", "notification.wav");
+
+            if (System.IO.File.Exists(custom))
+            {
+                using var player = new System.Media.SoundPlayer(custom);
+                player.Play();
+                return;
+            }
+
+            // Windows デフォルト: %SystemRoot%\Media\notify.wav
+            var sysMedia = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                "Media", "notify.wav");
+
+            if (System.IO.File.Exists(sysMedia))
+            {
+                using var player = new System.Media.SoundPlayer(sysMedia);
+                player.Play();
+            }
+            else
+            {
+                System.Media.SystemSounds.Asterisk.Play();
+            }
+        }
+        catch { }
+    }
+
+    public void SendTestNotification()
+    {
+        var settings = SettingsService.Instance.Settings;
+        try
+        {
+            if (settings.ShowDesktopNotification)
+            {
+                var builder = new ToastContentBuilder()
+                    .AddText("📺 YTNotifier  [テスト]")
+                    .AddText("通知テスト：正常に動作しています")
+                    .AddArgument("url", "https://www.youtube.com")
+                    .AddAudio(null, silent: true);
+                builder.Show();
+            }
+
+            if (settings.NotificationSound)
+                PlayNotificationSound();
 
             LoggerService.Instance.Success("テスト通知を送信しました");
         }

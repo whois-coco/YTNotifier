@@ -709,6 +709,21 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
+                                <TextBlock Text="通知音" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <CheckBox x:Name="NotificationSoundToggle" Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          VerticalAlignment="Center"
+                                          Checked="NotificationSoundToggle_Changed"
+                                          Unchecked="NotificationSoundToggle_Changed"/>
+                            </Grid>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="通知テスト" FontSize="13" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
 
@@ -879,7 +894,7 @@
                             <TextBlock Text="ABOUT" Style="{StaticResource SectionHeader}"/>
                             <TextBlock Text="YTNotifier" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            <TextBlock Text="v1.5.0" FontSize="12"
+                            <TextBlock Text="v1.6.0" FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,4,0,0"/>
                             <TextBlock Text="YouTube新着動画通知アプリ" FontSize="12"

@@ -44,6 +44,9 @@ public class AppSettings
     [JsonProperty("alwaysOnTop")]
     public bool AlwaysOnTop { get; set; } = false;
 
+    [JsonProperty("notificationSound")]
+    public bool NotificationSound { get; set; } = true;
+
     [JsonProperty("sidebarCollapsed")]
     public bool SidebarCollapsed { get; set; } = false;
 

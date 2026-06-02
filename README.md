@@ -1,4 +1,4 @@
-# YTNotifier v1.5.1 - YouTube新着動画通知システム
+# YTNotifier v1.6.0 - YouTube新着動画通知システム
 
 YouTube Data API v3 を利用し、指定チャンネルの新着動画を定期監視・通知する WPF 常駐アプリ。
 
@@ -36,7 +36,13 @@ dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
 |---|---|---|
 | `app.ico` | ウィンドウ・トレイ通常時 | 16/32/48/256px 内包 |
 | `app_warn.ico` | トレイ停止時 | 16/32/48/256px 内包 |
+| `notification.wav` | カスタム通知音（任意） | WAV形式・任意のサイズ |
 
+
+### カスタム通知音（任意）
+
+`Resources\notification.wav` を配置すると、通知音オン時にそのファイルが再生されます。
+ファイルがない場合は Windows のシステム通知音が使用されます。
 
 ---
 
@@ -121,7 +127,8 @@ YTNotifier/
   - Short: 2分30秒（150秒）以内、またはタイトル・説明・タグに `#Shorts` / `#Short` を含む
   - ライブ/アーカイブ: `liveStreamingDetails` フィールドが存在する動画
 - **NEW バッジ**: 新着検出時にチャンネル名横に表示、クリック or 右クリックメニューで消去
-- Windows トースト通知をクリックで動画をブラウザ再生
+- Windows トースト通知をクリックで動画をブラウザ再生（種別フィルターに従い最新動画を開く）
+- **通知音**: `Resources\notification.wav`（任意）または Windows の `notify.wav` を25%音量で再生
 
 ### UI
 - **フラットデザイン**（シャドウなし・グラデーションなし）
@@ -189,6 +196,21 @@ YouTube Data API v3 の無料枠は **10,000ユニット/日**。
 ---
 
 ## 変更履歴
+
+### v1.6.0
+- 基本設定に通知音オプションを追加（デフォルト ON）
+- 通知音の動作
+  - `Resources\notification.wav` がある場合はそのファイルを25%音量で再生
+  - ない場合は Windows の `notify.wav` を25%音量で再生
+  - 音量制御に NAudio ライブラリを使用
+- トースト通知と通知音を独立制御
+  - トースト ON + 通知音 ON: トースト表示 + notify.wav 再生
+  - トースト ON + 通知音 OFF: トースト表示のみ（無音）
+  - トースト OFF + 通知音 ON: notify.wav 再生のみ
+  - トースト OFF + 通知音 OFF: 何もしない
+- トースト通知クリック時の動作をアイコンクリックと同一に変更
+  - 種別フィルターに従い最新動画を開く
+  - NEWバッジを自動消去
 
 ### v1.5.1
 - チャンネル追加ウィンドウのサイズを固定（520×190px）
