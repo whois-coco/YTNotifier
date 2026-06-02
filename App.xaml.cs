@@ -241,6 +241,8 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // 終了時にチャンネル情報（LastCheckedVideoId含む）を保存
+        try { SettingsService.Instance.SaveChannels(); } catch { }
         _notifyIcon?.Dispose();
         _mutex?.ReleaseMutex();
         _mutex?.Dispose();

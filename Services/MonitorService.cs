@@ -14,8 +14,9 @@ public class MonitorService : IDisposable
 
     private readonly YouTubeApiClient _youtubeClient = new();
     private Timer? _timer;
-    private bool _isRunning  = false;
-    private bool _isChecking = false;
+    private bool _isRunning    = false;
+    private bool _isChecking   = false;
+    private bool _isStartupCheck = true; // 起動時チェックフラグ
 
     public event Action<bool>? StatusChanged;
     public event Action? ChannelUpdated;
@@ -30,7 +31,8 @@ public class MonitorService : IDisposable
     public void Start()
     {
         if (_isRunning) return;
-        _isRunning = true;
+        _isRunning      = true;
+        _isStartupCheck = true;
 
         var interval = TimeSpan.FromMinutes(SettingsService.Instance.Settings.CheckIntervalMinutes);
         _timer = new Timer(async _ => await CheckAllChannelsAsync(), null, TimeSpan.Zero, interval);
@@ -92,13 +94,15 @@ public class MonitorService : IDisposable
 
         if (channels.Count == 0) { _isChecking = false; return; }
 
-        LoggerService.Instance.Info($"定期チェック開始 ({channels.Count}チャンネル)");
+        var label = _isStartupCheck ? "起動時チェック" : "定期チェック";
+        LoggerService.Instance.Info($"{label}開始 ({channels.Count}チャンネル)");
 
         var tasks = channels.Select(ch => CheckChannelAsync(ch)).ToList();
         await Task.WhenAll(tasks);
 
         _isChecking = false;
-        LoggerService.Instance.Info("定期チェック完了");
+        _isStartupCheck = false;
+        LoggerService.Instance.Info($"{label}完了");
     }
 
     private async Task CheckChannelAsync(ChannelInfo channel)

@@ -103,11 +103,26 @@ public class LoggerService
         long freed  = 0;
         try
         {
-            var cutoff = DateTime.Now.AddDays(-retentionDays);
+            // -1 = 無制限（削除しない）
+            if (retentionDays < 0) return (0, 0);
+
+            // 0日 = 当日のみ残す（昨日以前を削除）
+            // N日 = N日前より古いものを削除
+            var today  = DateTime.Today;
+            var cutoff = retentionDays == 0
+                ? today  // 今日より前（昨日以前）を削除
+                : DateTime.Now.AddDays(-retentionDays);
+
             foreach (var file in Directory.GetFiles(_logDir, "*.log"))
             {
                 var info = new FileInfo(file);
-                if (info.LastWriteTime < cutoff)
+                var fileDate = info.LastWriteTime.Date;
+
+                var shouldDelete = retentionDays == 0
+                    ? fileDate < today          // 当日以外を削除
+                    : info.LastWriteTime < cutoff;
+
+                if (shouldDelete)
                 {
                     freed += info.Length;
                     File.Delete(file);

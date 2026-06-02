@@ -83,7 +83,7 @@ public class DragAdorner : Adorner
 public partial class MainWindow : Window
 {
     // ===== 定数 =====
-    private const int    SidebarExpandedWidth  = 120;
+    private const int    SidebarExpandedWidth  = 140;
     private const int    SidebarCollapsedWidth = 44;
     private const int    ChannelRowHeight      = 60;
     private const int    ChannelRowHeightCompact = 36;
@@ -266,12 +266,7 @@ public partial class MainWindow : Window
     private void InitLogBindings()
     {
         LoggerService.Instance.ClearUiLog();
-        LoggerService.Instance.ClearErrorLog();
         LogList.ItemsSource      = LoggerService.Instance.Entries;
-        ErrorLogList.ItemsSource = LoggerService.Instance.ErrorEntries;
-        LoggerService.Instance.ErrorEntries.CollectionChanged += (_, _) =>
-            ErrorLogEmpty.Visibility = LoggerService.Instance.ErrorEntries.Count == 0
-                ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void InitMonitor()
@@ -392,11 +387,11 @@ public partial class MainWindow : Window
         var retItems = LogRetentionComboBox.Items.Cast<ComboBoxItem>().ToList();
         LogRetentionComboBox.SelectedItem =
             retItems.FirstOrDefault(i => i.Tag?.ToString() == s.LogRetentionDays.ToString())
-            ?? retItems[2]; // デフォルト30日
+            ?? retItems[2]; // デフォルト3日
         RefreshLogStats();
 
-        // 自動削除
-        if (s.AutoCleanLogs && s.LogRetentionDays > 0)
+        // 自動削除（0日=当日のみ、-1=無制限は除く）
+        if (s.AutoCleanLogs && s.LogRetentionDays != -1)
         {
             var (deleted, _) = LoggerService.Instance.CleanOldLogs(s.LogRetentionDays);
             if (deleted > 0)
@@ -430,17 +425,30 @@ public partial class MainWindow : Window
             EditModeButton.Style = (Style)Application.Current.Resources["SecondaryButton"];
         }
 
-        // 全チャンネル行のカーソル・アイコン・種別トグルの有効状態を切替
+        // 全チャンネル行のカーソル・削除ボタン・アイコン・種別トグルの有効状態を切替
         foreach (var child in ChannelList.Children.OfType<Border>())
         {
             child.Cursor = _editMode ? Cursors.Hand : Cursors.Arrow;
             SetRowInteractive(child, !_editMode);
+            SetDeleteButtonVisibility(child, _editMode);
         }
 
         if (_editMode)
             LoggerService.Instance.Info("編集モード開始：ドラッグでチャンネルを並び替えられます");
         else
             LoggerService.Instance.Info("編集モード終了");
+    }
+
+    private static void SetDeleteButtonVisibility(Border row, bool visible)
+    {
+        if (row.Child is not Grid outerGrid) return;
+        var contentGrid = outerGrid.Children.OfType<Grid>().FirstOrDefault();
+        if (contentGrid == null) return;
+        foreach (var panel in contentGrid.Children.OfType<StackPanel>())
+        {
+            foreach (var btn in panel.Children.OfType<Button>())
+                btn.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     private static void SetRowInteractive(Border row, bool enabled)
@@ -491,6 +499,7 @@ public partial class MainWindow : Window
             {
                 child.Cursor = Cursors.Hand;
                 SetRowInteractive(child, false);
+                SetDeleteButtonVisibility(child, true);
             }
 
         // チャンネル数変化時に間隔を自動調整
@@ -529,8 +538,29 @@ public partial class MainWindow : Window
             var color    = pct >= 90 ? "ErrorBrush" : pct >= 70 ? "WarningBrush" : "SuccessBrush";
             QuotaInfoText.Text = $"推定消費量: {daily:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日 ({pct:F0}%)";
             SetDynamicBrush(QuotaInfoText, TextBlock.ForegroundProperty, color);
+
+            // 各間隔項目のコスト計算して超過するものを無効化
+            UpdateIntervalComboBoxItems(channels);
         }
         catch { }
+    }
+
+    private void UpdateIntervalComboBoxItems(int channels)
+    {
+        if (IntervalComboBox == null) return;
+        foreach (System.Windows.Controls.ComboBoxItem item in IntervalComboBox.Items)
+        {
+            if (item.Tag is string tagStr && int.TryParse(tagStr, out int mins))
+            {
+                var cost    = ApiQuotaHelper.EstimateDailyUnits(mins, channels);
+                var over    = cost > ApiQuotaHelper.DailyLimit;
+                item.IsEnabled = !over;
+                item.ToolTip   = over
+                    ? $"クォータ超過（{cost:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日）"
+                    : $"{cost:N0} ユニット/日";
+                item.Opacity   = over ? 0.4 : 1.0;
+            }
+        }
     }
 
     private UIElement CreateChannelRow(ChannelInfo ch)
@@ -730,14 +760,15 @@ public partial class MainWindow : Window
 
         var delBtn = new Button
         {
-            Content         = delIcon,
-            Background      = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Padding         = new Thickness(6),
-            Cursor          = Cursors.Hand,
+            Content           = delIcon,
+            Background        = Brushes.Transparent,
+            BorderThickness   = new Thickness(0),
+            Padding           = new Thickness(6),
+            Cursor            = Cursors.Hand,
             VerticalAlignment = VerticalAlignment.Center,
-            Tag             = ch,
-            ToolTip         = "削除"
+            Visibility        = Visibility.Collapsed,
+            Tag               = ch,
+            ToolTip           = "削除"
         };
         delBtn.Click += DeleteChannel_Click;
 
@@ -1000,7 +1031,7 @@ public partial class MainWindow : Window
             MenuLabelWrap.Visibility  = Visibility.Visible;
             MenuLabel.Text            = "MENU";
             StatusBadge.Visibility    = Visibility.Visible;
-            NavWatch.Content          = "確認リスト";
+            NavWatch.Content          = "チャンネルリスト";
             NavLog.Content            = "動作ログ";
             NavSettings.Content       = "基本設定";
             UpdateMonitorStatus(MonitorService.Instance.IsRunning);
@@ -1042,6 +1073,37 @@ public partial class MainWindow : Window
             else
                 SetDynamicBrush(tb, System.Windows.Controls.TextBlock.ForegroundProperty, "SidebarTextBrush");
         }
+    }
+
+    // ===== 設定サブナビゲーション =====
+    private void SettingsNav_Click(object sender, RoutedEventArgs e) { }
+
+    private void SettingsNavBorder_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        SettingsPageApp.Visibility     = Visibility.Collapsed;
+        SettingsPageMonitor.Visibility = Visibility.Collapsed;
+        SettingsPageLog.Visibility     = Visibility.Collapsed;
+        SettingsPageApi.Visibility     = Visibility.Collapsed;
+        SettingsPageAbout.Visibility   = Visibility.Collapsed;
+
+        var navItems = new[] { SettingsNavApp, SettingsNavMonitor, SettingsNavLog, SettingsNavApi, SettingsNavAbout };
+        foreach (var nav in navItems)
+        {
+            nav.BorderBrush = new SolidColorBrush(Colors.Transparent);
+            if (nav.Child is System.Windows.Controls.TextBlock tb)
+                SetDynamicBrush(tb, System.Windows.Controls.TextBlock.ForegroundProperty, "TextMutedBrush");
+        }
+
+        if (sender is not Border active) return;
+        active.BorderBrush = (Brush)Application.Current.Resources["PrimaryBrush"];
+        if (active.Child is System.Windows.Controls.TextBlock activeTb)
+            SetDynamicBrush(activeTb, System.Windows.Controls.TextBlock.ForegroundProperty, "PrimaryBrush");
+
+        if      (sender == SettingsNavApp)     SettingsPageApp.Visibility     = Visibility.Visible;
+        else if (sender == SettingsNavMonitor) SettingsPageMonitor.Visibility = Visibility.Visible;
+        else if (sender == SettingsNavLog)     SettingsPageLog.Visibility     = Visibility.Visible;
+        else if (sender == SettingsNavApi)     SettingsPageApi.Visibility     = Visibility.Visible;
+        else if (sender == SettingsNavAbout)   SettingsPageAbout.Visibility   = Visibility.Visible;
     }
 
     // ===== ナビゲーション =====
@@ -1308,7 +1370,7 @@ public partial class MainWindow : Window
     private void CleanLogsNow_Click(object sender, RoutedEventArgs e)
     {
         var days = SettingsService.Instance.Settings.LogRetentionDays;
-        if (days == 0)
+        if (days == -1)
         {
             LogCleanResultText.Text = "保持期間が「無制限」のため削除しません";
             return;
@@ -1322,12 +1384,6 @@ public partial class MainWindow : Window
         LoggerService.Instance.Info($"ログ手動削除: {deleted}件 ({sizeStr})");
         RefreshLogStats();
     }
-    private void ClearErrorLog_Click(object sender, RoutedEventArgs e)
-    {
-        LoggerService.Instance.ClearErrorLog();
-        ErrorLogEmpty.Visibility = Visibility.Visible;
-    }
-
     private void ApiKeyLink_Click(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
     {
         OpenUrl(e.Uri.AbsoluteUri);
