@@ -76,9 +76,19 @@ public partial class AddChannelWindow : Window
 
             if (!string.IsNullOrEmpty(_previewChannel.ThumbnailUrl))
             {
-                PreviewThumbnail.Source = new BitmapImage(new Uri(_previewChannel.ThumbnailUrl));
-                PreviewThumbnail.Visibility  = Visibility.Visible;
-                PreviewEmptyState.Visibility = Visibility.Collapsed;
+                try
+                {
+                    var bmp = new BitmapImage();
+                    bmp.BeginInit();
+                    bmp.UriSource     = new Uri(_previewChannel.ThumbnailUrl);
+                    bmp.CacheOption   = BitmapCacheOption.OnLoad;
+                    bmp.DecodePixelWidth = 76;
+                    bmp.EndInit();
+                    PreviewThumbnail.Source = bmp;
+                    PreviewThumbnail.Visibility  = Visibility.Visible;
+                    PreviewEmptyState.Visibility = Visibility.Collapsed;
+                }
+                catch { }
             }
 
             bool exists = SettingsService.Instance.Channels.Any(c => c.ChannelId == _previewChannel.ChannelId);

@@ -419,18 +419,22 @@
                         </StackPanel>
                         <Button x:Name="InlineCheckButton"
                                 Grid.Column="1"
-                                Content="🔄 今すぐチェック"
+                                Content="🔄"
+                                FontSize="15"
                                 Style="{StaticResource SecondaryButton}"
-                                Padding="14,7"
-                                Margin="0,0,8,0"
+                                Padding="10,6"
+                                Margin="0,0,6,0"
                                 VerticalAlignment="Center"
+                                ToolTip="今すぐチェック"
                                 Click="ManualCheckButton_Click"/>
                         <Button x:Name="EditModeButton"
                                 Grid.Column="2"
-                                Content="✏ 編集"
+                                Content="✏"
+                                FontSize="15"
                                 Style="{StaticResource SecondaryButton}"
-                                Padding="14,7"
+                                Padding="10,6"
                                 VerticalAlignment="Center"
+                                ToolTip="編集"
                                 Click="EditModeButton_Click"/>
                     </Grid>
                 </Border>

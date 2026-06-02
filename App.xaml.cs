@@ -48,6 +48,18 @@ public partial class App : System.Windows.Application
         // システムトレイアイコン初期化
         InitNotifyIcon();
 
+        // APIキー未設定の初回起動時はセットアップウィンドウを先に表示
+        if (string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKey))
+        {
+            var setup = new ApiKeySetupWindow();
+            setup.ShowDialog();
+            if (!setup.ApiKeySaved)
+            {
+                Shutdown();
+                return;
+            }
+        }
+
         try
         {
             _mainWindow = new MainWindow();

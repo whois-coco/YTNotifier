@@ -95,6 +95,123 @@ public partial class MainWindow : Window
     // 編集モード
     private bool _editMode = false;
 
+    // アイコンキャッシュ（URL → BitmapImage）
+    private static readonly Dictionary<string, BitmapImage> _iconCache     = new();
+    private static readonly HashSet<string>                  _iconDownloading = new();
+
+    private static string GetIconCacheDir() =>
+        System.IO.Path.Combine(SettingsService.Instance.AppDataDir, "icons");
+
+    private static string GetDiskPath(string url)
+    {
+        using var sha1 = System.Security.Cryptography.SHA1.Create();
+        var hash = sha1.ComputeHash(System.Text.Encoding.UTF8.GetBytes(url));
+        return System.IO.Path.Combine(
+            GetIconCacheDir(),
+            BitConverter.ToString(hash).Replace("-", "").ToLower() + ".png");
+    }
+
+    // ファイルストリームで読み込み（Windowsパスの URI 変換問題を回避）
+    private static BitmapImage? LoadBitmapFromFile(string filePath)
+    {
+        try
+        {
+            using var stream = System.IO.File.OpenRead(filePath);
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.StreamSource = stream;
+            bmp.CacheOption  = BitmapCacheOption.OnLoad;
+            bmp.EndInit();
+            bmp.Freeze();
+            return bmp;
+        }
+        catch { return null; }
+    }
+
+    private static BitmapImage? GetCachedIcon(string url)
+    {
+        if (string.IsNullOrEmpty(url)) return null;
+
+        // 1. メモリキャッシュ
+        if (_iconCache.TryGetValue(url, out var cached)) return cached;
+
+        // キャッシュディレクトリを確実に作成
+        var cacheDir = GetIconCacheDir();
+        try { System.IO.Directory.CreateDirectory(cacheDir); }
+        catch { return null; }
+
+        var diskPath = GetDiskPath(url);
+
+        // 2. ディスクキャッシュ
+        if (System.IO.File.Exists(diskPath))
+        {
+            var bmp = LoadBitmapFromFile(diskPath);
+            if (bmp != null)
+            {
+                _iconCache[url] = bmp;
+                return bmp;
+            }
+        }
+
+        // 3. バックグラウンドでダウンロード（重複防止）
+        if (_iconDownloading.Contains(url)) return null;
+        _iconDownloading.Add(url);
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+                var bytes = await client.GetByteArrayAsync(url);
+                await System.IO.File.WriteAllBytesAsync(diskPath, bytes);
+
+                var bmp = LoadBitmapFromFile(diskPath);
+                if (bmp == null)
+                {
+                    LoggerService.Instance.Warning($"アイコン読込失敗: {diskPath}");
+                    await Application.Current.Dispatcher.InvokeAsync(() => _iconDownloading.Remove(url));
+                    return;
+                }
+
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    _iconCache[url] = bmp;
+                    _iconDownloading.Remove(url);
+                    UpdateIconsInList(url);
+                });
+            }
+            catch (Exception ex)
+            {
+                LoggerService.Instance.Warning($"アイコンDL失敗: {ex.Message}");
+                await Application.Current.Dispatcher.InvokeAsync(
+                    () => _iconDownloading.Remove(url));
+            }
+        });
+
+        return null;
+    }
+
+    // ダウンロード完了後、該当チャンネルのアイコンのみ差し替え
+    private static void UpdateIconsInList(string url)
+    {
+        var win = Application.Current.MainWindow as MainWindow;
+        if (win == null) return;
+        if (!_iconCache.TryGetValue(url, out var bmp)) return;
+
+        foreach (var row in win.ChannelList.Children.OfType<Border>())
+        {
+            if (row.Tag is not ChannelInfo ch || ch.ThumbnailUrl != url) continue;
+            if (row.Child is not Grid outer) continue;
+            var inner = outer.Children.OfType<Grid>().FirstOrDefault();
+            if (inner == null) continue;
+            var iconBorder = inner.Children.OfType<Border>()
+                .FirstOrDefault(b => Grid.GetColumn(b) == 0);
+            if (iconBorder == null) continue;
+            iconBorder.Child = new System.Windows.Controls.Image
+                { Source = bmp, Stretch = Stretch.UniformToFill };
+        }
+    }
+
     // ドロップ位置インジケーター
     private Border? _dropIndicator = null;
     private int     _dropIndicatorIndex = -1;
@@ -125,8 +242,6 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        RestoreWindowBounds();
-
         try { LoadSettings(); }
         catch (Exception ex) { LoggerService.Instance.Error($"設定読込エラー: {ex.Message}"); }
 
@@ -134,6 +249,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { LoggerService.Instance.Error($"チャンネルリストエラー: {ex.Message}"); }
 
         UpdateMinWidth();
+        RestoreWindowBounds();
         InitChannelListDragDrop();
         InitLogBindings();
         InitMonitor();
@@ -201,8 +317,17 @@ public partial class MainWindow : Window
     private void RestoreWindowBounds()
     {
         var s = SettingsService.Instance.Settings;
-        if (s.WindowWidth  > 0) Width  = s.WindowWidth;
-        if (s.WindowHeight > 0) Height = s.WindowHeight;
+
+        if (s.WindowWidth > 0)
+        {
+            Width  = s.WindowWidth;
+            Height = s.WindowHeight > 0 ? s.WindowHeight : Height;
+        }
+        else
+        {
+            // config.json が存在しない初回起動: 横幅のみ最小値で起動
+            Width = 405;
+        }
 
         if (s.WindowLeft >= 0 && s.WindowTop >= 0)
         {
@@ -295,7 +420,7 @@ public partial class MainWindow : Window
     {
         _editMode = !_editMode;
 
-        EditModeButton.Content = _editMode ? "✅ 完了" : "✏ 編集";
+        EditModeButton.Content = _editMode ? "✅" : "✏";
         if (_editMode)
         {
             EditModeButton.Style = (Style)Application.Current.Resources["PrimaryButton"];
@@ -320,10 +445,13 @@ public partial class MainWindow : Window
 
     private static void SetRowInteractive(Border row, bool enabled)
     {
-        if (row.Child is not Grid grid) return;
+        // outerGrid(Col1) の中の contentGrid を取得
+        if (row.Child is not Grid outerGrid) return;
+        var contentGrid = outerGrid.Children.OfType<Grid>().FirstOrDefault();
+        if (contentGrid == null) return;
 
         // Col0: アイコン Border
-        foreach (var el in grid.Children.OfType<Border>())
+        foreach (var el in contentGrid.Children.OfType<Border>())
         {
             if (Grid.GetColumn(el) == 0)
             {
@@ -333,7 +461,7 @@ public partial class MainWindow : Window
         }
 
         // Col1: 情報パネル（StackPanel）内の種別トグル
-        foreach (var el in grid.Children.OfType<StackPanel>())
+        foreach (var el in contentGrid.Children.OfType<StackPanel>())
         {
             if (Grid.GetColumn(el) != 1) continue;
             foreach (var child in el.Children.OfType<StackPanel>())
@@ -431,10 +559,35 @@ public partial class MainWindow : Window
 
         if (compact)
         {
-            // コンパクトモード: [アイコン小] [チャンネル名]
-            var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 8, 0) };
+            // コンパクトモード: 行クリックでリンクを開く
+            row.Cursor = Cursors.Hand;
+            row.MouseLeftButtonUp += async (s, e) =>
+            {
+                if (!_editMode && s is Border b && b.Tag is ChannelInfo c)
+                {
+                    e.Handled = true;
+                    await OpenChannelLatestVideoAsync(c);
+                }
+            };
+
+            // コンパクトモード: [4px帯] [アイコン小] [チャンネル名]
+            var outerGrid = new Grid();
+            outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
+            outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var newBar = new Border
+            {
+                CornerRadius = new CornerRadius(4, 0, 0, 4),
+                Visibility   = ch.HasUnread ? Visibility.Visible : Visibility.Hidden,
+                Tag          = "NewBar"
+            };
+            SetDynamicBrush(newBar, Border.BackgroundProperty, "AccentBrush");
+            Grid.SetColumn(newBar, 0);
+
+            var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetColumn(grid, 1);
 
             var iconSmall = BuildIconBorderCompact(ch);
             var nameText  = new TextBlock
@@ -453,15 +606,31 @@ public partial class MainWindow : Window
 
             grid.Children.Add(iconSmall);
             grid.Children.Add(nameText);
-            row.Child = grid;
+            outerGrid.Children.Add(newBar);
+            outerGrid.Children.Add(grid);
+            row.Child = outerGrid;
         }
         else
         {
-            // 通常モード: [アイコン] [情報] [アクション]
-            var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 12, 0) };
+            // 通常モード: [4px帯] [アイコン] [情報] [アクション]
+            var outerGrid = new Grid();
+            outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
+            outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var newBar = new Border
+            {
+                CornerRadius = new CornerRadius(4, 0, 0, 4),
+                Visibility   = ch.HasUnread ? Visibility.Visible : Visibility.Hidden,
+                Tag          = "NewBar"
+            };
+            SetDynamicBrush(newBar, Border.BackgroundProperty, "AccentBrush");
+            Grid.SetColumn(newBar, 0);
+
+            var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 12, 0) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(56) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(grid, 1);
 
             var iconBorder   = BuildIconBorder(ch);
             var infoPanel    = BuildInfoPanel(ch);
@@ -474,7 +643,9 @@ public partial class MainWindow : Window
             grid.Children.Add(iconBorder);
             grid.Children.Add(infoPanel);
             grid.Children.Add(actionsPanel);
-            row.Child = grid;
+            outerGrid.Children.Add(newBar);
+            outerGrid.Children.Add(grid);
+            row.Child = outerGrid;
         }
         return row;
     }
@@ -489,18 +660,10 @@ public partial class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Clip              = new EllipseGeometry(new System.Windows.Point(size / 2, size / 2), size / 2, size / 2),
         };
-        if (!string.IsNullOrEmpty(ch.ThumbnailUrl))
-        {
-            try
-            {
-                iconBorder.Child = new System.Windows.Controls.Image
-                {
-                    Source  = new BitmapImage(new Uri(ch.ThumbnailUrl)),
-                    Stretch = Stretch.UniformToFill
-                };
-            }
-            catch { }
-        }
+        var img = GetCachedIcon(ch.ThumbnailUrl);
+        if (img != null)
+            iconBorder.Child = new System.Windows.Controls.Image
+                { Source = img, Stretch = Stretch.UniformToFill };
         return iconBorder;
     }
 
@@ -523,18 +686,10 @@ public partial class MainWindow : Window
             if (s is Border b && b.Tag is ChannelInfo c)
                 await OpenChannelLatestVideoAsync(c);
         };
-        if (!string.IsNullOrEmpty(ch.ThumbnailUrl))
-        {
-            try
-            {
-                iconBorder.Child = new System.Windows.Controls.Image
-                {
-                    Source  = new BitmapImage(new Uri(ch.ThumbnailUrl)),
-                    Stretch = Stretch.UniformToFill
-                };
-            }
-            catch { }
-        }
+        var img = GetCachedIcon(ch.ThumbnailUrl);
+        if (img != null)
+            iconBorder.Child = new System.Windows.Controls.Image
+                { Source = img, Stretch = Stretch.UniformToFill };
         return iconBorder;
     }
 

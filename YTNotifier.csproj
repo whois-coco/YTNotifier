@@ -45,6 +45,10 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Page Update="Views\ApiKeySetupWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Page Update="Themes\CommonStyles.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>

@@ -14,10 +14,10 @@ public class AppSettings
     public int CheckIntervalMinutes { get; set; } = 5;
 
     [JsonProperty("showDesktopNotification")]
-    public bool ShowDesktopNotification { get; set; } = true;
+    public bool ShowDesktopNotification { get; set; } = false;
 
     [JsonProperty("minimizeToTray")]
-    public bool MinimizeToTray { get; set; } = true;
+    public bool MinimizeToTray { get; set; } = false;
 
     [JsonProperty("startWithWindows")]
     public bool StartWithWindows { get; set; } = false;
@@ -45,7 +45,7 @@ public class AppSettings
     public bool AlwaysOnTop { get; set; } = false;
 
     [JsonProperty("notificationSound")]
-    public bool NotificationSound { get; set; } = true;
+    public bool NotificationSound { get; set; } = false;
 
     [JsonProperty("compactMode")]
     public bool CompactMode { get; set; } = false;
