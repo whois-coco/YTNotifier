@@ -65,6 +65,15 @@ dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
    
    <img width="477" height="198" alt="09" src="https://github.com/user-attachments/assets/6eaa080a-2304-46d5-8596-035d72b89db6" />
 
+---
+
+## チェックするチャンネルを追加
+
+1.チャンネルリストの最下部にある+チャンネルを追加ボタンをクリックする。
+2.チャンネル追加ウィンドウ内のチャンネルID/ハンドルID/URLのいずれかを入力して検索 →　登録ボタンをクリックして登録
+
+<img width="518" height="189" alt="01" src="https://github.com/user-attachments/assets/eb406d0b-2fa7-4668-bf09-427dcf2487ff" />
+
 
 ---
 
