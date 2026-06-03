@@ -124,8 +124,26 @@ public class ChannelInfo
         ? "未確認"
         : LastCheckedAt.ToString("MM/dd HH:mm");
 
+    [JsonProperty("categoryId")]
+    public string? CategoryId { get; set; }
+
     [JsonIgnore]
     public string ChannelUrl => $"https://www.youtube.com/channel/{ChannelId}";
+}
+
+public class CategoryInfo
+{
+    [JsonProperty("categoryId")]
+    public string CategoryId { get; set; } = Guid.NewGuid().ToString();
+
+    [JsonProperty("categoryName")]
+    public string CategoryName { get; set; } = string.Empty;
+
+    [JsonProperty("isCollapsed")]
+    public bool IsCollapsed { get; set; } = false;
+
+    [JsonProperty("sortOrder")]
+    public int SortOrder { get; set; } = 0;
 }
 
 public class LogEntry

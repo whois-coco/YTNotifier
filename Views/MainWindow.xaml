@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="YTNotifier" Height="740" Width="980"
-        MinHeight="460" MinWidth="360"
+        MinHeight="460" MinWidth="330"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BackgroundBrush}"
         WindowStyle="None"
@@ -327,36 +327,65 @@
                     </Grid>
                 </Border>
 
-                <!-- ピンボタン（サイドバー左下） -->
+                <!-- コンパクトモード + ピンボタン（サイドバー左下） -->
                 <Border DockPanel.Dock="Bottom"
-                        Height="44"
                         BorderBrush="{DynamicResource SidebarBorderBrush}"
                         BorderThickness="0,1,0,0">
-                    <Button x:Name="PinButton"
-                            Width="44" Height="44"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Cursor="Hand"
-                            HorizontalAlignment="Left"
-                            Click="PinButton_Click">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="Bd" Background="Transparent"
-                                        Width="44" Height="44">
-                                    <TextBlock x:Name="PinIcon" Text="⚲"
-                                               FontSize="18"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Bd" Property="Background"
-                                                Value="{DynamicResource SidebarHoverBrush}"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
+                    <StackPanel>
+                        <!-- コンパクトモードボタン -->
+                        <Button x:Name="CompactModeButton"
+                                Width="44" Height="44"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                HorizontalAlignment="Left"
+                                ToolTip="コンパクトモード: OFF"
+                                Click="CompactModeButton_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" Background="Transparent"
+                                            Width="44" Height="44">
+                                        <TextBlock x:Name="CompactIcon" Text="⊟"
+                                                   FontSize="16"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background"
+                                                    Value="{DynamicResource SidebarHoverBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <!-- ピンボタン -->
+                        <Button x:Name="PinButton"
+                                Width="44" Height="44"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                HorizontalAlignment="Left"
+                                Click="PinButton_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" Background="Transparent"
+                                            Width="44" Height="44">
+                                        <TextBlock x:Name="PinIcon" Text="⚲"
+                                                   FontSize="18"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background"
+                                                    Value="{DynamicResource SidebarHoverBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </StackPanel>
                 </Border>
 
                 <!-- ナビゲーション -->
@@ -778,21 +807,10 @@
                                           Unchecked="DarkModeToggle_Changed"/>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="コンパクトモード" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <CheckBox x:Name="CompactModeToggle" Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitch}"
-                                          VerticalAlignment="Center"
-                                          Checked="CompactModeToggle_Changed"
-                                          Unchecked="CompactModeToggle_Changed"/>
-                            </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <!-- CompactModeToggle は非表示（サイドバーボタンで制御） -->
+                            <CheckBox x:Name="CompactModeToggle" Visibility="Collapsed"
+                                      Checked="CompactModeToggle_Changed"
+                                      Unchecked="CompactModeToggle_Changed"/>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>

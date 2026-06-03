@@ -155,10 +155,10 @@ public class MonitorService : IDisposable
             ChannelUpdated?.Invoke();
 
             var settings  = SettingsService.Instance.Settings;
-            var videoUrl2 = $"https://www.youtube.com/watch?v={video.VideoId}";
+            var videoUrl = $"https://www.youtube.com/watch?v={video.VideoId}";
 
             if (settings.ShowDesktopNotification)
-                ShowToastNotification(channel.ChannelName, video.Title, video.KindLabel, videoUrl2, channel.ChannelId);
+                ShowToastNotification(channel.ChannelName, video.Title, video.KindLabel, videoUrl, channel.ChannelId);
             else if (settings.NotificationSound)
                 PlayNotificationSound();
         }

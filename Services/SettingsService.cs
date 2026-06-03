@@ -12,9 +12,11 @@ public class SettingsService
     private readonly string _appDataDir;
     private readonly string _configPath;
     private readonly string _channelsPath;
+    private readonly string _categoriesPath;
 
     public AppSettings Settings { get; private set; } = new();
     public List<ChannelInfo> Channels { get; private set; } = new();
+    public List<CategoryInfo> Categories { get; private set; } = new();
 
     private SettingsService()
     {
@@ -22,16 +24,80 @@ public class SettingsService
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "YTNotifier");
         Directory.CreateDirectory(_appDataDir);
-        _configPath = Path.Combine(_appDataDir, "config.json");
-        _channelsPath = Path.Combine(_appDataDir, "channels.json");
+        _configPath      = Path.Combine(_appDataDir, "config.json");
+        _channelsPath    = Path.Combine(_appDataDir, "channels.json");
+        _categoriesPath  = Path.Combine(_appDataDir, "categories.json");
     }
 
     public string AppDataDir => _appDataDir;
+
+    private void LoadCategories()
+    {
+        try
+        {
+            if (File.Exists(_categoriesPath))
+            {
+                var json = File.ReadAllText(_categoriesPath);
+                Categories = JsonConvert.DeserializeObject<List<CategoryInfo>>(json) ?? new();
+            }
+        }
+        catch { Categories = new(); }
+    }
+
+    public void SaveCategories()
+    {
+        try
+        {
+            var json = JsonConvert.SerializeObject(Categories, Formatting.Indented);
+            File.WriteAllText(_categoriesPath, json);
+        }
+        catch { }
+    }
+
+    public CategoryInfo AddCategory(string name)
+    {
+        var cat = new CategoryInfo
+        {
+            CategoryId = Guid.NewGuid().ToString(),
+            CategoryName = name,
+            SortOrder = Categories.Count
+        };
+        Categories.Add(cat);
+        SaveCategories();
+        return cat;
+    }
+
+    public void RemoveCategory(string categoryId)
+    {
+        // カテゴリ削除時は所属チャンネルを未分類に
+        foreach (var ch in Channels.Where(c => c.CategoryId == categoryId))
+            ch.CategoryId = null;
+        Categories.RemoveAll(c => c.CategoryId == categoryId);
+        SaveCategories();
+        SaveChannels();
+    }
+
+    public void RenameCategory(string categoryId, string newName)
+    {
+        var cat = Categories.FirstOrDefault(c => c.CategoryId == categoryId);
+        if (cat == null) return;
+        cat.CategoryName = newName;
+        SaveCategories();
+    }
+
+    public void SetChannelCategory(string channelId, string? categoryId)
+    {
+        var ch = Channels.FirstOrDefault(c => c.ChannelId == channelId);
+        if (ch == null) return;
+        ch.CategoryId = categoryId;
+        SaveChannels();
+    }
 
     public void Load()
     {
         LoadSettings();
         LoadChannels();
+        LoadCategories();
     }
 
     private void LoadSettings()
