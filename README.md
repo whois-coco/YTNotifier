@@ -44,7 +44,7 @@ dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
 
 ## YouTube API キーの取得
 
-1. [Google Cloud Console](https://console.developers.google.com) を開く
+1. [Google Cloud Console](https://console.developers.google.com) を開く(要Googleアカウント)
 2. プロジェクトを作成または選択
 
    <img width="360" height="294" alt="02" src="https://github.com/user-attachments/assets/fa543d34-0c80-4c31-a1fd-5afa4fc80608" />
