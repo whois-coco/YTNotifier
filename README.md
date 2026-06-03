@@ -4,6 +4,8 @@ YouTube Data API v3 を利用し、指定チャンネルの新着動画を定期
 <img width="188" height="376" alt="01" src="https://github.com/user-attachments/assets/19297cf1-19e9-421f-9676-39f30f586cf1" />
 <img width="163" height="360" alt="02" src="https://github.com/user-attachments/assets/e8bfe037-9105-4c02-86a7-98250f38a83a" />
 <img width="165" height="360" alt="03" src="https://github.com/user-attachments/assets/6a71c243-0302-47f7-90d6-59ec14e556f1" />
+
+
 ---
 
 ## 動作環境
