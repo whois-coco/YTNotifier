@@ -70,6 +70,7 @@ dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
 ## チェックするチャンネルを追加
 
 1.チャンネルリストの最下部にある+チャンネルを追加ボタンをクリックする。
+
 2.チャンネル追加ウィンドウ内のチャンネルID/ハンドルID/URLのいずれかを入力して検索
 
 <img width="518" height="189" alt="01" src="https://github.com/user-attachments/assets/eb406d0b-2fa7-4668-bf09-427dcf2487ff" />
