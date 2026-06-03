@@ -62,6 +62,9 @@ dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
    <img width="582" height="535" alt="08" src="https://github.com/user-attachments/assets/5ff1baa3-37cc-4d8f-ae2c-8c7174f51b83" />
 
 5. アプリの「基本設定」画面にAPIキーを貼り付けて保存
+   
+   <img width="477" height="198" alt="09" src="https://github.com/user-attachments/assets/6eaa080a-2304-46d5-8596-035d72b89db6" />
+
 
 ---
 
