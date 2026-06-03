@@ -536,17 +536,10 @@
                                     <DataTemplate>
                                         <Grid Margin="0,3">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="58"/>
                                                 <ColumnDefinition Width="52"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0"
-                                                       Text="{Binding FormattedTime, Mode=OneWay}"
-                                                       FontFamily="Cascadia Code, Consolas"
-                                                       FontSize="11"
-                                                       Foreground="{DynamicResource TextMutedBrush}"
-                                                       VerticalAlignment="Center"/>
-                                            <Border Grid.Column="1" CornerRadius="2"
+                                            <Border Grid.Column="0" CornerRadius="2"
                                                     Padding="5,1" Margin="0,0,6,0"
                                                     VerticalAlignment="Center">
                                                 <Border.Background>
@@ -557,11 +550,11 @@
                                                            Foreground="White"
                                                            HorizontalAlignment="Center"/>
                                             </Border>
-                                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal">
                                                 <TextBlock FontFamily="Cascadia Code, Consolas"
                                                            FontSize="11"
                                                            Foreground="{DynamicResource PrimaryBrush}"
-                                                           Text="{Binding ChannelName, Mode=OneWay, StringFormat='[{0}] '}"
+                                                           Text="{Binding ChannelNameFormatted, Mode=OneWay}"
                                                            VerticalAlignment="Center"/>
                                                 <TextBlock FontFamily="Cascadia Code, Consolas"
                                                            FontSize="11"
@@ -910,7 +903,7 @@
                             <TextBlock Text="YTNotifier" FontSize="20" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,4"/>
-                            <TextBlock Text="v1.7.0" FontSize="13"
+                            <TextBlock Text="v1.7.1" FontSize="13"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,0,0,12"/>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>

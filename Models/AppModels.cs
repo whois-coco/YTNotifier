@@ -134,6 +134,8 @@ public class LogEntry
     public LogLevel Level { get; set; } = LogLevel.Info;
     public string Message { get; set; } = string.Empty;
     public string? ChannelName { get; set; }
+    public string ChannelNameFormatted =>
+        string.IsNullOrEmpty(ChannelName) ? string.Empty : $"[{ChannelName}] ";
 
     public string FormattedTime => Timestamp.ToString("HH:mm:ss");
     public string LevelText => Level.ToString().ToUpper();

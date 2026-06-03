@@ -93,7 +93,7 @@ public partial class MainWindow : Window
     private bool _sidebarCollapsed   = false;
 
     // 編集モード
-    private bool _editMode = false;
+    internal bool _editMode = false;
 
     // アイコンキャッシュ（URL → BitmapImage）
     private static readonly Dictionary<string, BitmapImage> _iconCache     = new();
@@ -469,6 +469,7 @@ public partial class MainWindow : Window
         }
 
         // Col1: 情報パネル（StackPanel）内の種別トグル
+        // 編集モード中(!enabled)でも種別トグルはクリック可能にする
         foreach (var el in contentGrid.Children.OfType<StackPanel>())
         {
             if (Grid.GetColumn(el) != 1) continue;
@@ -476,8 +477,8 @@ public partial class MainWindow : Window
             {
                 foreach (var toggle in child.Children.OfType<Border>())
                 {
-                    toggle.IsHitTestVisible = enabled;
-                    toggle.Opacity = enabled ? 1.0 : 0.5;
+                    toggle.IsHitTestVisible = true; // 常にクリック可能（編集モードのみ実際に動作）
+                    toggle.Opacity = 1.0;
                 }
             }
         }
@@ -831,6 +832,9 @@ public partial class MainWindow : Window
         bool current = initial;
         border.PreviewMouseLeftButtonDown += (_, e) =>
         {
+            // 編集モード中のみ変更可能
+            var win = Application.Current.MainWindow as MainWindow;
+            if (win == null || !win._editMode) return;
             e.Handled = true;
             current = !current;
             onChanged(current);
@@ -838,6 +842,8 @@ public partial class MainWindow : Window
             if (current) tb.Foreground = Brushes.White;
             else SetDynamicBrush(tb, TextBlock.ForegroundProperty, "TextMutedBrush");
         };
+        // 編集モード外はカーソルをデフォルトに
+        border.Cursor = Cursors.Arrow;
         return border;
     }
 
