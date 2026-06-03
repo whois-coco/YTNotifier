@@ -54,7 +54,14 @@ dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
    <img width="461" height="273" alt="03" src="https://github.com/user-attachments/assets/a192a2ff-3cd8-439e-819b-aad039bd7485" />
 
 4. 「認証情報」→「認証情報を作成」→「APIキー」を選択
-6. アプリの「基本設定」画面にAPIキーを貼り付けて保存
+   
+   <img width="475" height="380" alt="04" src="https://github.com/user-attachments/assets/b92efd42-760a-4016-b9a5-83df19a4ea65" />
+   <img width="929" height="538" alt="05" src="https://github.com/user-attachments/assets/a6c3dc22-2e08-4d62-96c8-2019dc0140d2" />
+   <img width="556" height="724" alt="06" src="https://github.com/user-attachments/assets/523b5db9-2233-4a40-89c1-bf5807cad311" />
+   <img width="480" height="128" alt="07" src="https://github.com/user-attachments/assets/9cf748e2-6cda-4251-8dd6-fd5e41e7c1e6" />
+   <img width="582" height="535" alt="08" src="https://github.com/user-attachments/assets/5ff1baa3-37cc-4d8f-ae2c-8c7174f51b83" />
+
+5. アプリの「基本設定」画面にAPIキーを貼り付けて保存
 
 ---
 
