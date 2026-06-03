@@ -35,18 +35,6 @@ dotnet build
 ```bash
 dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
 ```
-
-### 3. アイコンの準備
-
-`Resources\` フォルダに以下の2ファイルを用意してください。
-
-| ファイル | 用途 | 推奨サイズ |
-|---|---|---|
-| `app.ico` | ウィンドウ・トレイ通常時 | 16/32/48/256px 内包 |
-| `app_warn.ico` | トレイ停止時 | 16/32/48/256px 内包 |
-| `notification.wav` | カスタム通知音（任意） | WAV形式・任意のサイズ |
-
-
 ### カスタム通知音（任意）
 
 `Resources\notification.wav` を配置すると、通知音オン時にそのファイルが再生されます。
