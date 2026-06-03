@@ -45,10 +45,12 @@ dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
 ## YouTube API キーの取得
 
 1. [Google Cloud Console](https://console.developers.google.com) を開く
-2. プロジェクトを作成または選択
-3. 「APIとサービス」→「ライブラリ」で **YouTube Data API v3** を有効化
-4. 「認証情報」→「認証情報を作成」→「APIキー」を選択
-5. アプリの「基本設定」画面にAPIキーを貼り付けて保存
+   <img width="360" height="294" alt="02" src="https://github.com/user-attachments/assets/a3f2239f-b1f4-4199-a05d-9ed02835b985" />
+
+3. プロジェクトを作成または選択
+4. 「APIとサービス」→「ライブラリ」で **YouTube Data API v3** を有効化
+5. 「認証情報」→「認証情報を作成」→「APIキー」を選択
+6. アプリの「基本設定」画面にAPIキーを貼り付けて保存
 
 ---
 
