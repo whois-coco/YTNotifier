@@ -2,7 +2,7 @@
 
 YouTube Data API v3 を利用し、指定チャンネルの新着動画を定期監視・通知する WPF 常駐アプリ。
 <img width="188" height="376" alt="01" src="https://github.com/user-attachments/assets/19297cf1-19e9-421f-9676-39f30f586cf1" />
-<img width="325" height="300" alt="02" src="https://github.com/user-attachments/assets/e8bfe037-9105-4c02-86a7-98250f38a83a" />
+<img width="325" height="720" alt="02" src="https://github.com/user-attachments/assets/e8bfe037-9105-4c02-86a7-98250f38a83a" />
 <img width="330" height="300" alt="03" src="https://github.com/user-attachments/assets/6a71c243-0302-47f7-90d6-59ec14e556f1" />
 ---
 
