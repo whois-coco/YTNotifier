@@ -49,8 +49,11 @@ dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
 
    <img width="360" height="294" alt="02" src="https://github.com/user-attachments/assets/fa543d34-0c80-4c31-a1fd-5afa4fc80608" />
 
-4. 「APIとサービス」→「ライブラリ」で **YouTube Data API v3** を有効化
-5. 「認証情報」→「認証情報を作成」→「APIキー」を選択
+3. 「APIとサービス」→「ライブラリ」で **YouTube Data API v3** を有効化
+   
+   <img width="461" height="273" alt="03" src="https://github.com/user-attachments/assets/a192a2ff-3cd8-439e-819b-aad039bd7485" />
+
+4. 「認証情報」→「認証情報を作成」→「APIキー」を選択
 6. アプリの「基本設定」画面にAPIキーを貼り付けて保存
 
 ---
