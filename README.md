@@ -70,10 +70,15 @@ dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
 ## チェックするチャンネルを追加
 
 1.チャンネルリストの最下部にある+チャンネルを追加ボタンをクリックする。
-2.チャンネル追加ウィンドウ内のチャンネルID/ハンドルID/URLのいずれかを入力して検索 →　登録ボタンをクリックして登録
+2.チャンネル追加ウィンドウ内のチャンネルID/ハンドルID/URLのいずれかを入力して検索
 
 <img width="518" height="189" alt="01" src="https://github.com/user-attachments/assets/eb406d0b-2fa7-4668-bf09-427dcf2487ff" />
 
+3.該当チャンネルのアイコンが左側に表示されるので確認し、問題なければ追加するボタンをクリックしてチャンネルを追加
+
+チャンネルID：チェック対象のチャンネルのTOPから...さらに表示 → チャンネルを共有 → チャンネルのIDをコピー
+ハンドルID：チャンネルのTOP画面内に記載されている@から始まる文字列(例：HIKAKIN TV→@HikakinTV)
+URL：チャンネルのTOPのURL(例:HIKAKIN TV → https://www.youtube.com/@HikakinTV)
 
 ---
 
