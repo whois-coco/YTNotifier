@@ -47,6 +47,15 @@ public class AppSettings
     [JsonProperty("notificationSound")]
     public bool NotificationSound { get; set; } = false;
 
+    [JsonProperty("isMuted")]
+    public bool IsMuted { get; set; } = false;
+
+    [JsonProperty("preMuteDesktopNotification")]
+    public bool PreMuteDesktopNotification { get; set; } = false;
+
+    [JsonProperty("preMuteNotificationSound")]
+    public bool PreMuteNotificationSound { get; set; } = false;
+
     [JsonProperty("compactMode")]
     public bool CompactMode { get; set; } = false;
 

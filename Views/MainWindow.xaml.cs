@@ -280,8 +280,15 @@ public partial class MainWindow : Window
         UpdateMinWidth();
         RestoreWindowBounds();
         InitChannelListDragDrop();
-        // ミュートボタン初期化
-        UpdateMuteButton(false);
+        // ミュート状態を復元
+        var s2 = SettingsService.Instance.Settings;
+        if (s2.IsMuted)
+        {
+            _isMuted                    = true;
+            _preMuteDesktopNotification = s2.PreMuteDesktopNotification;
+            _preMuteNotificationSound   = s2.PreMuteNotificationSound;
+        }
+        UpdateMuteButton(_isMuted);
 
         // コンパクトモード初期化
         if (SettingsService.Instance.Settings.CompactMode)
@@ -1720,16 +1727,20 @@ public partial class MainWindow : Window
         if (_isMuted)
         {
             // 現在の設定を保存してOFFに
-            _preMuteDesktopNotification = settings.ShowDesktopNotification;
-            _preMuteNotificationSound   = settings.NotificationSound;
-            settings.ShowDesktopNotification = false;
-            settings.NotificationSound       = false;
+            _preMuteDesktopNotification              = settings.ShowDesktopNotification;
+            _preMuteNotificationSound                = settings.NotificationSound;
+            settings.PreMuteDesktopNotification      = _preMuteDesktopNotification;
+            settings.PreMuteNotificationSound        = _preMuteNotificationSound;
+            settings.IsMuted                         = true;
+            settings.ShowDesktopNotification         = false;
+            settings.NotificationSound               = false;
         }
         else
         {
             // 設定を復元
             settings.ShowDesktopNotification = _preMuteDesktopNotification;
             settings.NotificationSound       = _preMuteNotificationSound;
+            settings.IsMuted                 = false;
         }
 
         SettingsService.Instance.SaveSettings();
