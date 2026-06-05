@@ -85,7 +85,7 @@ public class DragAdorner : Adorner
 public partial class MainWindow : Window
 {
     // ===== 定数 =====
-    private const int    SidebarExpandedWidth  = 140;
+    private const int    SidebarExpandedWidth  = 110;
     private const int    SidebarCollapsedWidth = 44;
     private const int    ChannelRowHeight      = 60;
     private const int    ChannelRowHeightCompact = 36;
@@ -218,6 +218,33 @@ public partial class MainWindow : Window
     private Border? _dropIndicator = null;
     private int     _dropIndicatorIndex = -1;
 
+    // カテゴリD&D: 境界Y座標キャッシュ（インジケーター挿入前に記録）
+    private List<(double y, int childIndex)> _catBoundaries = new();
+
+    private void CacheCategoryBoundaries()
+    {
+        _catBoundaries.Clear();
+        double cumY = 0;
+        foreach (var child in ChannelList.Children.OfType<Border>())
+        {
+            double rowH = child.ActualHeight + child.Margin.Top + child.Margin.Bottom;
+            if (child.Tag is CategoryInfo)
+                _catBoundaries.Add((cumY, ChannelList.Children.IndexOf(child)));
+            cumY += rowH;
+        }
+        // 最後のカテゴリの末尾も追加
+        if (_catBoundaries.Count > 0)
+        {
+            var last = _catBoundaries[^1];
+            var lastRow = ChannelList.Children[last.childIndex] as Border;
+            if (lastRow != null)
+            {
+                double lastH = lastRow.ActualHeight + lastRow.Margin.Top + lastRow.Margin.Bottom;
+                _catBoundaries.Add((last.y + lastH, last.childIndex + 1));
+            }
+        }
+    }
+
     // D&D
     private ChannelInfo?  _dragSource      = null;
     private int           _dragSourceIndex = -1;
@@ -253,11 +280,17 @@ public partial class MainWindow : Window
         UpdateMinWidth();
         RestoreWindowBounds();
         InitChannelListDragDrop();
+        // ミュートボタン初期化
+        UpdateMuteButton(false);
+
         // コンパクトモード初期化
         if (SettingsService.Instance.Settings.CompactMode)
             ApplyCompactMode(true);
         else
+        {
             UpdateCompactModeButton(false);
+            SyncWindowWidth();
+        }
         InitLogBindings();
         InitMonitor();
     }
@@ -674,14 +707,43 @@ public partial class MainWindow : Window
         stack.Children.Add(badge);
         row.Child = stack;
 
-        // クリックで折り畳みトグル
+        // クリックで折り畳みトグル（編集モード外のみ）
         row.Cursor = Cursors.Hand;
-        row.MouseLeftButtonUp += (_, _) =>
+        row.MouseLeftButtonUp += (_, e) =>
         {
+            if (_editMode) return;
             cat.IsCollapsed = !cat.IsCollapsed;
             SettingsService.Instance.SaveCategories();
             RefreshChannelList();
         };
+
+        // 編集モード中: D&D でカテゴリ並び替え
+        System.Windows.Point _catDragStart = default;
+        bool _catDragReady = false;
+
+        row.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (!_editMode) return;
+            _catDragStart = e.GetPosition(ChannelList);
+            _catDragReady = true;
+        };
+
+        row.PreviewMouseMove += (s, e) =>
+        {
+            if (!_editMode || !_catDragReady) return;
+            if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) { _catDragReady = false; return; }
+            var pos = e.GetPosition(ChannelList);
+            var diff = pos - _catDragStart;
+            if (Math.Abs(diff.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(diff.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            _catDragReady = false;
+            // ドラッグ開始前にカテゴリ境界をキャッシュ（インジケーター挿入前）
+            CacheCategoryBoundaries();
+            if (s is Border b)
+                DragDrop.DoDragDrop(b, new DataObject("CategoryDrag", cat.CategoryId), DragDropEffects.Move);
+        };
+
+        row.PreviewMouseLeftButtonUp += (_, _) => { _catDragReady = false; };
 
         return row;
     }
@@ -1418,7 +1480,7 @@ public partial class MainWindow : Window
             MenuLabelWrap.Visibility  = Visibility.Visible;
             MenuLabel.Text            = "MENU";
             StatusBadge.Visibility    = Visibility.Visible;
-            NavWatch.Content          = "チャンネルリスト";
+            NavWatch.Content          = "チャンネル";
             NavLog.Content            = "動作ログ";
             NavSettings.Content       = "基本設定";
             UpdateMonitorStatus(MonitorService.Instance.IsRunning);
@@ -1430,12 +1492,28 @@ public partial class MainWindow : Window
         UpdateMinWidth();
         SettingsService.Instance.Settings.SidebarCollapsed = _sidebarCollapsed;
         SettingsService.Instance.SaveSettings();
+        SyncWindowWidth();
     }
+
+    // サイドバー + 右ペイン固定幅
+    private const int ContentPaneWidth   = 286;
+    private const int ExpandedTotalWidth = 110 + 303; // 413
+    private const int CollapsedTotalWidth = 44 + 303;  // 347
 
     private void UpdateMinWidth()
     {
-        MinWidth  = 330;
         MinHeight = 460;
+        // 幅は SyncWindowWidth で管理
+    }
+
+    private void SyncWindowWidth()
+    {
+        if (SettingsService.Instance.Settings.CompactMode) return;
+        var target = _sidebarCollapsed ? CollapsedTotalWidth : ExpandedTotalWidth;
+        MaxWidth = target;
+        MinWidth = target;
+        if ((int)Width != target)
+            Width = target;
     }
 
     private void UpdateToggleIcon(string icon)
@@ -1629,6 +1707,54 @@ public partial class MainWindow : Window
         ApplyCompactMode(enabled);
     }
 
+    // ===== ミュートボタン =====
+    private bool _isMuted                    = false;
+    private bool _preMuteDesktopNotification = false;
+    private bool _preMuteNotificationSound   = false;
+
+    private void MuteButton_Click(object sender, RoutedEventArgs e)
+    {
+        _isMuted = !_isMuted;
+        var settings = SettingsService.Instance.Settings;
+
+        if (_isMuted)
+        {
+            // 現在の設定を保存してOFFに
+            _preMuteDesktopNotification = settings.ShowDesktopNotification;
+            _preMuteNotificationSound   = settings.NotificationSound;
+            settings.ShowDesktopNotification = false;
+            settings.NotificationSound       = false;
+        }
+        else
+        {
+            // 設定を復元
+            settings.ShowDesktopNotification = _preMuteDesktopNotification;
+            settings.NotificationSound       = _preMuteNotificationSound;
+        }
+
+        SettingsService.Instance.SaveSettings();
+
+        // トグル UI も同期
+        NotificationToggle.IsChecked      = settings.ShowDesktopNotification;
+        NotificationSoundToggle.IsChecked = settings.NotificationSound;
+
+        UpdateMuteButton(_isMuted);
+    }
+
+    private void UpdateMuteButton(bool muted)
+    {
+        if (MuteButton.Template?.FindName("MuteIcon", MuteButton)
+            is TextBlock icon)
+        {
+            icon.Text = muted ? "🔕" : "🔔";
+            if (muted)
+                SetDynamicBrush(icon, TextBlock.ForegroundProperty, "ErrorBrush");
+            else
+                SetDynamicBrush(icon, TextBlock.ForegroundProperty, "SidebarTextBrush");
+        }
+        MuteButton.ToolTip = muted ? "ミュート: ON（クリックで解除）" : "ミュート: OFF";
+    }
+
     private void CompactModeButton_Click(object sender, RoutedEventArgs e)
     {
         var enabled = !SettingsService.Instance.Settings.CompactMode;
@@ -1648,19 +1774,16 @@ public partial class MainWindow : Window
 
             if (enabled)
             {
-                // ON: 現在の状態を保存してからコンパクトに移行
+                // ON: 現在の状態を保存
                 _preCompactWidth            = ActualWidth;
                 _preCompactSidebarCollapsed = _sidebarCollapsed;
 
-                // 先に MaxWidth を制限
-                MaxWidth = 330;
-
-                // サイドバー折り畳み（UpdateMinWidth を呼ばないよう直接操作）
+                // サイドバーを先に折り畳む
                 if (!_sidebarCollapsed)
                 {
                     _sidebarCollapsed = true;
                     SidebarColumn.Width = new GridLength(SidebarCollapsedWidth);
-                    UpdateToggleIcon(_sidebarCollapsed ? "▶" : "◀");
+                    UpdateToggleIcon("▶");
                     UpdateToggleIconColor(MonitorService.Instance.IsRunning);
                     SettingsService.Instance.Settings.SidebarCollapsed = _sidebarCollapsed;
                     SettingsService.Instance.SaveSettings();
@@ -1668,13 +1791,19 @@ public partial class MainWindow : Window
                 SidebarToggleButton.IsEnabled = false;
                 SidebarToggleButton.Opacity   = 0.3;
 
-                // 幅を 330 に
-                Dispatcher.Invoke(() => { Width = 330; }, System.Windows.Threading.DispatcherPriority.Render);
+                // サイドバー折り畳み後に幅を固定
+                Dispatcher.Invoke(() =>
+                {
+                    MaxWidth = 338;
+                    MinWidth = 338;
+                    Width    = 338;
+                }, System.Windows.Threading.DispatcherPriority.Render);
             }
             else
             {
-                // OFF: MaxWidth を先に解放
+                // OFF: まず MaxWidth/MinWidth を無制限に解放してから SyncWindowWidth で再固定
                 MaxWidth = double.PositiveInfinity;
+                MinWidth = 330;
 
                 SidebarToggleButton.IsEnabled = true;
                 SidebarToggleButton.Opacity   = 1.0;
@@ -1690,9 +1819,8 @@ public partial class MainWindow : Window
                     SettingsService.Instance.SaveSettings();
                 }
 
-                // 幅を復元
-                var restoreWidth = _preCompactWidth > MinWidth ? _preCompactWidth : MinWidth;
-                Dispatcher.Invoke(() => { Width = restoreWidth; }, System.Windows.Threading.DispatcherPriority.Render);
+                // サイドバー状態に応じた固定幅に同期
+                Dispatcher.Invoke(SyncWindowWidth, System.Windows.Threading.DispatcherPriority.Render);
             }
 
             UpdateCompactModeButton(enabled);
@@ -1728,6 +1856,58 @@ public partial class MainWindow : Window
     {
         SettingsService.Instance.Settings.MinimizeToTray = TrayToggle.IsChecked == true;
         SettingsService.Instance.SaveSettings();
+    }
+
+    // ===== バックアップ / インポート =====
+    private void ExportBackup_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title            = "バックアップの保存先を選択",
+            Filter           = "ZIPファイル (*.zip)|*.zip",
+            FileName         = $"YTNotifier_backup_{DateTime.Now:yyyyMMdd_HHmmss}.zip",
+            DefaultExt       = ".zip",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var path = SettingsService.Instance.ExportBackup(dlg.FileName);
+            BackupStatusText.Text = $"✅ エクスポート完了: {System.IO.Path.GetFileName(path)}";
+            SetDynamicBrush(BackupStatusText, TextBlock.ForegroundProperty, "SuccessBrush");
+        }
+        catch (Exception ex)
+        {
+            BackupStatusText.Text = $"❌ エラー: {ex.Message}";
+            SetDynamicBrush(BackupStatusText, TextBlock.ForegroundProperty, "ErrorBrush");
+        }
+    }
+
+    private void ImportBackup_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title            = "バックアップファイルを選択",
+            Filter           = "ZIPファイル (*.zip)|*.zip",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        if (MessageBox.Show(
+            "現在の設定がバックアップで上書きされます。\n続行しますか？",
+            "インポート確認", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
+        var (success, message) = SettingsService.Instance.ImportBackup(dlg.FileName);
+        BackupStatusText.Text = success ? $"✅ {message}" : $"❌ {message}";
+        SetDynamicBrush(BackupStatusText, TextBlock.ForegroundProperty,
+            success ? "SuccessBrush" : "ErrorBrush");
+
+        if (success)
+        {
+            LoadSettings();
+            RefreshChannelList();
+        }
     }
 
     private void AlwaysOnTopToggle_Changed(object sender, RoutedEventArgs e)
@@ -1996,16 +2176,83 @@ public partial class MainWindow : Window
 
     private void ChannelList_DragOver(object sender, DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent("ChannelDrag")) { e.Effects = DragDropEffects.None; return; }
+        bool isChannel  = e.Data.GetDataPresent("ChannelDrag");
+        bool isCategory = e.Data.GetDataPresent("CategoryDrag");
+        if (!isChannel && !isCategory) { e.Effects = DragDropEffects.None; return; }
         e.Effects = DragDropEffects.Move;
-        var dropPos = e.GetPosition(ChannelList);
-        ShowDropIndicator(CalcDropIndex(dropPos.Y));
+        var posY = e.GetPosition(ChannelList).Y;
+
+        if (isCategory)
+        {
+            if (_catBoundaries.Count == 0) { e.Handled = true; return; }
+
+            // キャッシュ済みのカテゴリ境界から最近傍を選択
+            int bestIdx   = _catBoundaries[^1].childIndex;
+            double bestDist = double.MaxValue;
+            foreach (var (y, idx) in _catBoundaries)
+            {
+                double dist = Math.Abs(posY - y);
+                if (dist < bestDist) { bestDist = dist; bestIdx = idx; }
+            }
+            ShowDropIndicator(bestIdx);
+        }
+        else
+        {
+            ShowDropIndicator(CalcDropIndex(posY));
+        }
         e.Handled = true;
     }
 
     private void ChannelList_Drop(object sender, DragEventArgs e)
     {
         HideDropIndicator();
+
+        // ===== カテゴリ D&D =====
+        if (e.Data.GetDataPresent("CategoryDrag"))
+        {
+            var catSrcId   = e.Data.GetData("CategoryDrag") as string;
+            if (string.IsNullOrEmpty(catSrcId)) return;
+
+            var categories = SettingsService.Instance.Categories;
+            var catSrcIdx  = categories.FindIndex(c => c.CategoryId == catSrcId);
+            if (catSrcIdx < 0) return;
+
+            // CalcDropIndex で挿入位置を取得し、何番目のカテゴリの前に挿入するか算出
+            var catPosY    = e.GetPosition(ChannelList).Y;
+            int dropIdx    = CalcDropIndex(catPosY);
+
+            // dropIdx より前にある最後のカテゴリ行のインデックスを探す
+            var rows = ChannelList.Children.OfType<Border>()
+                .Where(b => b != _dropIndicator).ToList();
+
+            // dropIdx 以降で最初のカテゴリ行 or 末尾
+            int catDstIdx = categories.Count;
+            int scanned   = 0;
+            foreach (var row in rows)
+            {
+                if (scanned >= dropIdx && row.Tag is CategoryInfo dropCat)
+                {
+                    catDstIdx = categories.FindIndex(c => c.CategoryId == dropCat.CategoryId);
+                    break;
+                }
+                scanned++;
+            }
+
+            if (catDstIdx == catSrcIdx || catDstIdx == catSrcIdx + 1) return;
+            var movingCat = categories[catSrcIdx];
+            categories.RemoveAt(catSrcIdx);
+            if (catDstIdx > catSrcIdx) catDstIdx--;
+            catDstIdx = Math.Max(0, Math.Min(catDstIdx, categories.Count));
+            categories.Insert(catDstIdx, movingCat);
+
+            for (int i = 0; i < categories.Count; i++)
+                categories[i].SortOrder = i;
+
+            SettingsService.Instance.SaveCategories();
+            RefreshChannelList();
+            e.Handled = true;
+            return;
+        }
 
         if (!e.Data.GetDataPresent("ChannelDrag")) return;
         var sourceId = e.Data.GetData("ChannelDrag") as string;

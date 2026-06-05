@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using Newtonsoft.Json;
 using YTNotifier.Models;
 
@@ -30,6 +31,42 @@ public class SettingsService
     }
 
     public string AppDataDir => _appDataDir;
+
+    // ===== バックアップ / インポート =====
+    public string ExportBackup(string destPath)
+    {
+        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        var zipPath   = string.IsNullOrEmpty(destPath)
+            ? Path.Combine(_appDataDir, $"backup_{timestamp}.zip")
+            : destPath;
+
+        using var zip = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Create);
+        foreach (var file in new[] { _configPath, _channelsPath, _categoriesPath })
+            if (File.Exists(file)) zip.CreateEntryFromFile(file, Path.GetFileName(file));
+
+        return zipPath;
+    }
+
+    public (bool success, string message) ImportBackup(string zipPath)
+    {
+        try
+        {
+            using var zip = System.IO.Compression.ZipFile.OpenRead(zipPath);
+            var allowed  = new[] { "config.json", "channels.json", "categories.json" };
+            foreach (var entry in zip.Entries)
+            {
+                if (!allowed.Contains(entry.Name)) continue;
+                var dest = Path.Combine(_appDataDir, entry.Name);
+                entry.ExtractToFile(dest, overwrite: true);
+            }
+            Load();
+            return (true, "インポートが完了しました。再起動が不要な設定はすぐに反映されます。");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"インポートに失敗しました: {ex.Message}");
+        }
+    }
 
     private void LoadCategories()
     {

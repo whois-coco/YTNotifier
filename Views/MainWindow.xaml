@@ -241,8 +241,8 @@
         <!-- ===== メインレイアウト（タイトルバー下） ===== -->
         <Grid Grid.Row="1">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition x:Name="SidebarColumn" Width="140" MinWidth="0"/>
-            <ColumnDefinition Width="*"/>
+            <ColumnDefinition x:Name="SidebarColumn" Width="110" MinWidth="0"/>
+            <ColumnDefinition x:Name="ContentColumn" Width="303" MinWidth="303"/>
         </Grid.ColumnDefinitions>
 
         <!-- ===== サイドバー ===== -->
@@ -332,6 +332,33 @@
                         BorderBrush="{DynamicResource SidebarBorderBrush}"
                         BorderThickness="0,1,0,0">
                     <StackPanel>
+                        <!-- ミュートボタン -->
+                        <Button x:Name="MuteButton"
+                                Width="44" Height="44"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                HorizontalAlignment="Left"
+                                ToolTip="ミュート: OFF"
+                                Click="MuteButton_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" Background="Transparent"
+                                            Width="44" Height="44">
+                                        <TextBlock x:Name="MuteIcon" Text="🔔"
+                                                   FontSize="15"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background"
+                                                    Value="{DynamicResource SidebarHoverBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
                         <!-- コンパクトモードボタン -->
                         <Button x:Name="CompactModeButton"
                                 Width="44" Height="44"
@@ -395,7 +422,7 @@
                                    Foreground="{DynamicResource SidebarSectionBrush}"
                                    Margin="16,0,0,6"/>
                     </Border>
-                    <Button x:Name="NavWatch" Tag="📋" Content="チャンネルリスト"
+                    <Button x:Name="NavWatch" Tag="📋" Content="チャンネル"
                             Style="{StaticResource NavButtonActive}"
                             Click="Nav_Click"/>
 
@@ -439,8 +466,9 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="チャンネルリスト" FontSize="20" FontWeight="Bold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock Text="チャンネルリスト" FontSize="18" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis"/>
                             <TextBlock x:Name="ChannelCountText" Text="0 チャンネル"
                                        FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"
@@ -502,18 +530,59 @@
                         <ScrollViewer.Template>
                             <ControlTemplate TargetType="ScrollViewer">
                                 <Grid HorizontalAlignment="Stretch">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="4"/>
+                                    </Grid.ColumnDefinitions>
                                     <ScrollContentPresenter
+                                        Grid.Column="0"
                                         HorizontalAlignment="Stretch"
                                         CanContentScroll="False"/>
                                     <ScrollBar x:Name="PART_VerticalScrollBar"
-                                               HorizontalAlignment="Right"
+                                               Grid.Column="1"
                                                Width="4"
+                                               Opacity="0"
                                                Value="{TemplateBinding VerticalOffset}"
                                                Maximum="{TemplateBinding ScrollableHeight}"
                                                ViewportSize="{TemplateBinding ViewportHeight}"
                                                Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"
-                                               Style="{StaticResource SlimScrollBar}"/>
+                                               Style="{StaticResource SlimScrollBar}">
+                                        <ScrollBar.Triggers>
+                                            <EventTrigger RoutedEvent="ScrollBar.MouseEnter">
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                         To="1" Duration="0:0:0.15"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </EventTrigger>
+                                            <EventTrigger RoutedEvent="ScrollBar.MouseLeave">
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                         To="0" Duration="0:0:0.3" BeginTime="0:0:0.5"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </EventTrigger>
+                                        </ScrollBar.Triggers>
+                                    </ScrollBar>
                                 </Grid>
+                                <ControlTemplate.Triggers>
+                                    <EventTrigger RoutedEvent="ScrollViewer.ScrollChanged">
+                                        <BeginStoryboard x:Name="ShowScrollBar">
+                                            <Storyboard>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="PART_VerticalScrollBar"
+                                                    Storyboard.TargetProperty="Opacity"
+                                                    To="1" Duration="0:0:0.1"/>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="PART_VerticalScrollBar"
+                                                    Storyboard.TargetProperty="Opacity"
+                                                    To="0" Duration="0:0:0.3" BeginTime="0:0:1.2"/>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </EventTrigger>
+                                </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </ScrollViewer.Template>
                         <StackPanel x:Name="ChannelList" HorizontalAlignment="Stretch"/>
@@ -843,6 +912,38 @@
                             <CheckBox x:Name="AlwaysOnTopToggle" Visibility="Collapsed"
                                       Checked="AlwaysOnTopToggle_Changed"
                                       Unchecked="AlwaysOnTopToggle_Changed"/>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <!-- バックアップ / インポート -->
+                            <TextBlock Text="バックアップ" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       Margin="0,0,0,8"/>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="設定ファイルを書き出す" FontSize="11"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
+                                        Content="💾 バックアップ" Padding="12,6" Width="100"
+                                        Click="ExportBackup_Click"/>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="バックアップから復元する" FontSize="11"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
+                                        Content="📂 復元" Padding="12,6" Width="100"
+                                        Click="ImportBackup_Click"/>
+                            </Grid>
+                            <TextBlock x:Name="BackupStatusText" FontSize="11"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Margin="0,6,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </ScrollViewer>
 
@@ -921,7 +1022,7 @@
                             <TextBlock Text="YTNotifier" FontSize="20" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,4"/>
-                            <TextBlock Text="v1.7.1" FontSize="13"
+                            <TextBlock Text="v1.7.2" FontSize="13"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,0,0,12"/>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>

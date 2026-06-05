@@ -1,10 +1,6 @@
-# YTNotifier v1.7.1 - YouTube新着動画通知システム
+# YTNotifier v1.7.2 - YouTube新着動画通知システム
 
 YouTube Data API v3 を利用し、指定チャンネルの新着動画を定期監視・通知する WPF 常駐アプリ。
-
-<img width="188" height="376" alt="01" src="https://github.com/user-attachments/assets/19297cf1-19e9-421f-9676-39f30f586cf1" />
-<img width="163" height="360" alt="02" src="https://github.com/user-attachments/assets/e8bfe037-9105-4c02-86a7-98250f38a83a" />
-<img width="165" height="360" alt="03" src="https://github.com/user-attachments/assets/6a71c243-0302-47f7-90d6-59ec14e556f1" />
 
 ---
 
@@ -17,10 +13,6 @@ YouTube Data API v3 を利用し、指定チャンネルの新着動画を定期
 ---
 
 ## セットアップ
-
-Realeaseより最新版をダウンロードしてお使い下さい。
-
-ご自身でビルドしたい場合は以下の手順でビルド & 発行してお使い下さい。
 
 ### 1. ビルド
 
@@ -35,6 +27,18 @@ dotnet build
 ```bash
 dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
 ```
+
+### 3. アイコンの準備
+
+`Resources\` フォルダに以下の2ファイルを用意してください。
+
+| ファイル | 用途 | 推奨サイズ |
+|---|---|---|
+| `app.ico` | ウィンドウ・トレイ通常時 | 16/32/48/256px 内包 |
+| `app_warn.ico` | トレイ停止時 | 16/32/48/256px 内包 |
+| `notification.wav` | カスタム通知音（任意） | WAV形式・任意のサイズ |
+
+
 ### カスタム通知音（任意）
 
 `Resources\notification.wav` を配置すると、通知音オン時にそのファイルが再生されます。
@@ -44,44 +48,11 @@ dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
 
 ## YouTube API キーの取得
 
-1. [Google Cloud Console](https://console.developers.google.com) を開く(要Googleアカウント)
+1. [Google Cloud Console](https://console.developers.google.com) を開く
 2. プロジェクトを作成または選択
-
-   <img width="360" height="294" alt="02" src="https://github.com/user-attachments/assets/fa543d34-0c80-4c31-a1fd-5afa4fc80608" />
-
 3. 「APIとサービス」→「ライブラリ」で **YouTube Data API v3** を有効化
-   
-   <img width="461" height="273" alt="03" src="https://github.com/user-attachments/assets/a192a2ff-3cd8-439e-819b-aad039bd7485" />
-
 4. 「認証情報」→「認証情報を作成」→「APIキー」を選択
-   
-   <img width="475" height="380" alt="04" src="https://github.com/user-attachments/assets/b92efd42-760a-4016-b9a5-83df19a4ea65" />
-   <img width="929" height="538" alt="05" src="https://github.com/user-attachments/assets/a6c3dc22-2e08-4d62-96c8-2019dc0140d2" />
-   <img width="556" height="724" alt="06" src="https://github.com/user-attachments/assets/523b5db9-2233-4a40-89c1-bf5807cad311" />
-   <img width="480" height="128" alt="07" src="https://github.com/user-attachments/assets/9cf748e2-6cda-4251-8dd6-fd5e41e7c1e6" />
-   <img width="582" height="535" alt="08" src="https://github.com/user-attachments/assets/5ff1baa3-37cc-4d8f-ae2c-8c7174f51b83" />
-
 5. アプリの「基本設定」画面にAPIキーを貼り付けて保存
-   
-   <img width="477" height="198" alt="09" src="https://github.com/user-attachments/assets/6eaa080a-2304-46d5-8596-035d72b89db6" />
-
----
-
-## チェックするチャンネルを追加
-
-1.チャンネルリストの最下部にある+チャンネルを追加ボタンをクリックする。
-
-2.チャンネル追加ウィンドウ内のチャンネルID/ハンドルID/URLのいずれかを入力して検索
-
-<img width="518" height="189" alt="01" src="https://github.com/user-attachments/assets/eb406d0b-2fa7-4668-bf09-427dcf2487ff" />
-
-3.該当チャンネルのアイコンが左側に表示されるので確認し、問題なければ追加するボタンをクリックしてチャンネルを追加
-
-チャンネルID：チェック対象のチャンネルのTOPから...さらに表示 → チャンネルを共有 → チャンネルのIDをコピー
-
-ハンドルID：チャンネルのTOP画面内に記載されている@から始まる文字列(例：HIKAKIN TV→@HikakinTV)
-
-URL：チャンネルのTOPのURL(例:HIKAKIN TV → https://www.youtube.com/@HikakinTV)
 
 ---
 
@@ -226,7 +197,7 @@ YouTube Data API v3 の無料枠は **10,000ユニット/日**。
 
 ## 変更履歴
 
-### v1.7.1
+### v1.7.2
 - 動作ログからチャンネル名のない行の `[]` 表記を除去
 - 動作ログから時刻表記を除去
 - 種別トグル（動画・Short・ライブ）を編集モード中のみ変更可能に変更
