@@ -60,4 +60,34 @@ public partial class ApiKeySetupWindow : Window
         Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
         e.Handled = true;
     }
+
+    private void RestoreButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title      = "バックアップファイルを選択",
+            Filter     = "ZIPファイル (*.zip)|*.zip",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        var (success, message) = Services.SettingsService.Instance.ImportBackup(dlg.FileName);
+        if (success)
+        {
+            var apiKey = Services.SettingsService.Instance.Settings.ApiKey;
+            if (!string.IsNullOrEmpty(apiKey))
+            {
+                ApiKeySaved = true;
+                Close();
+            }
+            else
+            {
+                System.Windows.MessageBox.Show("復元しましたが APIキーが含まれていませんでした。\n手動で入力してください。");
+            }
+        }
+        else
+        {
+            System.Windows.MessageBox.Show(message);
+        }
+    }
 }

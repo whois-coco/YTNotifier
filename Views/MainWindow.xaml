@@ -926,7 +926,7 @@
                                            Foreground="{DynamicResource TextMutedBrush}"
                                            VerticalAlignment="Center"/>
                                 <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
-                                        Content="💾 バックアップ" Padding="12,6" Width="100"
+                                        Content="💾 バックアップ" Padding="12,6" Width="110"
                                         Click="ExportBackup_Click"/>
                             </Grid>
                             <Grid>
@@ -938,7 +938,7 @@
                                            Foreground="{DynamicResource TextMutedBrush}"
                                            VerticalAlignment="Center"/>
                                 <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
-                                        Content="📂 復元" Padding="12,6" Width="100"
+                                        Content="📂 復元" Padding="12,6" Width="110"
                                         Click="ImportBackup_Click"/>
                             </Grid>
                             <TextBlock x:Name="BackupStatusText" FontSize="11"
