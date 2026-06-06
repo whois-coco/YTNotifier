@@ -14,7 +14,7 @@
 
 ## インストール・設定
 - 以下のドキュメントを参照して下さい。
-- YTNotifier 導入・設定ガイド.pdf
+- [YTNotifier 導入・設定ガイド.pdf](https://github.com/whois-coco/YTNotifier/blob/main/YTNotifier%20%E5%B0%8E%E5%85%A5%E3%83%BB%E8%A8%AD%E5%AE%9A%E3%82%AC%E3%82%A4%E3%83%89.pdf)
 
 ---
 
