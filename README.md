@@ -1,6 +1,14 @@
 # YTNotifier v1.7.2 - YouTube新着動画通知システム
 
-YouTube Data API v3 を利用し、指定チャンネルの新着動画を定期監視・通知する WPF 常駐アプリ。
+指定チャンネルの新着動画を定期監視・通知する WPF 常駐アプリ。
+
+<img width="205" height="336" alt="image" src="https://github.com/user-attachments/assets/91becdc6-5e71-471b-9768-029a0192786e" />
+
+<img width="205" height="336" alt="image" src="https://github.com/user-attachments/assets/d8ec51a1-9561-4949-96a4-48f5d1e23473" />
+
+<img width="170" height="336" alt="image" src="https://github.com/user-attachments/assets/303d3d5d-3fc7-4901-b5b7-a978acb2678c" />
+
+<img width="170" height="336" alt="image" src="https://github.com/user-attachments/assets/e77574f4-e048-430f-bbd2-7845947304a5" />
 
 ---
 
@@ -14,34 +22,13 @@ YouTube Data API v3 を利用し、指定チャンネルの新着動画を定期
 
 ## セットアップ
 
-### 1. ビルド
-
-```bash
-cd YTNotifier
-dotnet restore
-dotnet build
-```
-
-### 2. 発行（Self-Contained）
-
-```bash
-dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
-```
-
-### 3. アイコンの準備
-
-`Resources\` フォルダに以下の2ファイルを用意してください。
-
-| ファイル | 用途 | 推奨サイズ |
-|---|---|---|
-| `app.ico` | ウィンドウ・トレイ通常時 | 16/32/48/256px 内包 |
-| `app_warn.ico` | トレイ停止時 | 16/32/48/256px 内包 |
-| `notification.wav` | カスタム通知音（任意） | WAV形式・任意のサイズ |
-
+- Releaseより最新版を取得してZIPを解凍してご使用下さい。
+- ご自身でビルドを行いたい場合は、VScodeまたはVisual Studioなどをご用意していただき
+- プロジェクトファイルを読み込んでビルドを行って下さい。
 
 ### カスタム通知音（任意）
 
-`Resources\notification.wav` を配置すると、通知音オン時にそのファイルが再生されます。
+`sound\notification.wav` を配置すると、通知音オン時にそのファイルが再生されます。
 ファイルがない場合は Windows のシステム通知音が使用されます。
 
 ---
@@ -49,10 +36,28 @@ dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained
 ## YouTube API キーの取得
 
 1. [Google Cloud Console](https://console.developers.google.com) を開く
-2. プロジェクトを作成または選択
-3. 「APIとサービス」→「ライブラリ」で **YouTube Data API v3** を有効化
-4. 「認証情報」→「認証情報を作成」→「APIキー」を選択
-5. アプリの「基本設定」画面にAPIキーを貼り付けて保存
+2. GoogleアカウントにてGoogle Cloudへログインする。
+<img width="270" height="343" alt="01" src="https://github.com/user-attachments/assets/12f62c60-85d7-4b4d-ba5a-9a25f9a631c7" />
+
+3. プロジェクトを作成または選択
+<img width="650" height="450" alt="02" src="https://github.com/user-attachments/assets/8079777f-2b4a-47ad-a6eb-69a04c08038a" />
+
+<img width="600" height="260" alt="03" src="https://github.com/user-attachments/assets/1c648642-31ff-4839-8e34-996cffe3c359" />
+
+4.「APIとサービス」→「＋APIとサービスを有効にする」を押下し一覧の中からYouTubeカテゴリ、
+   YouTube Data v3をクリックし有効にするボタンをクリックする
+
+<img width="360" height="400" alt="04" src="https://github.com/user-attachments/assets/c1952fc5-6078-4aa4-9957-1359dae7792e" />
+
+<img width="1429" height="657" alt="05" src="https://github.com/user-attachments/assets/53e3513c-7fdc-428a-a660-5ef2c71182c7" />
+
+<img width="922" height="756" alt="06" src="https://github.com/user-attachments/assets/0f25c39d-96a5-4501-8213-81b460c7940f" />
+
+
+
+5. 「認証情報」→「認証情報を作成」→「APIキー」を選択
+
+7. アプリの「基本設定」画面にAPIキーを貼り付けて保存
 
 ---
 
