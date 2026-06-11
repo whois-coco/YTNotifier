@@ -66,7 +66,7 @@ public partial class ApiKeySetupWindow : Window
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
             Title      = "バックアップファイルを選択",
-            Filter     = "ZIPファイル (*.zip)|*.zip",
+            Filter     = "YTNotifierバックアップ (*.ytbk)|*.ytbk|ZIPファイル (*.zip)|*.zip",
             InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
         };
         if (dlg.ShowDialog() != true) return;

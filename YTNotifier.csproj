@@ -6,6 +6,7 @@
     <AssemblyName>YTNotifier</AssemblyName>
     <RootNamespace>YTNotifier</RootNamespace>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -26,6 +27,9 @@
   <ItemGroup>
     <Resource Include="Resources\app.ico" />
     <Resource Include="Resources\app_warn.ico" />
+    <Content Include="Resources\app.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <!-- notification.wav が存在する場合のみ出力フォルダにコピー -->

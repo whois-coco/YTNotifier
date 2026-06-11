@@ -5,12 +5,12 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="YTNotifier" Height="740" Width="980"
-        MinHeight="460" MinWidth="330"
+        MinHeight="500" MinWidth="330"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BackgroundBrush}"
         WindowStyle="None"
         AllowsTransparency="False"
-        ResizeMode="CanResizeWithGrip">
+        ResizeMode="CanResize">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0"
                       ResizeBorderThickness="5"
@@ -242,7 +242,7 @@
         <Grid Grid.Row="1">
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="SidebarColumn" Width="110" MinWidth="0"/>
-            <ColumnDefinition x:Name="ContentColumn" Width="303" MinWidth="303"/>
+            <ColumnDefinition x:Name="ContentColumn" Width="360" MinWidth="360"/>
         </Grid.ColumnDefinitions>
 
         <!-- ===== サイドバー ===== -->
@@ -257,17 +257,17 @@
                         BorderThickness="0,0,0,1">
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="44"/>
+                            <ColumnDefinition x:Name="StatusBadgeColumn" Width="*"/>
+                            <ColumnDefinition Width="0"/>
                         </Grid.ColumnDefinitions>
                         <!-- ステータスバッジ（クリックで監視トグル） -->
                         <Button x:Name="StatusBadge"
                                 Grid.Column="0"
                                 Background="{DynamicResource SidebarStatusBgBrush}"
                                 BorderThickness="0"
-                                Padding="8,5"
-                                Margin="8,0,0,0"
-                                HorizontalAlignment="Left" VerticalAlignment="Center"
+                                Padding="6,4"
+                                Margin="0"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                 Cursor="Hand"
                                 ToolTip="クリックして監視を開始/停止"
                                 Click="MonitorToggleButton_Click">
@@ -277,48 +277,81 @@
                                             Background="{TemplateBinding Background}"
                                             CornerRadius="3"
                                             Padding="{TemplateBinding Padding}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <Ellipse Width="7" Height="7" Margin="0,0,6,0"
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <!-- 監視中アイコン (Eye) -->
+                                            <Viewbox x:Name="IconRunning" Width="20" Height="20"
                                                      VerticalAlignment="Center">
-                                                <Ellipse.Fill>
-                                                    <SolidColorBrush x:Name="StatusDot" Color="#94A3B8"/>
-                                                </Ellipse.Fill>
-                                            </Ellipse>
-                                            <TextBlock x:Name="StatusText" Text="停止中"
-                                                       FontSize="12" FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource SidebarTextBrush}"/>
+                                                <Canvas Width="24" Height="24">
+                                                    <Path Data="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"
+                                                          Stroke="{DynamicResource SuccessBrush}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent"/>
+                                                    <Path Data="M 9 12 A 3 3 0 0 0 15 12 A 3 3 0 0 0 9 12"
+                                                          Stroke="{DynamicResource SuccessBrush}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                            <!-- 停止中アイコン (EyeClosed) -->
+                                            <Viewbox x:Name="IconStopped" Width="20" Height="20"
+                                                     VerticalAlignment="Center"
+                                                     Visibility="Collapsed">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path Data="m15 18-.722-3.25"
+                                                          Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                    <Path Data="M2 8a10.645 10.645 0 0 0 20 0"
+                                                          Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                    <Path Data="m20 15-1.726-2.05"
+                                                          Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                    <Path Data="m4 15 1.726-2.05"
+                                                          Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                    <Path Data="m9 18 .722-3.25"
+                                                          Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                            <!-- オフラインアイコン (WifiOff) -->
+                                            <Viewbox x:Name="IconOffline" Width="20" Height="20"
+                                                     VerticalAlignment="Center"
+                                                     Visibility="Collapsed">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path Data="M2 2l20 20"
+                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                    <Path Data="M8.5 16.5a5 5 0 0 1 7 0"
+                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                    <Path Data="M2 8.82a15 15 0 0 1 4.17-2.65"
+                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                    <Path Data="M10.66 5c4.01-.36 8.14.9 11.34 3.76"
+                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                    <Path Data="M16.85 11.25a10 10 0 0 1 2.22 1.68"
+                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                    <Path Data="M5 12.85a10 10 0 0 1 5.17-2.39"
+                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                    <Path Data="M12 20h.01"
+                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                            <TextBlock x:Name="StatusText"
+                                                       Text="停止中"
+                                                       FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource SidebarTextBrush}"
+                                                       VerticalAlignment="Center"
+                                                       Margin="6,0,0,0"
+                                                       Visibility="Collapsed"/>
                                         </StackPanel>
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
                                             <Setter TargetName="Bd" Property="Opacity" Value="0.8"/>
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Button.Template>
-                        </Button>
-                        <!-- 折り畳みボタン: 常に右端44px列の中央 -->
-                        <Button x:Name="SidebarToggleButton"
-                                Grid.Column="1"
-                                Click="SidebarToggle_Click"
-                                Width="44" Height="48"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                Cursor="Hand"
-                                ToolTip="メニューを折り畳む">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Border x:Name="Bd" Background="Transparent">
-                                        <TextBlock x:Name="ToggleIcon" Text="◀"
-                                                   FontSize="10"
-                                                   Foreground="{DynamicResource SidebarTextBrush}"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"/>
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Bd" Property="Background"
-                                                    Value="{DynamicResource SidebarHoverBrush}"/>
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
@@ -332,36 +365,160 @@
                         BorderBrush="{DynamicResource SidebarBorderBrush}"
                         BorderThickness="0,1,0,0">
                     <StackPanel>
-                        <!-- ミュートボタン -->
-                        <Button x:Name="MuteButton"
-                                Width="44" Height="44"
+                        <Button x:Name="SidebarToggleButton"
+                                Height="44"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 Cursor="Hand"
                                 HorizontalAlignment="Left"
-                                ToolTip="ミュート: OFF"
-                                Click="MuteButton_Click">
+                                ToolTip="折り畳む"
+                                Click="SidebarToggle_Click">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
-                                    <Border x:Name="Bd" Background="Transparent"
-                                            Width="44" Height="44">
-                                        <TextBlock x:Name="MuteIcon" Text="🔔"
-                                                   FontSize="15"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"/>
+                                    <Border x:Name="Bd" Background="Transparent" Height="44" Padding="10,0,10,0">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Viewbox Width="24" Height="24" VerticalAlignment="Center">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path x:Name="CollapseIcon"
+                                                          Stroke="{DynamicResource SidebarTextBrush}"
+                                                          StrokeThickness="2" StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                          Fill="Transparent"
+                                                          Data="m11 17-5-5 5-5 M18 17l-5-5 5-5"/>
+                                                    <Path x:Name="ExpandToggleIcon"
+                                                          Stroke="{DynamicResource SidebarTextBrush}"
+                                                          StrokeThickness="2" StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                          Fill="Transparent"
+                                                          Visibility="Collapsed"
+                                                          Data="m6 17 5-5-5-5 M13 17l5-5-5-5"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                            <TextBlock x:Name="LblSidebarToggleButton" Text="折り畳む" FontSize="12"
+                                                       Foreground="{DynamicResource SidebarTextBrush}"
+                                                       VerticalAlignment="Center" Margin="10,0,0,0"
+                                                       Visibility="Collapsed"/>
+                                        </StackPanel>
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Bd" Property="Background"
-                                                    Value="{DynamicResource SidebarHoverBrush}"/>
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
                             </Button.Template>
                         </Button>
-                        <!-- コンパクトモードボタン -->
+                        <Border Height="1" Background="{DynamicResource SidebarBorderBrush}" Margin="8,0"/>
+                        <Button x:Name="NavSettings"
+                                Height="44"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                HorizontalAlignment="Left"
+                                ToolTip="設定"
+                                Click="Nav_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Grid x:Name="Bd" Height="44">
+                                        <Border x:Name="BdBg" Background="Transparent"/>
+                                        <Border x:Name="SelectorBar" Width="3" HorizontalAlignment="Left"
+                                                Background="Transparent" CornerRadius="0,2,2,0"/>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,10,0">
+                                            <Viewbox Width="24" Height="24" VerticalAlignment="Center">
+                                                <Canvas Width="24" Height="24">
+                                                <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent" Data="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/>
+                                                <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent" Data="M 9 12 A 3 3 0 0 0 15 12 A 3 3 0 0 0 9 12"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                            <TextBlock x:Name="LblNavSettings" Text="設定" FontSize="12"
+                                                       Foreground="{DynamicResource SidebarTextBrush}"
+                                                       VerticalAlignment="Center" Margin="10,0,0,0"
+                                                       Visibility="Collapsed"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="BdBg" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <Border Height="1" Background="{DynamicResource SidebarBorderBrush}" Margin="8,0"/>
+                        <Button x:Name="MuteButton"
+                                Height="44"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                HorizontalAlignment="Left"
+                                ToolTip="通知ミュート: OFF"
+                                Click="MuteButton_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" Background="Transparent" Height="44" Padding="10,0,10,0">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Viewbox Width="24" Height="24" VerticalAlignment="Center">
+                                                <Canvas Width="24" Height="24">
+                                                    <!-- OFF時: bell アイコン -->
+                                                    <Path x:Name="BellIcon"
+                                                          Stroke="{DynamicResource SidebarTextBrush}"
+                                                          StrokeThickness="2" StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                          Fill="Transparent"
+                                                          Data="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+                                                    <Path x:Name="BellIcon2"
+                                                          Stroke="{DynamicResource SidebarTextBrush}"
+                                                          StrokeThickness="2" StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round"
+                                                          Fill="Transparent"
+                                                          Data="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+                                                    <!-- ON時: bell-off アイコン（赤） -->
+                                                    <Path x:Name="BellOffIcon"
+                                                          Stroke="{DynamicResource ErrorBrush}"
+                                                          StrokeThickness="2" StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                          Fill="Transparent"
+                                                          Visibility="Collapsed"
+                                                          Data="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/>
+                                                    <Path x:Name="BellOffIcon2"
+                                                          Stroke="{DynamicResource ErrorBrush}"
+                                                          StrokeThickness="2" StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                          Fill="Transparent"
+                                                          Visibility="Collapsed"
+                                                          Data="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/>
+                                                    <Path x:Name="BellOffIcon3"
+                                                          Stroke="{DynamicResource ErrorBrush}"
+                                                          StrokeThickness="2" StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round"
+                                                          Fill="Transparent"
+                                                          Visibility="Collapsed"
+                                                          Data="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+                                                    <Path x:Name="BellOffIcon4"
+                                                          Stroke="{DynamicResource ErrorBrush}"
+                                                          StrokeThickness="2" StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round"
+                                                          Fill="Transparent"
+                                                          Visibility="Collapsed"
+                                                          Data="m2 2 20 20"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                            <TextBlock x:Name="LblMuteButton" Text="通知ミュート" FontSize="12"
+                                                       Foreground="{DynamicResource SidebarTextBrush}"
+                                                       VerticalAlignment="Center" Margin="10,0,0,0"
+                                                       Visibility="Collapsed"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
                         <Button x:Name="CompactModeButton"
-                                Width="44" Height="44"
+                                Height="44"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 Cursor="Hand"
@@ -370,25 +527,30 @@
                                 Click="CompactModeButton_Click">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
-                                    <Border x:Name="Bd" Background="Transparent"
-                                            Width="44" Height="44">
-                                        <TextBlock x:Name="CompactIcon" Text="⊟"
-                                                   FontSize="16"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"/>
+                                    <Border x:Name="Bd" Background="Transparent" Height="44" Padding="10,0,10,0">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Viewbox Width="24" Height="24" VerticalAlignment="Center">
+                                                <Canvas x:Name="CompactIconCanvas" Width="24" Height="24">
+                                                <Path x:Name="ExpandIcon" Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent" Data="M15 15 L21 21 M15 9 L21 3 M21 16 L21 21 L16 21 M21 8 L21 3 L16 3 M3 16 L3 21 L8 21 M3 21 L9 15 M3 8 L3 3 L8 3 M9 9 L3 3"/>
+                                                <Path x:Name="ShrinkIcon" Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent" Visibility="Collapsed" Data="M15 15 L21 21 M15 15 L15 19.8 M15 15 L19.8 15 M9 19.8 L9 15 M9 15 L4.2 15 M9 15 L3 21 M15 4.2 L15 9 M15 9 L19.8 9 M15 9 L21 3 M9 4.2 L9 9 M9 9 L4.2 9 M9 9 L3 3"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                            <TextBlock x:Name="LblCompactModeButton" Text="コンパクト" FontSize="12"
+                                                       Foreground="{DynamicResource SidebarTextBrush}"
+                                                       VerticalAlignment="Center" Margin="10,0,0,0"
+                                                       Visibility="Collapsed"/>
+                                        </StackPanel>
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Bd" Property="Background"
-                                                    Value="{DynamicResource SidebarHoverBrush}"/>
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
                             </Button.Template>
                         </Button>
-                        <!-- ピンボタン -->
                         <Button x:Name="PinButton"
-                                Width="44" Height="44"
+                                Height="44"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 Cursor="Hand"
@@ -396,17 +558,22 @@
                                 Click="PinButton_Click">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
-                                    <Border x:Name="Bd" Background="Transparent"
-                                            Width="44" Height="44">
-                                        <TextBlock x:Name="PinIcon" Text="⚲"
-                                                   FontSize="18"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"/>
+                                    <Border x:Name="Bd" Background="Transparent" Height="44" Padding="10,0,10,0">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Viewbox Width="24" Height="24" VerticalAlignment="Center">
+                                                <Canvas Width="24" Height="24">
+                                                <Path x:Name="PinIcon" Data="M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                            <TextBlock x:Name="LblPinButton" Text="ピン留め" FontSize="12"
+                                                       Foreground="{DynamicResource SidebarTextBrush}"
+                                                       VerticalAlignment="Center" Margin="10,0,0,0"
+                                                       Visibility="Collapsed"/>
+                                        </StackPanel>
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Bd" Property="Background"
-                                                    Value="{DynamicResource SidebarHoverBrush}"/>
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
@@ -422,16 +589,46 @@
                                    Foreground="{DynamicResource SidebarSectionBrush}"
                                    Margin="16,0,0,6"/>
                     </Border>
-                    <Button x:Name="NavWatch" Tag="📋" Content="チャンネル"
-                            Style="{StaticResource NavButtonActive}"
-                            Click="Nav_Click"/>
+                    <Button x:Name="NavWatch"
+                            Height="44"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            HorizontalAlignment="Left"
+                            ToolTip="チャンネル"
+                            Click="Nav_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Grid x:Name="Bd" Height="44">
+                                    <Border x:Name="BdBg" Background="Transparent"/>
+                                    <Border x:Name="SelectorBar" Width="3" HorizontalAlignment="Left"
+                                            Background="Transparent" CornerRadius="0,2,2,0"/>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,10,0">
+                                        <Viewbox x:Name="NavWatchIcon" Width="24" Height="24" VerticalAlignment="Center">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent" Data="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                                                <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent" Data="M8 2h8a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/>
+                                                <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent" Data="M12 11h4"/>
+                                                <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent" Data="M12 16h4"/>
+                                                <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent" Data="M8 11h.01"/>
+                                                <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent" Data="M8 16h.01"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                        <TextBlock x:Name="LblNavWatch" Text="チャンネル" FontSize="12"
+                                                   Foreground="{DynamicResource SidebarTextBrush}"
+                                                   VerticalAlignment="Center" Margin="10,0,0,0"
+                                                   Visibility="Collapsed"/>
+                                    </StackPanel>
+                                </Grid>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="BdBg" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
 
-                    <Button x:Name="NavLog" Tag="📝" Content="動作ログ"
-                            Style="{StaticResource NavButton}"
-                            Click="Nav_Click"/>
-                    <Button x:Name="NavSettings" Tag="⚙" Content="基本設定"
-                            Style="{StaticResource NavButton}"
-                            Click="Nav_Click"/>
                 </StackPanel>
 
                 <!-- 区切りと ActionsLabel は不要になったが折り畳み制御のため残す -->
@@ -451,7 +648,7 @@
         <!-- ===== メインコンテンツ ===== -->
         <Grid Grid.Column="1" Background="{DynamicResource BackgroundBrush}">
 
-            <!-- チャンネルリスト -->
+            <!-- チャンネル一覧 -->
             <DockPanel x:Name="PageWatch" Margin="24,20">
 
                 <!-- ページヘッダー -->
@@ -466,9 +663,37 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="チャンネルリスト" FontSize="18" FontWeight="Bold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"
-                                       TextTrimming="CharacterEllipsis"/>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Viewbox Width="20" Height="20" Margin="0,0,8,0" VerticalAlignment="Center">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Stroke="{DynamicResource TextPrimaryBrush}"
+                                              StrokeThickness="2" StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                              Fill="Transparent"
+                                              Data="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                                        <Path Stroke="{DynamicResource TextPrimaryBrush}"
+                                              StrokeThickness="2" StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                              Fill="Transparent"
+                                              Data="M8 2h8a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/>
+                                        <Path Stroke="{DynamicResource TextPrimaryBrush}"
+                                              StrokeThickness="2" StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round" Fill="Transparent" Data="M12 11h4"/>
+                                        <Path Stroke="{DynamicResource TextPrimaryBrush}"
+                                              StrokeThickness="2" StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round" Fill="Transparent" Data="M12 16h4"/>
+                                        <Path Stroke="{DynamicResource TextPrimaryBrush}"
+                                              StrokeThickness="2" StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round" Fill="Transparent" Data="M8 11h.01"/>
+                                        <Path Stroke="{DynamicResource TextPrimaryBrush}"
+                                              StrokeThickness="2" StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round" Fill="Transparent" Data="M8 16h.01"/>
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Text="チャンネル一覧" FontSize="18" FontWeight="Bold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
                             <TextBlock x:Name="ChannelCountText" Text="0 チャンネル"
                                        FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"
@@ -476,23 +701,113 @@
                         </StackPanel>
                         <Button x:Name="InlineCheckButton"
                                 Grid.Column="1"
-                                Content="🔄"
-                                FontSize="15"
                                 Style="{StaticResource SecondaryButton}"
                                 Padding="10,6"
+                                Height="32"
                                 Margin="0,0,6,0"
                                 VerticalAlignment="Center"
                                 ToolTip="今すぐチェック"
-                                Click="ManualCheckButton_Click"/>
+                                Click="ManualCheckButton_Click">
+                            <Viewbox Width="16" Height="16">
+                                <Canvas Width="24" Height="24">
+                                    <Path Data="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="2" StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Fill="Transparent"/>
+                                    <Path Data="M21 3v5h-5"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="2" StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Fill="Transparent"/>
+                                    <Path Data="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="2" StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Fill="Transparent"/>
+                                    <Path Data="M8 16H3v5"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="2" StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Fill="Transparent"/>
+                                </Canvas>
+                            </Viewbox>
+                        </Button>
                         <Button x:Name="EditModeButton"
                                 Grid.Column="2"
                                 Content="✏"
                                 FontSize="15"
                                 Style="{StaticResource SecondaryButton}"
                                 Padding="10,6"
+                                Height="32"
                                 VerticalAlignment="Center"
                                 ToolTip="編集"
                                 Click="EditModeButton_Click"/>
+                    </Grid>
+                </Border>
+
+                <!-- チャンネル検索 -->
+                <Border DockPanel.Dock="Top" Margin="0,0,0,10"
+                        Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="4">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="24"/>
+                        </Grid.ColumnDefinitions>
+                        <!-- 入力欄 -->
+                        <Grid Grid.Column="0">
+                            <TextBox x:Name="ChannelSearchBox"
+                                     Background="Transparent"
+                                     Foreground="{DynamicResource TextPrimaryBrush}"
+                                     BorderThickness="0"
+                                     Padding="8,5,0,5"
+                                     FontSize="12"
+                                     CaretBrush="Black"
+                                     VerticalAlignment="Center"
+                                     KeyDown="ChannelSearchBox_KeyDown"
+                                     TextChanged="ChannelSearchBox_TextChanged"
+                                     GotFocus="ChannelSearchBox_GotFocus"
+                                     LostFocus="ChannelSearchBox_LostFocus"/>
+                            <TextBlock x:Name="SearchPlaceholder"
+                                       Text="チャンネルを検索..." FontSize="12"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Margin="8,0,0,0" VerticalAlignment="Center"
+                                       IsHitTestVisible="False"/>
+                        </Grid>
+                        <!-- 虫眼鏡 / × ボタン -->
+                        <Button x:Name="SearchButton" Grid.Column="1"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Width="24" Height="24"
+                                Background="Transparent" BorderThickness="0"
+                                Cursor="Hand" ToolTip="検索"
+                                Click="SearchButton_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" Background="Transparent" CornerRadius="3">
+                                        <!-- 虫眼鏡アイコン -->
+                                        <Viewbox x:Name="SearchIcon" Width="13" Height="13">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Data="M11 3a8 8 0 1 0 0 16A8 8 0 0 0 11 3z"
+                                                      Stroke="{DynamicResource TextMutedBrush}"
+                                                      StrokeThickness="2" Fill="Transparent"/>
+                                                <Path Data="m21 21-4.35-4.35"
+                                                      Stroke="{DynamicResource TextMutedBrush}"
+                                                      StrokeThickness="2" StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round" Fill="Transparent"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background"
+                                                    Value="{DynamicResource HoverBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
                     </Grid>
                 </Border>
 
@@ -505,7 +820,7 @@
                         FontSize="13"
                         Click="AddChannelHeader_Click"/>
 
-                <!-- チャンネルリスト -->
+                <!-- チャンネル一覧 -->
                 <Grid>
                     <Border x:Name="EmptyState" Visibility="Collapsed" Panel.ZIndex="1">
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -585,93 +900,50 @@
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </ScrollViewer.Template>
-                        <StackPanel x:Name="ChannelList" HorizontalAlignment="Stretch"/>
+                        <Grid>
+                            <!-- オフライン時の表示 -->
+                            <StackPanel x:Name="OfflinePanel" Visibility="Collapsed"
+                                        VerticalAlignment="Center" HorizontalAlignment="Center"
+                                        Margin="0,60,0,0">
+                                <Viewbox Width="40" Height="40" Margin="0,0,0,12"
+                                         HorizontalAlignment="Center">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Data="M2 2l20 20"
+                                              Stroke="#EF4444" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                        <Path Data="M8.5 16.5a5 5 0 0 1 7 0"
+                                              Stroke="#EF4444" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                        <Path Data="M2 8.82a15 15 0 0 1 4.17-2.65"
+                                              Stroke="#EF4444" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                        <Path Data="M10.66 5c4.01-.36 8.14.9 11.34 3.76"
+                                              Stroke="#EF4444" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                        <Path Data="M16.85 11.25a10 10 0 0 1 2.22 1.68"
+                                              Stroke="#EF4444" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                        <Path Data="M5 12.85a10 10 0 0 1 5.17-2.39"
+                                              Stroke="#EF4444" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                        <Path Data="M12 20h.01"
+                                              Stroke="#EF4444" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Text="インターネット接続がありません。"
+                                           FontSize="12" TextWrapping="Wrap"
+                                           TextAlignment="Center"
+                                           Foreground="#EF4444"
+                                           HorizontalAlignment="Center"/>
+                            </StackPanel>
+                            <StackPanel x:Name="ChannelList" HorizontalAlignment="Stretch"/>
+                        </Grid>
                     </ScrollViewer>
                 </Grid>
             </DockPanel>
 
-            <!-- 動作ログ -->
-            <Grid x:Name="PageLog" Visibility="Collapsed" Margin="24,20">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*" MinHeight="100"/>
-                </Grid.RowDefinitions>
-
-                <!-- ヘッダー Row=0 -->
-                <Border Grid.Row="0"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="0,0,0,1"
-                        Padding="0,0,0,16" Margin="0,0,0,16">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="動作ログ" FontSize="20" FontWeight="Bold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            <TextBlock Text="リアルタイム監視ログ" FontSize="12"
-                                       Foreground="{DynamicResource TextMutedBrush}"
-                                       Margin="0,2,0,0"/>
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal"
-                                    VerticalAlignment="Bottom">
-                            <Button Style="{StaticResource SecondaryButton}"
-                                    Click="ClearLog_Click" Padding="10,7"
-                                    Content="🗑 クリア"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <!-- 動作ログ本体 Row=1 -->
-                <Border Grid.Row="1"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1" CornerRadius="4">
-                    <Border Background="{DynamicResource LogBackgroundBrush}" CornerRadius="4">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14">
-                            <ItemsControl x:Name="LogList">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid Margin="0,3">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="52"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Border Grid.Column="0" CornerRadius="2"
-                                                    Padding="5,1" Margin="0,0,6,0"
-                                                    VerticalAlignment="Center">
-                                                <Border.Background>
-                                                    <SolidColorBrush Color="{Binding LevelColor, Mode=OneWay}"/>
-                                                </Border.Background>
-                                                <TextBlock Text="{Binding LevelText, Mode=OneWay}"
-                                                           FontSize="9" FontWeight="Bold"
-                                                           Foreground="White"
-                                                           HorizontalAlignment="Center"/>
-                                            </Border>
-                                            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                                <TextBlock FontFamily="Cascadia Code, Consolas"
-                                                           FontSize="11"
-                                                           Foreground="{DynamicResource PrimaryBrush}"
-                                                           Text="{Binding ChannelNameFormatted, Mode=OneWay}"
-                                                           VerticalAlignment="Center"/>
-                                                <TextBlock FontFamily="Cascadia Code, Consolas"
-                                                           FontSize="11"
-                                                           Foreground="{DynamicResource LogTextBrush}"
-                                                           Text="{Binding Message, Mode=OneWay}"
-                                                           VerticalAlignment="Center"
-                                                           TextWrapping="Wrap"/>
-                                            </StackPanel>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
-                    </Border>
-                </Border>
-
-            </Grid><!-- PageLog -->
-
-            <!-- 基本設定 -->
+            <!-- 設定 -->
             <Grid x:Name="PageSettings" Visibility="Collapsed">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -684,8 +956,23 @@
                         BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="0,0,0,1"
                         Padding="24,20,24,16">
-                    <TextBlock Text="基本設定" FontSize="20" FontWeight="Bold"
-                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Viewbox Width="20" Height="20" Margin="0,0,8,0" VerticalAlignment="Center">
+                            <Canvas Width="24" Height="24">
+                                <Path Stroke="{DynamicResource TextPrimaryBrush}"
+                                      StrokeThickness="2" StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Fill="Transparent"
+                                      Data="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/>
+                                <Path Stroke="{DynamicResource TextPrimaryBrush}"
+                                      StrokeThickness="2" StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" Fill="Transparent"
+                                      Data="M 9 12 A 3 3 0 0 0 15 12 A 3 3 0 0 0 9 12"/>
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock Text="設定" FontSize="20" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </StackPanel>
                 </Border>
 
                 <!-- サブナビゲーション（横向き） -->
@@ -720,17 +1007,17 @@
                                 BorderBrush="Transparent"
                                 BorderThickness="0,0,0,2"
                                 MouseLeftButtonUp="SettingsNavBorder_Click">
-                            <TextBlock Text="ログ" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock Text="ログフィルタ" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        VerticalAlignment="Center"/>
                         </Border>
-                        <Border x:Name="SettingsNavApi"
+                        <Border x:Name="SettingsNavActivityLog"
                                 Padding="16,0" Cursor="Hand"
                                 Background="Transparent"
                                 BorderBrush="Transparent"
                                 BorderThickness="0,0,0,2"
                                 MouseLeftButtonUp="SettingsNavBorder_Click">
-                            <TextBlock Text="API" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock Text="動作ログ" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        VerticalAlignment="Center"/>
                         </Border>
@@ -751,38 +1038,11 @@
                 <Grid Grid.Row="2">
 
                     <!-- API -->
-                    <ScrollViewer x:Name="SettingsPageApi" Visibility="Collapsed"
+<!-- 監視 -->
+                    <ScrollViewer x:Name="SettingsPageMonitor" Style="{StaticResource SlimScrollViewer}" Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto" Margin="20,16">
                         <StackPanel>
-                            <TextBlock Text="APIキー" Style="{StaticResource FieldLabel}" Margin="0,0,0,6"/>
-                            <Grid Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBox x:Name="ApiKeyBox" Grid.Column="0"
-                                         Style="{StaticResource ModernTextBox}"
-                                         IsReadOnly="True" TextAlignment="Center"
-                                         Margin="0,0,8,0"/>
-                                <Button x:Name="SaveApiKeyButton" Grid.Column="1"
-                                        Style="{StaticResource PrimaryButton}"
-                                        Content="保存" Padding="12,8"
-                                        Click="SaveApiKey_Click"/>
-                            </Grid>
-                            <TextBlock FontSize="12" Foreground="{DynamicResource TextMutedBrush}">
-                                <Hyperlink RequestNavigate="ApiKeyLink_Click"
-                                           NavigateUri="https://console.developers.google.com">
-                                    Google Cloud Console でAPIキーを取得 →
-                                </Hyperlink>
-                            </TextBlock>
-                        </StackPanel>
-                    </ScrollViewer>
-
-                    <!-- 監視 -->
-                    <ScrollViewer x:Name="SettingsPageMonitor" Visibility="Collapsed"
-                                  VerticalScrollBarVisibility="Auto" Margin="20,16">
-                        <StackPanel>
-                            <Grid Margin="0,0,0,8">
+                            <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="160"/>
@@ -802,28 +1062,20 @@
                                     <ComboBoxItem Content="60分" Tag="60" Style="{StaticResource ModernComboBoxItem}"/>
                                 </ComboBox>
                             </Grid>
-                            <Border Background="{DynamicResource SurfaceAltBrush}"
-                                    BorderBrush="{DynamicResource BorderBrush}"
-                                    BorderThickness="1" CornerRadius="4"
-                                    Padding="10,8" Margin="0,0,0,12">
-                                <TextBlock x:Name="QuotaInfoText" FontSize="12"
-                                           Text="推定消費量: 計算中..."
-                                           Foreground="{DynamicResource TextMutedBrush}"/>
-                            </Border>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="デスクトップ通知" FontSize="12" FontWeight="SemiBold"
+                                <TextBlock Text="プレミア/ライブ待機所通知" FontSize="12" FontWeight="SemiBold"
                                            Foreground="{DynamicResource TextPrimaryBrush}"
                                            VerticalAlignment="Center"/>
-                                <CheckBox x:Name="NotificationToggle" Grid.Column="1"
+                                <CheckBox x:Name="GlobalNotifyUpcomingToggle" Grid.Column="1"
                                           Style="{StaticResource ToggleSwitch}"
                                           VerticalAlignment="Center"
-                                          Checked="NotificationToggle_Changed"
-                                          Unchecked="NotificationToggle_Changed"/>
+                                          Checked="GlobalNotifyUpcomingToggle_Changed"
+                                          Unchecked="GlobalNotifyUpcomingToggle_Changed"/>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
                             <Grid>
@@ -846,6 +1098,40 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
+                                <TextBlock Text="デスクトップ通知" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <CheckBox x:Name="NotificationToggle" Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          VerticalAlignment="Center"
+                                          Checked="NotificationToggle_Changed"
+                                          Unchecked="NotificationToggle_Changed"/>
+                            </Grid>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="通知スタイル" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox x:Name="ToastStyleComboBox" Grid.Column="1"
+                                          Width="160"
+                                          Style="{StaticResource ModernComboBox}"
+                                          SelectionChanged="ToastStyleComboBox_Changed">
+                                    <ComboBoxItem Content="デフォルト通知" Tag="Standard"
+                                                  Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="サムネイル通知" Tag="Thumbnail"
+                                                  Style="{StaticResource ModernComboBoxItem}"/>
+                                </ComboBox>
+                            </Grid>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Text="通知テスト" FontSize="12" FontWeight="SemiBold"
                                            Foreground="{DynamicResource TextPrimaryBrush}"
                                            VerticalAlignment="Center"/>
@@ -854,13 +1140,106 @@
                                         VerticalAlignment="Center"
                                         Click="TestNotification_Click"/>
                             </Grid>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <Border Background="{DynamicResource SurfaceAltBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="4"
+                                    Padding="10,8" Margin="0,0,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="API使用量(%)" FontSize="11"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="0,0,0,6"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border x:Name="QuotaBarBg" Grid.Column="0"
+                                                Background="{DynamicResource SurfaceElevatedBrush}"
+                                                CornerRadius="4" Height="10"
+                                                VerticalAlignment="Center">
+                                            <Grid HorizontalAlignment="Left">
+                                                <Border x:Name="QuotaBar"
+                                                        CornerRadius="4" Height="10" Width="0"
+                                                        MinWidth="0"/>
+                                            </Grid>
+                                        </Border>
+                                        <TextBlock x:Name="QuotaPercentText" Grid.Column="1"
+                                                   FontSize="11" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="8,0,0,0"
+                                                   Foreground="{DynamicResource TextMutedBrush}"/>
+                                    </Grid>
+                                    <TextBlock x:Name="QuotaInfoText" FontSize="10"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="0,4,0,0"/>
+                                    <!-- 当日実使用量 -->
+                                    <TextBlock Text="本日の実使用量(%)" FontSize="11"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="0,10,0,6"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border x:Name="ActualQuotaBarBg" Grid.Column="0"
+                                                Background="{DynamicResource SurfaceElevatedBrush}"
+                                                CornerRadius="4" Height="10"
+                                                VerticalAlignment="Center">
+                                            <Grid HorizontalAlignment="Left">
+                                                <Border x:Name="ActualQuotaBar"
+                                                        CornerRadius="4" Height="10" Width="0"
+                                                        MinWidth="0"/>
+                                            </Grid>
+                                        </Border>
+                                        <TextBlock x:Name="ActualQuotaPercentText" Grid.Column="1"
+                                                   FontSize="11" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="8,0,0,0"
+                                                   Foreground="{DynamicResource TextMutedBrush}"/>
+                                    </Grid>
+                                    <TextBlock x:Name="ActualQuotaInfoText" FontSize="10"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
 
                     <!-- アプリ -->
-                    <ScrollViewer x:Name="SettingsPageApp"
+                    <ScrollViewer x:Name="SettingsPageApp" Style="{StaticResource SlimScrollViewer}" Visibility="Visible"
                                   VerticalScrollBarVisibility="Auto" Margin="20,16">
                         <StackPanel>
+                            <!-- APIキー -->
+                            <TextBlock Text="APIキー" Style="{StaticResource FieldLabel}" Margin="0,0,0,6"/>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="ApiKeyBox" Grid.Column="0"
+                                         Style="{StaticResource ModernTextBox}"
+                                         IsReadOnly="True" TextAlignment="Center"
+                                         FontSize="11"
+                                         Padding="8,4"
+                                         Margin="0,0,8,0"
+                                         Background="{DynamicResource SurfaceAltBrush}"
+                                         Foreground="{DynamicResource TextMutedBrush}"/>
+                                <Button x:Name="SaveApiKeyButton" Grid.Column="1"
+                                        Style="{StaticResource PrimaryButton}"
+                                        Content="保存" Padding="12,5"
+                                        FontSize="11"
+                                        Click="SaveApiKey_Click"/>
+                            </Grid>
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,0">
+                                <Hyperlink RequestNavigate="ApiKeyLink_Click"
+                                           NavigateUri="https://console.developers.google.com">
+                                    Google Cloud Console でAPIキーを取得 →
+                                </Hyperlink>
+                            </TextBlock>
+                            <Separator Style="{StaticResource HorizontalSeparator}" Margin="0,12,0,8"/>
+                            <!-- アプリ設定 -->
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -947,19 +1326,68 @@
                         </StackPanel>
                     </ScrollViewer>
 
-                    <!-- ログ -->
-                    <ScrollViewer x:Name="SettingsPageLog" Visibility="Collapsed"
+                    <!-- ログフィルタ + 動作ログ -->
+                    <ScrollViewer x:Name="SettingsPageLog" Style="{StaticResource SlimScrollViewer}" Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto" Margin="20,16">
                         <StackPanel>
-                            <Border Background="{DynamicResource SurfaceAltBrush}"
-                                    BorderBrush="{DynamicResource BorderBrush}"
-                                    BorderThickness="1" CornerRadius="4"
-                                    Padding="12,10" Margin="0,0,0,12">
-                                <TextBlock x:Name="LogStatsText"
-                                           Text="ログ情報を読み込み中..."
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
-                            </Border>
+                            <!-- ログ表示フィルター -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="新着なし" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <CheckBox x:Name="LogShowNoNewToggle" Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          VerticalAlignment="Center"
+                                          Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
+                            </Grid>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="新着あり" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <CheckBox x:Name="LogShowNewFoundToggle" Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          VerticalAlignment="Center"
+                                          Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
+                            </Grid>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="チェックエラー" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <CheckBox x:Name="LogShowCheckErrorToggle" Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          VerticalAlignment="Center"
+                                          Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
+                            </Grid>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="通知送信" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <CheckBox x:Name="LogShowNotifyToggle" Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          VerticalAlignment="Center"
+                                          Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
+                            </Grid>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+
                             <Grid Margin="0,0,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -994,15 +1422,15 @@
                                     <ComboBoxItem Content="無制限" Tag="-1" Style="{StaticResource ModernComboBoxItem}"/>
                                 </ComboBox>
                             </Grid>
+                            <TextBlock x:Name="LogCleanResultText" FontSize="11"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Margin="0,0,0,6" Text=""/>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="LogCleanResultText" FontSize="11"
-                                           Foreground="{DynamicResource TextMutedBrush}"
-                                           VerticalAlignment="Center" Text=""/>
                                 <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
                                         Content="🗑 削除実行" Padding="14,7"
                                         Margin="0,0,8,0" VerticalAlignment="Center"
@@ -1012,17 +1440,91 @@
                                         VerticalAlignment="Center"
                                         Click="OpenLogFolder_Click"/>
                             </Grid>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <Border Background="{DynamicResource SurfaceAltBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="4"
+                                    Padding="12,10" Margin="0,0,0,0">
+                                <TextBlock x:Name="LogStatsText"
+                                           Text="ログ情報を読み込み中..."
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
 
+                    <!-- 動作ログ -->
+                    <Grid x:Name="SettingsPageActivityLog" Visibility="Collapsed" Margin="20,16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="動作ログ" FontSize="20" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
+                                    Click="ClearLog_Click" Padding="10,7"
+                                    Content="🗑 クリア"/>
+                        </Grid>
+                        <Border Grid.Row="1"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="4">
+                            <Border Background="{DynamicResource LogBackgroundBrush}" CornerRadius="4">
+                                <ScrollViewer x:Name="LogScrollViewer" VerticalScrollBarVisibility="Auto" Padding="14">
+                                    <ItemsControl x:Name="LogList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,3">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="52"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" CornerRadius="2"
+                                                            Padding="5,1" Margin="0,0,6,0"
+                                                            VerticalAlignment="Center">
+                                                        <Border.Background>
+                                                            <SolidColorBrush Color="{Binding LevelColor, Mode=OneWay}"/>
+                                                        </Border.Background>
+                                                        <TextBlock Text="{Binding LevelText, Mode=OneWay}"
+                                                                   FontSize="9" FontWeight="Bold"
+                                                                   Foreground="White"
+                                                                   HorizontalAlignment="Center"/>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                        <TextBlock FontFamily="Cascadia Code, Consolas"
+                                                                   FontSize="11"
+                                                                   Foreground="{DynamicResource PrimaryBrush}"
+                                                                   Text="{Binding ChannelNameFormatted, Mode=OneWay}"
+                                                                   VerticalAlignment="Center"/>
+                                                        <TextBlock FontFamily="Cascadia Code, Consolas"
+                                                                   FontSize="11"
+                                                                   Foreground="{DynamicResource LogTextBrush}"
+                                                                   Text="{Binding Message, Mode=OneWay}"
+                                                                   VerticalAlignment="Center"
+                                                                   TextWrapping="Wrap"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Border>
+                        </Border>
+                    </Grid>
+
                     <!-- ABOUT -->
-                    <ScrollViewer x:Name="SettingsPageAbout" Visibility="Collapsed"
+                    <ScrollViewer x:Name="SettingsPageAbout" Style="{StaticResource SlimScrollViewer}" Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto" Margin="20,16">
                         <StackPanel>
                             <TextBlock Text="YTNotifier" FontSize="20" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,4"/>
-                            <TextBlock Text="v1.7.2" FontSize="13"
+                            <TextBlock Text="v1.8.0" FontSize="13"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,0,0,12"/>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
@@ -1035,6 +1537,14 @@
                             <TextBlock Text="Created by Coco" FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,2,0,0"/>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <Button x:Name="OpenDebugWindowBtn"
+                                    Content="🛠 開発者ツールを開く"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Padding="12,6" FontSize="11"
+                                    HorizontalAlignment="Left"
+                                    Visibility="Collapsed"
+                                    Click="OpenDebugWindow_Click"/>
                         </StackPanel>
                     </ScrollViewer>
 

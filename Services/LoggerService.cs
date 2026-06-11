@@ -21,7 +21,8 @@ public class LoggerService
         Directory.CreateDirectory(_logDir);
     }
 
-    public void Log(string message, LogLevel level = LogLevel.Info, string? channelName = null)
+    public void Log(string message, LogLevel level = LogLevel.Info, string? channelName = null,
+                    LogCategory category = LogCategory.System)
     {
         var entry = new LogEntry
         {
@@ -31,31 +32,39 @@ public class LoggerService
             ChannelName = channelName
         };
 
+        // フィルター判定（システムメッセージは常に出力）
+        bool show = true;
+        if (category != LogCategory.System)
+        {
+            var s = SettingsService.Instance.Settings;
+            show = category switch
+            {
+                LogCategory.NoNew      => s.LogShowNoNew,
+                LogCategory.NewFound   => s.LogShowNewFound,
+                LogCategory.CheckError => s.LogShowCheckError,
+                LogCategory.Notify     => s.LogShowNotify,
+                _                      => true
+            };
+        }
+
+        // フィルターOFF → UIにも出力しない、ファイルにも出力しない
+        if (!show) return;
+
         Application.Current?.Dispatcher.Invoke(() =>
         {
             if (!string.IsNullOrEmpty(channelName))
             {
-                // チャンネル名付き: 同じチャンネルの既存エントリを全削除して最新1件のみ保持
-                var toRemove = Entries
-                    .Where(e => e.ChannelName == channelName)
-                    .ToList();
-                foreach (var e in toRemove)
-                    Entries.Remove(e);
+                var toRemove = Entries.Where(e => e.ChannelName == channelName).ToList();
+                foreach (var e in toRemove) Entries.Remove(e);
             }
             else
             {
-                // システムメッセージ: 同じメッセージの既存エントリを全削除して最新1件のみ保持
-                var toRemove = Entries
-                    .Where(e => string.IsNullOrEmpty(e.ChannelName) && e.Message == message)
-                    .ToList();
-                foreach (var e in toRemove)
-                    Entries.Remove(e);
+                var toRemove = Entries.Where(e => string.IsNullOrEmpty(e.ChannelName) && e.Message == message).ToList();
+                foreach (var e in toRemove) Entries.Remove(e);
             }
 
-            // 先頭に追加
-            Entries.Insert(0, entry);
+            Entries.Add(entry);
 
-            // 上限超えたら末尾を削除
             while (Entries.Count > MaxUiEntries)
                 Entries.RemoveAt(Entries.Count - 1);
         });
@@ -63,16 +72,18 @@ public class LoggerService
         WriteToFile(entry);
     }
 
-    public void Info(string msg, string? ch = null)    => Log(msg, LogLevel.Info,    ch);
-    public void Success(string msg, string? ch = null) => Log(msg, LogLevel.Success, ch);
-    public void Warning(string msg, string? ch = null)
+    public void Info(string msg, string? ch = null, LogCategory cat = LogCategory.System)
+        => Log(msg, LogLevel.Info, ch, cat);
+    public void Success(string msg, string? ch = null, LogCategory cat = LogCategory.System)
+        => Log(msg, LogLevel.Success, ch, cat);
+    public void Warning(string msg, string? ch = null, LogCategory cat = LogCategory.System)
     {
-        Log(msg, LogLevel.Warning, ch);
+        Log(msg, LogLevel.Warning, ch, cat);
         LogError(msg, LogLevel.Warning, ch);
     }
-    public void Error(string msg, string? ch = null)
+    public void Error(string msg, string? ch = null, LogCategory cat = LogCategory.System)
     {
-        Log(msg, LogLevel.Error, ch);
+        Log(msg, LogLevel.Error, ch, cat);
         LogError(msg, LogLevel.Error, ch);
     }
 

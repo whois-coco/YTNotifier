@@ -39,7 +39,19 @@ public partial class App : System.Windows.Application
 
         base.OnStartup(e);
 
-        try { SettingsService.Instance.Load(); }
+        try
+        {
+            // 起動前にデータ破損・消失を検知して自動復元（ユーザー意識不要）
+            var restoreReason = SettingsService.Instance.TryAutoRestore();
+            SettingsService.Instance.Load();
+            // 復元後にログ出力（LoggerServiceはLoad後に使用可能）
+            if (restoreReason != null)
+            {
+                LoggerService.Instance.Warning(
+                    $"自動復元を実行しました（理由: {restoreReason}）",
+                    null, YTNotifier.Models.LogCategory.System);
+            }
+        }
         catch (Exception ex) { ShowFatalError("設定ファイルの読み込みに失敗しました", ex); Shutdown(); return; }
 
         try { ApplyTheme(SettingsService.Instance.Settings.IsDarkMode); }
@@ -65,7 +77,22 @@ public partial class App : System.Windows.Application
             _mainWindow = new MainWindow();
             _mainWindow.Show();
         }
-        catch (Exception ex) { ShowFatalError("ウィンドウの初期化に失敗しました", ex); Shutdown(); }
+        catch (Exception ex)
+        {
+            // 内部例外も含めて全てログに記録
+            var sb = new System.Text.StringBuilder();
+            var e2 = ex;
+            while (e2 != null)
+            {
+                sb.AppendLine($"[{e2.GetType().FullName}] {e2.Message}");
+                sb.AppendLine(e2.StackTrace);
+                sb.AppendLine("---");
+                e2 = e2.InnerException;
+            }
+            LogError("ウィンドウ初期化エラー（詳細）", sb.ToString());
+            ShowFatalError("ウィンドウの初期化に失敗しました", ex);
+            Shutdown();
+        }
     }
 
     // ===== System.Windows.Forms.NotifyIcon 初期化 =====
@@ -84,6 +111,8 @@ public partial class App : System.Windows.Application
 
             // コンテキストメニュー
             var menu = new ContextMenuStrip();
+            ApplyTrayMenuTheme(menu);
+
             menu.Items.Add("🖥  ウィンドウを開く",  null, (_, _) => ShowMainWindow());
             menu.Items.Add("🔄  今すぐチェック",    null, async (_, _) => await MonitorService.Instance.ManualCheckAsync());
             menu.Items.Add(new ToolStripSeparator());
@@ -91,6 +120,10 @@ public partial class App : System.Windows.Application
             menu.Items.Add("⏸  監視停止",           null, (_, _) => MonitorService.Instance.Stop());
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("✖  終了",               null, (_, _) => ExitApp());
+
+            // 各アイテムにスタイル適用
+            foreach (ToolStripItem item in menu.Items)
+                ApplyTrayMenuItemTheme(item);
 
             _notifyIcon.ContextMenuStrip = menu;
             _notifyIcon.DoubleClick += (_, _) => ShowMainWindow();
@@ -102,6 +135,83 @@ public partial class App : System.Windows.Application
         {
             LogError("トレイアイコン初期化失敗", ex.ToString());
         }
+    }
+
+    private static void ApplyTrayMenuTheme(ContextMenuStrip menu)
+    {
+        // ダーク背景（メインウィンドウのサイドバー色に近い #1E2130）
+        menu.BackColor         = System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
+        menu.ForeColor         = System.Drawing.Color.FromArgb(0xE2, 0xE8, 0xF0);
+        menu.Font              = new System.Drawing.Font("Yu Gothic UI", 9.5f);
+        menu.ShowImageMargin   = false;
+        menu.ShowCheckMargin   = false;
+        menu.Padding           = new System.Windows.Forms.Padding(4, 4, 4, 4);
+        menu.Renderer          = new TrayMenuRenderer();
+        menu.Opening          += (_, _) =>
+        {
+            foreach (ToolStripItem item in menu.Items)
+                ApplyTrayMenuItemTheme(item);
+        };
+    }
+
+    private static void ApplyTrayMenuItemTheme(ToolStripItem item)
+    {
+        if (item is ToolStripMenuItem mi)
+        {
+            mi.BackColor = System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
+            mi.ForeColor = System.Drawing.Color.FromArgb(0xE2, 0xE8, 0xF0);
+            mi.Padding   = new System.Windows.Forms.Padding(8, 4, 8, 4);
+        }
+        else if (item is ToolStripSeparator sep)
+        {
+            sep.BackColor = System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
+            sep.ForeColor = System.Drawing.Color.FromArgb(0x2D, 0x34, 0x4F);
+        }
+    }
+
+    // カスタムレンダラー（ホバー色・区切り線をカスタマイズ）
+    private class TrayMenuRenderer : ToolStripProfessionalRenderer
+    {
+        public TrayMenuRenderer() : base(new TrayMenuColorTable()) { }
+
+        protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+        {
+            var g = e.Graphics;
+            var y = e.Item.Height / 2;
+            using var pen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(0x2D, 0x34, 0x4F));
+            g.DrawLine(pen, 8, y, e.Item.Width - 8, y);
+        }
+
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            if (e.Item.Selected)
+            {
+                using var brush = new System.Drawing.SolidBrush(
+                    System.Drawing.Color.FromArgb(0x2D, 0x3A, 0x5A));
+                var rc = new System.Drawing.Rectangle(2, 1, e.Item.Width - 4, e.Item.Height - 2);
+                e.Graphics.FillRectangle(brush, rc);
+            }
+            else
+            {
+                using var brush = new System.Drawing.SolidBrush(
+                    System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30));
+                e.Graphics.FillRectangle(brush, e.Item.Bounds);
+            }
+        }
+    }
+
+    private class TrayMenuColorTable : ProfessionalColorTable
+    {
+        public override System.Drawing.Color MenuBorder
+            => System.Drawing.Color.FromArgb(0x2D, 0x34, 0x4F);
+        public override System.Drawing.Color ToolStripDropDownBackground
+            => System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
+        public override System.Drawing.Color ImageMarginGradientBegin
+            => System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
+        public override System.Drawing.Color ImageMarginGradientMiddle
+            => System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
+        public override System.Drawing.Color ImageMarginGradientEnd
+            => System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
     }
 
     private static Icon LoadIcon(string fileName)
@@ -237,12 +347,14 @@ public partial class App : System.Windows.Application
 
     private static string GetLogDir() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "YTNotifier", "logs");
+        "YTNotifier", "logs");  // logs フォルダ
 
     protected override void OnExit(ExitEventArgs e)
     {
-        // 終了時にチャンネル情報（LastCheckedVideoId含む）を保存
-        try { SettingsService.Instance.SaveChannels(); } catch { }
+        MonitorService.Instance.Stop();
+        // 変更があれば bkup/auto_backup.ytbk へ自動保存
+        try { SettingsService.Instance.SaveAutoBackupIfDirty(); } catch { }
+        try { SettingsService.Instance.SaveChannelsSilent(); } catch { }
         _notifyIcon?.Dispose();
         _mutex?.ReleaseMutex();
         _mutex?.Dispose();

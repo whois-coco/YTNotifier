@@ -1,107 +1,106 @@
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Documents;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using YTNotifier.Models;
 using YTNotifier.Services;
-using Application         = System.Windows.Application;
-using Brush               = System.Windows.Media.Brush;
-using Brushes             = System.Windows.Media.Brushes;
-using Button              = System.Windows.Controls.Button;
-using Cursors             = System.Windows.Input.Cursors;
-using DataObject          = System.Windows.DataObject;
-using DragDropEffects     = System.Windows.DragDropEffects;
-using DragEventArgs       = System.Windows.DragEventArgs;
+using Application      = System.Windows.Application;
+using Brush            = System.Windows.Media.Brush;
+using Brushes          = System.Windows.Media.Brushes;
+using Button           = System.Windows.Controls.Button;
+using Cursors          = System.Windows.Input.Cursors;
+using DataObject       = System.Windows.DataObject;
+using DragDropEffects  = System.Windows.DragDropEffects;
+using DragEventArgs    = System.Windows.DragEventArgs;
+using Geometry         = System.Windows.Media.Geometry;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
-using KeyEventArgs        = System.Windows.Input.KeyEventArgs;
-using MessageBox          = System.Windows.MessageBox;
-using MouseEventArgs      = System.Windows.Input.MouseEventArgs;
-using Orientation         = System.Windows.Controls.Orientation;
-using Path                = System.IO.Path;
-using Rectangle           = System.Windows.Shapes.Rectangle;
-using Size                = System.Windows.Size;
-using TextBox             = System.Windows.Controls.TextBox;
-using VerticalAlignment   = System.Windows.VerticalAlignment;
-using MenuItem            = System.Windows.Controls.MenuItem;
-using Separator           = System.Windows.Controls.Separator;
-using ContextMenu         = System.Windows.Controls.ContextMenu;
+using KeyEventArgs     = System.Windows.Input.KeyEventArgs;
+using Orientation      = System.Windows.Controls.Orientation;
+using Path             = System.Windows.Shapes.Path;
+using TextBox          = System.Windows.Controls.TextBox;
 
 namespace YTNotifier.Views;
 
-// ドラッグプレビュー用 Adorner
-public class DragAdorner : Adorner
-{
-    private readonly UIElement _child;
-    private double _offsetX, _offsetY;
-
-    public DragAdorner(UIElement adornedElement, UIElement child, double offsetX, double offsetY)
-        : base(adornedElement)
-    {
-        _child = child; _offsetX = offsetX; _offsetY = offsetY;
-        IsHitTestVisible = false;
-        AdornerLayer.GetAdornerLayer(adornedElement)?.Add(this);
-    }
-
-    public void UpdatePosition(double x, double y)
-    {
-        _offsetX = x; _offsetY = y;
-        InvalidateArrange();
-    }
-
-    public void Detach() =>
-        AdornerLayer.GetAdornerLayer(AdornedElement)?.Remove(this);
-
-    protected override Size MeasureOverride(Size constraint)
-    {
-        _child.Measure(constraint);
-        return _child.DesiredSize;
-    }
-
-    protected override Size ArrangeOverride(Size finalSize)
-    {
-        _child.Arrange(new Rect(finalSize));
-        return finalSize;
-    }
-
-    public override GeneralTransform GetDesiredTransform(GeneralTransform transform)
-    {
-        var g = new GeneralTransformGroup();
-        g.Children.Add(base.GetDesiredTransform(transform));
-        g.Children.Add(new TranslateTransform(_offsetX, _offsetY));
-        return g;
-    }
-
-    protected override Visual GetVisualChild(int index) => _child;
-    protected override int VisualChildrenCount => 1;
-}
-
-public partial class MainWindow : Window
+public partial class MainWindow : System.Windows.Window
 {
     // ===== 定数 =====
-    private const int    SidebarExpandedWidth  = 110;
-    private const int    SidebarCollapsedWidth = 44;
-    private const int    ChannelRowHeight      = 60;
-    private const int    ChannelRowHeightCompact = 36;
-    private const double ChannelRowMarginBottom = 2;
+    private const int    SidebarExpandedWidth    = 110;
+    private const int    SidebarCollapsedWidth   = 44;
+    private const int    ChannelRowHeight        = 60;
+    private const int    ChannelRowHeightCompact    = 36;
+    private const int    CategoryRowHeight          = 36;
+    private const int    CategoryRowHeightCompact   = 24;
+    private const double ChannelRowMarginBottom  = 2;
+    private const int    ContentWidthNormal      = 360;
+    private const int    ContentWidthCompact     = 286;
+    private const int    ExpandedTotalWidth      = SidebarExpandedWidth  + ContentWidthNormal;  // 470
+    private const int    CollapsedTotalWidth     = SidebarCollapsedWidth + ContentWidthNormal;  // 404
+    private const int    CompactTotalWidth       = SidebarCollapsedWidth + ContentWidthCompact; // 340
+    private const int    WindowMinWidth          = CompactTotalWidth; // コンパクト幅を下限とする
+    private const int    WindowMinHeight         = 500;
+
+    // Short: Lucide zap
+    private const string ShortIconPath =
+        "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z";
 
     // ===== フィールド =====
-    private bool _sidebarCollapsed   = false;
+    private bool _sidebarCollapsed      = false;
+    private bool _loadingSettings       = false;
+    private bool _isOffline             = false;
+    private System.Windows.Threading.DispatcherTimer? _networkCheckTimer;
+    internal bool _editMode             = false;
+    private bool _uncategorizedCollapsed = false;
 
-    // 編集モード
-    internal bool _editMode = false;
-    private  bool _uncategorizedCollapsed = false;
-
-    // アイコンキャッシュ（URL → BitmapImage）
-    private static readonly Dictionary<string, BitmapImage> _iconCache     = new();
+    // アイコンキャッシュ（URL → BitmapImage）。コレクション操作は全て UI スレッドに集約しスレッド安全を担保
+    private static readonly Dictionary<string, BitmapImage> _iconCache      = new();
     private static readonly HashSet<string>                  _iconDownloading = new();
+    // HttpClient はソケット枯渇を避けるため使い回す
+    private static readonly System.Net.Http.HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
 
+    // D&D
+    private ChannelInfo?  _dragSource      = null;
+    private bool          _isDragging      = false;
+    private Border?       _dropIndicator   = null;
+    private int           _dropIndicatorIndex = -1;
+    private List<(double y, int childIndex)> _catBoundaries = new();
+
+    // D&Dアニメーション
+    private int     _animDropIndex  = -1;
+    private Border? _dragSourceRow  = null;
+
+    // ミュート
+    private bool _isMuted                    = false;
+    private bool _preMuteDesktopNotification = false;
+    private bool _preMuteNotificationSound   = false;
+
+    // コンパクトモード
+    private bool   _preCompactSidebarCollapsed = false;
+    private bool   _applyingCompactMode        = false;
+
+    // APIキー
+    private string _actualApiKey = "";
+    // 検索
+    private string _searchQuery = "";
+
+    // Win32
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+    private const int WM_NCLBUTTONDOWN = 0xA1;
+    private const int HTCAPTION        = 2;
+
+    // ===== アイコンキャッシュ =====
     private static string GetIconCacheDir() =>
         System.IO.Path.Combine(SettingsService.Instance.AppDataDir, "icons");
 
@@ -114,7 +113,6 @@ public partial class MainWindow : Window
             BitConverter.ToString(hash).Replace("-", "").ToLower() + ".png");
     }
 
-    // ファイルストリームで読み込み（Windowsパスの URI 変換問題を回避）
     private static BitmapImage? LoadBitmapFromFile(string filePath)
     {
         try
@@ -134,29 +132,19 @@ public partial class MainWindow : Window
     private static BitmapImage? GetCachedIcon(string url)
     {
         if (string.IsNullOrEmpty(url)) return null;
-
-        // 1. メモリキャッシュ
         if (_iconCache.TryGetValue(url, out var cached)) return cached;
 
-        // キャッシュディレクトリを確実に作成
         var cacheDir = GetIconCacheDir();
         try { System.IO.Directory.CreateDirectory(cacheDir); }
         catch { return null; }
 
         var diskPath = GetDiskPath(url);
-
-        // 2. ディスクキャッシュ
         if (System.IO.File.Exists(diskPath))
         {
             var bmp = LoadBitmapFromFile(diskPath);
-            if (bmp != null)
-            {
-                _iconCache[url] = bmp;
-                return bmp;
-            }
+            if (bmp != null) { _iconCache[url] = bmp; return bmp; }
         }
 
-        // 3. バックグラウンドでダウンロード（重複防止）
         if (_iconDownloading.Contains(url)) return null;
         _iconDownloading.Add(url);
 
@@ -164,8 +152,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-                var bytes = await client.GetByteArrayAsync(url);
+                var bytes = await _httpClient.GetByteArrayAsync(url);
                 await System.IO.File.WriteAllBytesAsync(diskPath, bytes);
 
                 var bmp = LoadBitmapFromFile(diskPath);
@@ -175,7 +162,6 @@ public partial class MainWindow : Window
                     await Application.Current.Dispatcher.InvokeAsync(() => _iconDownloading.Remove(url));
                     return;
                 }
-
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     _iconCache[url] = bmp;
@@ -186,19 +172,15 @@ public partial class MainWindow : Window
             catch (Exception ex)
             {
                 LoggerService.Instance.Warning($"アイコンDL失敗: {ex.Message}");
-                await Application.Current.Dispatcher.InvokeAsync(
-                    () => _iconDownloading.Remove(url));
+                await Application.Current.Dispatcher.InvokeAsync(() => _iconDownloading.Remove(url));
             }
         });
-
         return null;
     }
 
-    // ダウンロード完了後、該当チャンネルのアイコンのみ差し替え
     private static void UpdateIconsInList(string url)
     {
-        var win = Application.Current.MainWindow as MainWindow;
-        if (win == null) return;
+        if (Application.Current.MainWindow is not MainWindow win) return;
         if (!_iconCache.TryGetValue(url, out var bmp)) return;
 
         foreach (var row in win.ChannelList.Children.OfType<Border>())
@@ -206,57 +188,12 @@ public partial class MainWindow : Window
             if (row.Tag is not ChannelInfo ch || ch.ThumbnailUrl != url) continue;
             if (row.Child is not Grid outer) continue;
             var inner = outer.Children.OfType<Grid>().FirstOrDefault();
-            if (inner == null) continue;
-            var iconBorder = inner.Children.OfType<Border>()
-                .FirstOrDefault(b => Grid.GetColumn(b) == 0);
-            if (iconBorder == null) continue;
-            iconBorder.Child = new System.Windows.Controls.Image { Source = bmp, Stretch = Stretch.UniformToFill };
+            var iconBorder = inner?.Children.OfType<Border>()
+                .FirstOrDefault(b => b.Tag is string s && s == "IconBorder");
+            if (iconBorder != null)
+                iconBorder.Child = new System.Windows.Controls.Image { Source = bmp, Stretch = Stretch.UniformToFill };
         }
     }
-
-    // ドロップ位置インジケーター
-    private Border? _dropIndicator = null;
-    private int     _dropIndicatorIndex = -1;
-
-    // カテゴリD&D: 境界Y座標キャッシュ（インジケーター挿入前に記録）
-    private List<(double y, int childIndex)> _catBoundaries = new();
-
-    private void CacheCategoryBoundaries()
-    {
-        _catBoundaries.Clear();
-        double cumY = 0;
-        foreach (var child in ChannelList.Children.OfType<Border>())
-        {
-            double rowH = child.ActualHeight + child.Margin.Top + child.Margin.Bottom;
-            if (child.Tag is CategoryInfo)
-                _catBoundaries.Add((cumY, ChannelList.Children.IndexOf(child)));
-            cumY += rowH;
-        }
-        // 最後のカテゴリの末尾も追加
-        if (_catBoundaries.Count > 0)
-        {
-            var last = _catBoundaries[^1];
-            var lastRow = ChannelList.Children[last.childIndex] as Border;
-            if (lastRow != null)
-            {
-                double lastH = lastRow.ActualHeight + lastRow.Margin.Top + lastRow.Margin.Bottom;
-                _catBoundaries.Add((last.y + lastH, last.childIndex + 1));
-            }
-        }
-    }
-
-    // D&D
-    private ChannelInfo?  _dragSource      = null;
-    private int           _dragSourceIndex = -1;
-    private DragAdorner?  _dragAdorner     = null;
-    private System.Windows.Point _dragStartPoint;
-    private bool          _isDragging      = false;
-
-    // Win32
-    [DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-    private const int WM_NCLBUTTONDOWN = 0xA1;
-    private const int HTCAPTION        = 2;
 
     // ===== 初期化 =====
     public MainWindow()
@@ -267,6 +204,7 @@ public partial class MainWindow : Window
         StateChanged += MainWindow_StateChanged;
         MonitorService.Instance.StatusChanged  += isRunning => Dispatcher.Invoke(() => UpdateMonitorStatus(isRunning));
         MonitorService.Instance.ChannelUpdated += ()        => Dispatcher.Invoke(RefreshChannelList);
+        MonitorService.Instance.QuotaUpdated   += ()        => Dispatcher.Invoke(UpdateQuotaInfo);
     }
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -275,30 +213,43 @@ public partial class MainWindow : Window
         catch (Exception ex) { LoggerService.Instance.Error($"設定読込エラー: {ex.Message}"); }
 
         try { RefreshChannelList(); }
-        catch (Exception ex) { LoggerService.Instance.Error($"チャンネルリストエラー: {ex.Message}"); }
+        catch (Exception ex) { LoggerService.Instance.Error($"チャンネル一覧エラー: {ex.Message}"); }
 
         UpdateMinWidth();
         RestoreWindowBounds();
         InitChannelListDragDrop();
-        // ミュート状態を復元
-        var s2 = SettingsService.Instance.Settings;
-        if (s2.IsMuted)
+
+        // ネットワーク状態監視（ポーリング方式・5秒ごと）
+        _networkCheckTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(5)
+        };
+        _networkCheckTimer.Tick += (_, _) => CheckNetworkState();
+        _networkCheckTimer.Start();
+        CheckNetworkState(); // 初回即時チェック
+
+        // 開発者ツールDLLが存在する場合のみボタンを表示
+        if (MainWindow.IsDebugDllAvailable() &&
+            FindName("OpenDebugWindowBtn") is System.Windows.Controls.Button debugBtn)
+            debugBtn.Visibility = Visibility.Visible;
+
+        var s = SettingsService.Instance.Settings;
+        if (s.IsMuted)
         {
             _isMuted                    = true;
-            _preMuteDesktopNotification = s2.PreMuteDesktopNotification;
-            _preMuteNotificationSound   = s2.PreMuteNotificationSound;
+            _preMuteDesktopNotification = s.PreMuteDesktopNotification;
+            _preMuteNotificationSound   = s.PreMuteNotificationSound;
         }
         UpdateMuteButton(_isMuted);
 
-        // コンパクトモード初期化
-        if (SettingsService.Instance.Settings.CompactMode)
-            ApplyCompactMode(true);
-        else
-        {
-            UpdateCompactModeButton(false);
-            SyncWindowWidth();
-        }
+        if (s.CompactMode) ApplyCompactMode(true);
+        else { UpdateCompactModeButton(false); SyncWindowWidth(); }
+
         InitLogBindings();
+
+        // 初期ナビセレクターバー（チャンネルがデフォルト選択）
+        SetNavSelectorBar(NavWatch,    true);
+        SetNavSelectorBar(NavSettings, false);
         InitMonitor();
     }
 
@@ -313,7 +264,12 @@ public partial class MainWindow : Window
     private void InitLogBindings()
     {
         LoggerService.Instance.ClearUiLog();
-        LogList.ItemsSource      = LoggerService.Instance.Entries;
+        LogList.ItemsSource = LoggerService.Instance.Entries;
+        LoggerService.Instance.Entries.CollectionChanged += (_, _) =>
+        {
+            Dispatcher.BeginInvoke(() => LogScrollViewer?.ScrollToBottom(),
+                System.Windows.Threading.DispatcherPriority.Background);
+        };
     }
 
     private void InitMonitor()
@@ -359,26 +315,15 @@ public partial class MainWindow : Window
     private void RestoreWindowBounds()
     {
         var s = SettingsService.Instance.Settings;
+        Width  = s.WindowWidth  > 0 ? s.WindowWidth  : CollapsedTotalWidth;
+        Height = s.WindowHeight > 0 ? s.WindowHeight : Height;
 
-        if (s.WindowWidth > 0)
+        if (s.WindowLeft >= 0 && s.WindowTop >= 0 &&
+            s.WindowLeft + Width  <= SystemParameters.VirtualScreenWidth  + 100 &&
+            s.WindowTop  + Height <= SystemParameters.VirtualScreenHeight + 100)
         {
-            Width  = s.WindowWidth;
-            Height = s.WindowHeight > 0 ? s.WindowHeight : Height;
-        }
-        else
-        {
-            // config.json が存在しない初回起動: 横幅のみ最小値で起動
-            Width = 405;
-        }
-
-        if (s.WindowLeft >= 0 && s.WindowTop >= 0)
-        {
-            if (s.WindowLeft + Width  <= SystemParameters.VirtualScreenWidth  + 100 &&
-                s.WindowTop  + Height <= SystemParameters.VirtualScreenHeight + 100)
-            {
-                Left = s.WindowLeft;
-                Top  = s.WindowTop;
-            }
+            Left = s.WindowLeft;
+            Top  = s.WindowTop;
         }
 
         if (s.WindowMaximized)
@@ -395,1942 +340,97 @@ public partial class MainWindow : Window
             s.WindowWidth = b.Width; s.WindowHeight = b.Height;
             s.WindowLeft  = b.Left;  s.WindowTop    = b.Top;
         }
-        SettingsService.Instance.SaveSettings();
+        SettingsService.Instance.SaveSettingsSilent();
     }
 
     // ===== 設定読み込み =====
     private void LoadSettings()
     {
         var s = SettingsService.Instance.Settings;
-        _actualApiKey                 = s.ApiKey;
-        ApiKeyBox.Text                = s.ApiKey;
+        _actualApiKey                     = s.ApiKey;
+        ApiKeyBox.Text                    = s.ApiKey;
         UpdateApiKeyState(!string.IsNullOrEmpty(s.ApiKey));
-        DarkModeToggle.IsChecked      = s.IsDarkMode;
-        NotificationToggle.IsChecked  = s.ShowDesktopNotification;
-        TrayToggle.IsChecked          = s.MinimizeToTray;
-        StartupToggle.IsChecked       = s.StartWithWindows;
-        AlwaysOnTopToggle.IsChecked       = s.AlwaysOnTop;
-        Topmost                           = s.AlwaysOnTop;
-        NotificationSoundToggle.IsChecked = s.NotificationSound;
-        CompactModeToggle.IsChecked        = s.CompactMode;
+        _loadingSettings = true;
+        DarkModeToggle.IsChecked               = s.IsDarkMode;
+        NotificationToggle.IsChecked           = s.ShowDesktopNotification;
+        GlobalNotifyUpcomingToggle.IsChecked   = s.GlobalNotifyUpcoming;
+        TrayToggle.IsChecked                   = s.MinimizeToTray;
+        StartupToggle.IsChecked                = s.StartWithWindows;
+        AlwaysOnTopToggle.IsChecked            = s.AlwaysOnTop;
+        Topmost                                = s.AlwaysOnTop;
+        NotificationSoundToggle.IsChecked      = s.NotificationSound;
+        CompactModeToggle.IsChecked            = s.CompactMode;
+        // 通知スタイル（_loadingSettings内で設定しないとSelectionChangedで上書きされる）
+        foreach (ComboBoxItem item in ToastStyleComboBox.Items)
+            if (item.Tag?.ToString() == s.ToastStyle.ToString())
+            { ToastStyleComboBox.SelectedItem = item; break; }
+        if (ToastStyleComboBox.SelectedItem == null) ToastStyleComboBox.SelectedIndex = 0;
+        _loadingSettings = false;
         UpdatePinButton(s.AlwaysOnTop);
 
+        _loadingSettings = true;
         var items = IntervalComboBox.Items.Cast<ComboBoxItem>().ToList();
         IntervalComboBox.SelectedItem = items.FirstOrDefault(
             i => i.Tag?.ToString() == s.CheckIntervalMinutes.ToString()) ?? items[1];
+        _loadingSettings = false;
 
+        // サイドバー状態を設定から復元
         if (s.SidebarCollapsed)
         {
-            _sidebarCollapsed = false;
-            SidebarToggle_Click(this, new RoutedEventArgs());
+            CollapseSidebar();
         }
+        else
+        {
+            ExpandSidebar();
+        }
+        UpdateMinWidth();
+        SyncWindowWidth();
 
-        // クォータ情報を表示
         UpdateQuotaInfo();
 
-        // ログメンテナンス設定
         AutoCleanLogsToggle.IsChecked = s.AutoCleanLogs;
+        _loadingSettings = true;
+        LogShowNoNewToggle.IsChecked      = s.LogShowNoNew;
+        LogShowNewFoundToggle.IsChecked   = s.LogShowNewFound;
+        LogShowCheckErrorToggle.IsChecked = s.LogShowCheckError;
+        LogShowNotifyToggle.IsChecked     = s.LogShowNotify;
+        _loadingSettings = false;
+        _loadingSettings = true;
         var retItems = LogRetentionComboBox.Items.Cast<ComboBoxItem>().ToList();
         LogRetentionComboBox.SelectedItem =
             retItems.FirstOrDefault(i => i.Tag?.ToString() == s.LogRetentionDays.ToString())
-            ?? retItems[2]; // デフォルト3日
+            ?? retItems[2];
+        _loadingSettings = false;
         RefreshLogStats();
 
-        // 自動削除（0日=当日のみ、-1=無制限は除く）
         if (s.AutoCleanLogs && s.LogRetentionDays != -1)
         {
             var (deleted, _) = LoggerService.Instance.CleanOldLogs(s.LogRetentionDays);
-            if (deleted > 0)
-                LoggerService.Instance.Info($"起動時ログ自動削除: {deleted}件");
+            if (deleted > 0) LoggerService.Instance.Info($"起動時ログ自動削除: {deleted}件");
         }
     }
 
-    // ===== ヘルパー =====
+    // ===== 汎用ヘルパー =====
     private static void SetDynamicBrush(FrameworkElement el, DependencyProperty dp, string key)
         => el.SetResourceReference(dp, key);
 
     private static string KindLabel(VideoKind kind) => kind switch
     {
-        VideoKind.Short => "Short",
-        VideoKind.Live  => "ライブ",
+        VideoKind.Short    => "Short",
+        VideoKind.Live     => "ライブ",
+        VideoKind.Premiere => "プレミア",
         _               => "動画"
     };
 
-    // ===== 編集モード =====
-    private void EditModeButton_Click(object sender, RoutedEventArgs e)
+    private static IEnumerable<T> FindVisualChildren<T>(System.Windows.DependencyObject parent)
+        where T : System.Windows.DependencyObject
     {
-        _editMode = !_editMode;
-
-        EditModeButton.Content = _editMode ? "✅" : "✏";
-        if (_editMode)
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
         {
-            EditModeButton.Style = (Style)Application.Current.Resources["PrimaryButton"];
-        }
-        else
-        {
-            EditModeButton.Style = (Style)Application.Current.Resources["SecondaryButton"];
-        }
-
-        // 全チャンネル行のカーソル・削除ボタン・アイコン・種別トグルの有効状態を切替
-        foreach (var child in ChannelList.Children.OfType<Border>())
-        {
-            child.Cursor = _editMode ? Cursors.Hand : Cursors.Arrow;
-            SetRowInteractive(child, !_editMode);
-            SetDeleteButtonVisibility(child, _editMode);
-        }
-
-        if (_editMode)
-            LoggerService.Instance.Info("編集モード開始：ドラッグでチャンネルを並び替えられます");
-        else
-            LoggerService.Instance.Info("編集モード終了");
-    }
-
-    private static void SetDeleteButtonVisibility(Border row, bool visible)
-    {
-        if (row.Child is not Grid outerGrid) return;
-        var contentGrid = outerGrid.Children.OfType<Grid>().FirstOrDefault();
-        if (contentGrid == null) return;
-        foreach (var panel in contentGrid.Children.OfType<StackPanel>())
-        {
-            foreach (var btn in panel.Children.OfType<Button>())
-                btn.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is T t) yield return t;
+            foreach (var sub in FindVisualChildren<T>(child)) yield return sub;
         }
     }
 
-    private static void SetRowInteractive(Border row, bool enabled)
-    {
-        // outerGrid(Col1) の中の contentGrid を取得
-        if (row.Child is not Grid outerGrid) return;
-        var contentGrid = outerGrid.Children.OfType<Grid>().FirstOrDefault();
-        if (contentGrid == null) return;
-
-        // Col0: アイコン Border
-        foreach (var el in contentGrid.Children.OfType<Border>())
-        {
-            if (Grid.GetColumn(el) == 0)
-            {
-                el.IsHitTestVisible = enabled;
-                el.Opacity = enabled ? 1.0 : 0.5;
-            }
-        }
-
-        // Col1: 情報パネル（StackPanel）内の種別トグル
-        // 編集モード中(!enabled)でも種別トグルはクリック可能にする
-        foreach (var el in contentGrid.Children.OfType<StackPanel>())
-        {
-            if (Grid.GetColumn(el) != 1) continue;
-            foreach (var child in el.Children.OfType<StackPanel>())
-            {
-                foreach (var toggle in child.Children.OfType<Border>())
-                {
-                    toggle.IsHitTestVisible = true; // 常にクリック可能（編集モードのみ実際に動作）
-                    toggle.Opacity = 1.0;
-                }
-            }
-        }
-    }
-
-    // ===== チャンネルリスト =====
-    private void RefreshChannelList()
-    {
-        var channels   = SettingsService.Instance.Channels;
-        var categories = SettingsService.Instance.Categories
-            .OrderBy(c => c.SortOrder).ToList();
-
-        ChannelList.Children.Clear();
-        ChannelCountText.Text = $"{channels.Count} チャンネル";
-        EmptyState.Visibility = channels.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        // カテゴリ別に表示（定義済みカテゴリを先に）
-        foreach (var cat in categories)
-        {
-            var catChannels = channels.Where(c => c.CategoryId == cat.CategoryId).ToList();
-            var unreadCount = catChannels.Count(c => c.HasUnread);
-            ChannelList.Children.Add(CreateCategoryRow(cat, unreadCount));
-
-            if (!cat.IsCollapsed)
-                foreach (var ch in catChannels)
-                    ChannelList.Children.Add(CreateChannelRow(ch));
-        }
-
-        // 未分類チャンネルを最下部に表示
-        var uncategorized = channels.Where(c => string.IsNullOrEmpty(c.CategoryId)).ToList();
-        if (uncategorized.Count > 0)
-        {
-            var unreadCount = uncategorized.Count(c => c.HasUnread);
-            var uncatHeader = CreateUncategorizedRow(unreadCount, _uncategorizedCollapsed);
-            ChannelList.Children.Add(uncatHeader);
-
-            if (!_uncategorizedCollapsed)
-                foreach (var ch in uncategorized)
-                    ChannelList.Children.Add(CreateChannelRow(ch));
-        }
-
-        // 編集モード中ならカーソル・インタラクション状態を再適用
-        if (_editMode)
-            foreach (var child in ChannelList.Children.OfType<Border>())
-            {
-                if (child.Tag is ChannelInfo)
-                {
-                    child.Cursor = Cursors.Hand;
-                    SetRowInteractive(child, false);
-                    SetDeleteButtonVisibility(child, true);
-                }
-            }
-
-        AutoAdjustIntervalForQuota();
-    }
-
-    // ===== カテゴリ行 =====
-    private Border CreateUncategorizedRow(int unreadCount, bool isCollapsed)
-    {
-        var row = new Border
-        {
-            Height              = 36,
-            Margin              = new Thickness(0, 3, 0, 1),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            CornerRadius        = new CornerRadius(4),
-            Cursor              = Cursors.Hand,
-            Tag                 = "uncategorized"
-        };
-        SetDynamicBrush(row, Border.BackgroundProperty, "SurfaceElevatedBrush");
-
-        var stack = new StackPanel
-        {
-            Orientation       = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin            = new Thickness(8, 0, 8, 0)
-        };
-
-        var arrow = new TextBlock
-        {
-            Text              = isCollapsed ? "▶" : "▼",
-            FontSize          = 9,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin            = new Thickness(0, 0, 6, 0)
-        };
-        SetDynamicBrush(arrow, TextBlock.ForegroundProperty, "TextMutedBrush");
-
-        var nameText = new TextBlock
-        {
-            Text              = "未分類",
-            FontSize          = 11,
-            FontWeight        = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextSecondaryBrush");
-
-        var badge = new Border
-        {
-            CornerRadius      = new CornerRadius(6),
-            Padding           = new Thickness(5, 0, 5, 0),
-            Margin            = new Thickness(6, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Visibility        = unreadCount > 0 ? Visibility.Visible : Visibility.Collapsed,
-            Child             = new TextBlock
-            {
-                Text       = unreadCount.ToString(),
-                FontSize   = 13,
-                FontWeight = FontWeights.Bold,
-                Foreground = Brushes.White
-            }
-        };
-        SetDynamicBrush(badge, Border.BackgroundProperty, "AccentBrush");
-
-        stack.Children.Add(arrow);
-        stack.Children.Add(nameText);
-        stack.Children.Add(badge);
-        row.Child = stack;
-
-        row.MouseLeftButtonUp += (_, _) =>
-        {
-            _uncategorizedCollapsed = !_uncategorizedCollapsed;
-            RefreshChannelList();
-        };
-
-        return row;
-    }
-
-    private Border CreateCategoryRow(CategoryInfo cat, int unreadCount)
-    {
-        var row = new Border
-        {
-            Height              = 36,
-            Margin              = new Thickness(0, 3, 0, 1),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            CornerRadius        = new CornerRadius(4),
-            Tag                 = cat
-        };
-        SetDynamicBrush(row, Border.BackgroundProperty, "SurfaceElevatedBrush");
-        row.ContextMenu = BuildCategoryContextMenu(cat);
-
-        var stack = new StackPanel
-        {
-            Orientation       = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin            = new Thickness(8, 0, 8, 0)
-        };
-
-        // 折り畳みアイコン
-        var arrow = new TextBlock
-        {
-            Text              = cat.IsCollapsed ? "▶" : "▼",
-            FontSize          = 9,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin            = new Thickness(0, 0, 6, 0)
-        };
-        SetDynamicBrush(arrow, TextBlock.ForegroundProperty, "TextMutedBrush");
-
-        // カテゴリ名
-        var nameText = new TextBlock
-        {
-            Text              = cat.CategoryName,
-            FontSize          = 11,
-            FontWeight        = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextSecondaryBrush");
-
-        // 新着件数バッジ（カテゴリ名のすぐ右）
-        var badge = new Border
-        {
-            CornerRadius      = new CornerRadius(6),
-            Padding           = new Thickness(5, 0, 5, 0),
-            Margin            = new Thickness(6, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Visibility        = unreadCount > 0 ? Visibility.Visible : Visibility.Collapsed,
-            Child             = new TextBlock
-            {
-                Text       = unreadCount.ToString(),
-                FontSize   = 13,
-                FontWeight = FontWeights.Bold,
-                Foreground = Brushes.White
-            }
-        };
-        SetDynamicBrush(badge, Border.BackgroundProperty, "AccentBrush");
-
-        stack.Children.Add(arrow);
-        stack.Children.Add(nameText);
-        stack.Children.Add(badge);
-        row.Child = stack;
-
-        // クリックで折り畳みトグル（編集モード外のみ）
-        row.Cursor = Cursors.Hand;
-        row.MouseLeftButtonUp += (_, e) =>
-        {
-            if (_editMode) return;
-            cat.IsCollapsed = !cat.IsCollapsed;
-            SettingsService.Instance.SaveCategories();
-            RefreshChannelList();
-        };
-
-        // 編集モード中: D&D でカテゴリ並び替え
-        System.Windows.Point _catDragStart = default;
-        bool _catDragReady = false;
-
-        row.PreviewMouseLeftButtonDown += (_, e) =>
-        {
-            if (!_editMode) return;
-            _catDragStart = e.GetPosition(ChannelList);
-            _catDragReady = true;
-        };
-
-        row.PreviewMouseMove += (s, e) =>
-        {
-            if (!_editMode || !_catDragReady) return;
-            if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) { _catDragReady = false; return; }
-            var pos = e.GetPosition(ChannelList);
-            var diff = pos - _catDragStart;
-            if (Math.Abs(diff.X) < SystemParameters.MinimumHorizontalDragDistance &&
-                Math.Abs(diff.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-            _catDragReady = false;
-            // ドラッグ開始前にカテゴリ境界をキャッシュ（インジケーター挿入前）
-            CacheCategoryBoundaries();
-            if (s is Border b)
-                DragDrop.DoDragDrop(b, new DataObject("CategoryDrag", cat.CategoryId), DragDropEffects.Move);
-        };
-
-        row.PreviewMouseLeftButtonUp += (_, _) => { _catDragReady = false; };
-
-        return row;
-    }
-
-    // ===== カテゴリ名入力ダイアログ（メインウィンドウスタイル） =====
-    private string? ShowCategoryNameDialog(string title, string defaultValue = "")
-    {
-        var dialog = new Window
-        {
-            Width                 = 360,
-            Height                = 160,
-            MinWidth              = 360, MaxWidth  = 360,
-            MinHeight             = 160, MaxHeight = 160,
-            WindowStyle           = WindowStyle.None,
-            ResizeMode            = ResizeMode.NoResize,
-            Background            = System.Windows.Media.Brushes.Transparent,
-            AllowsTransparency    = true,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Owner                 = this,
-            ShowInTaskbar         = false,
-        };
-
-        var root = new Border
-        {
-            CornerRadius  = new CornerRadius(6),
-            BorderThickness = new Thickness(1),
-        };
-        SetDynamicBrush(root, Border.BackgroundProperty,  "SurfaceBrush");
-        SetDynamicBrush(root, Border.BorderBrushProperty, "BorderBrush");
-
-        var outer = new StackPanel { Margin = new Thickness(0) };
-
-        // タイトルバー
-        var titleBar = new Border { Height = 38, Cursor = Cursors.SizeAll };
-        SetDynamicBrush(titleBar, Border.BackgroundProperty, "SidebarBrush");
-        titleBar.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) dialog.DragMove(); };
-        var titleText = new TextBlock
-        {
-            Text              = title,
-            FontSize          = 13,
-            FontWeight        = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin            = new Thickness(16, 0, 0, 0)
-        };
-        SetDynamicBrush(titleText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-        titleBar.Child = titleText;
-
-        // 入力エリア
-        var content = new StackPanel { Margin = new Thickness(16, 12, 16, 16) };
-
-        var inputBox = new TextBox
-        {
-            Text   = defaultValue,
-            Margin = new Thickness(0, 0, 0, 12)
-        };
-        inputBox.Style = (Style)Application.Current.Resources["ModernTextBox"];
-        inputBox.SelectAll();
-        inputBox.Focus();
-
-        // ボタン行
-        var btnRow = new Grid();
-        btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var cancelBtn = new Button
-        {
-            Content = "キャンセル",
-            Padding = new Thickness(14, 7, 14, 7),
-            Margin  = new Thickness(0, 0, 8, 0)
-        };
-        cancelBtn.Style = (Style)Application.Current.Resources["SecondaryButton"];
-        cancelBtn.Click += (_, _) => { dialog.DialogResult = false; dialog.Close(); };
-        Grid.SetColumn(cancelBtn, 1);
-
-        var okBtn = new Button
-        {
-            Content = "OK",
-            Padding = new Thickness(14, 7, 14, 7),
-        };
-        okBtn.Style = (Style)Application.Current.Resources["PrimaryButton"];
-        okBtn.Click += (_, _) => { dialog.DialogResult = true; dialog.Close(); };
-        Grid.SetColumn(okBtn, 2);
-
-        inputBox.KeyDown += (_, e) =>
-        {
-            if (e.Key == System.Windows.Input.Key.Enter)  { dialog.DialogResult = true;  dialog.Close(); }
-            if (e.Key == System.Windows.Input.Key.Escape) { dialog.DialogResult = false; dialog.Close(); }
-        };
-
-        btnRow.Children.Add(cancelBtn);
-        btnRow.Children.Add(okBtn);
-        content.Children.Add(inputBox);
-        content.Children.Add(btnRow);
-        outer.Children.Add(titleBar);
-        outer.Children.Add(content);
-        root.Child = outer;
-        dialog.Content = root;
-
-        return dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(inputBox.Text)
-            ? inputBox.Text.Trim()
-            : null;
-    }
-
-    private ContextMenu BuildCategoryContextMenu(CategoryInfo cat)
-    {
-        var menu = new ContextMenu();
-
-        var renameItem = new MenuItem { Header = "✏ カテゴリ名を変更", Tag = cat };
-        renameItem.Click += (_, _) =>
-        {
-            var newName = ShowCategoryNameDialog("カテゴリ名を変更", cat.CategoryName);
-            if (newName != null)
-            {
-                SettingsService.Instance.RenameCategory(cat.CategoryId, newName);
-                RefreshChannelList();
-            }
-        };
-
-        var deleteItem = new MenuItem { Header = "🗑 カテゴリを削除", Tag = cat };
-        deleteItem.Click += (_, _) =>
-        {
-            if (MessageBox.Show($"「{cat.CategoryName}」を削除しますか？\nチャンネルは未分類に移動されます。",
-                "カテゴリ削除", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
-            {
-                SettingsService.Instance.RemoveCategory(cat.CategoryId);
-                RefreshChannelList();
-            }
-        };
-
-        menu.Items.Add(renameItem);
-        menu.Items.Add(new Separator());
-        menu.Items.Add(deleteItem);
-
-        // 開いた時に編集モードに応じて表示切替
-        menu.Opened += (_, _) =>
-        {
-            var editOn = _editMode;
-            renameItem.IsEnabled = editOn;
-            deleteItem.IsEnabled = editOn;
-            renameItem.Opacity   = editOn ? 1.0 : 0.4;
-            deleteItem.Opacity   = editOn ? 1.0 : 0.4;
-        };
-
-        return menu;
-    }
-
-    private void AutoAdjustIntervalForQuota()
-    {
-        var s        = SettingsService.Instance.Settings;
-        var channels = SettingsService.Instance.Channels.Count;
-        if (channels == 0) return;
-
-        var (safe, recommended) = ApiQuotaHelper.ValidateInterval(s.CheckIntervalMinutes, channels);
-        if (!safe)
-        {
-            // 推奨値に自動調整
-            var recItem = IntervalComboBox?.Items.Cast<ComboBoxItem>()
-                .FirstOrDefault(i => i.Tag?.ToString() == recommended.ToString());
-            if (recItem != null && IntervalComboBox != null)
-                IntervalComboBox.SelectedItem = recItem;
-            LoggerService.Instance.Warning(
-                $"チャンネル数増加によりAPI超過リスク → 監視間隔を{recommended}分に自動調整");
-        }
-        UpdateQuotaInfo();
-    }
-
-    private void UpdateQuotaInfo()
-    {
-        try
-        {
-            if (QuotaInfoText == null) return;
-            var channels = SettingsService.Instance.Channels.Count;
-            var interval = SettingsService.Instance.Settings.CheckIntervalMinutes;
-            var daily    = ApiQuotaHelper.EstimateDailyUnits(interval, channels);
-            var pct      = daily * 100.0 / ApiQuotaHelper.DailyLimit;
-            var color    = pct >= 90 ? "ErrorBrush" : pct >= 70 ? "WarningBrush" : "SuccessBrush";
-            QuotaInfoText.Text = $"推定消費量: {daily:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日 ({pct:F0}%)";
-            SetDynamicBrush(QuotaInfoText, TextBlock.ForegroundProperty, color);
-
-            // 各間隔項目のコスト計算して超過するものを無効化
-            UpdateIntervalComboBoxItems(channels);
-        }
-        catch { }
-    }
-
-    private void UpdateIntervalComboBoxItems(int channels)
-    {
-        if (IntervalComboBox == null) return;
-        foreach (System.Windows.Controls.ComboBoxItem item in IntervalComboBox.Items)
-        {
-            if (item.Tag is string tagStr && int.TryParse(tagStr, out int mins))
-            {
-                var cost    = ApiQuotaHelper.EstimateDailyUnits(mins, channels);
-                var over    = cost > ApiQuotaHelper.DailyLimit;
-                item.IsEnabled = !over;
-                item.ToolTip   = over
-                    ? $"クォータ超過（{cost:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日）"
-                    : $"{cost:N0} ユニット/日";
-                item.Opacity   = over ? 0.4 : 1.0;
-            }
-        }
-    }
-
-    private UIElement CreateChannelRow(ChannelInfo ch)
-    {
-        var compact = SettingsService.Instance.Settings.CompactMode;
-        var row = new Border
-        {
-            Height              = compact ? ChannelRowHeightCompact : ChannelRowHeight,
-            Margin              = new Thickness(0, 0, 0, ChannelRowMarginBottom),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Cursor              = Cursors.Arrow,
-            CornerRadius        = new CornerRadius(4),
-            Tag                 = ch
-        };
-        SetDynamicBrush(row, Border.BackgroundProperty, "SurfaceAltBrush");
-        row.MouseEnter += (_, _) => SetDynamicBrush(row, Border.BackgroundProperty, "HoverBrush");
-        row.MouseLeave += (_, _) => SetDynamicBrush(row, Border.BackgroundProperty, "SurfaceAltBrush");
-
-        // D&D
-        row.PreviewMouseMove            += ChannelRow_MouseMove;
-        row.PreviewMouseLeftButtonDown  += ChannelRow_PreviewMouseDown;
-        row.PreviewMouseLeftButtonUp    += ChannelRow_MouseUp;
-
-        // 右クリックメニュー
-        row.ContextMenu = BuildChannelContextMenu(ch);
-
-        if (compact)
-        {
-            // コンパクトモード: 行クリックでリンクを開く
-            row.Cursor = Cursors.Hand;
-            row.MouseLeftButtonUp += async (s, e) =>
-            {
-                if (!_editMode && s is Border b && b.Tag is ChannelInfo c)
-                {
-                    e.Handled = true;
-                    await OpenChannelLatestVideoAsync(c);
-                }
-            };
-
-            // コンパクトモード: [4px帯] [アイコン小] [チャンネル名]
-            var outerGrid = new Grid();
-            outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
-            outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            var newBar = new Border
-            {
-                CornerRadius = new CornerRadius(4, 0, 0, 4),
-                Visibility   = ch.HasUnread ? Visibility.Visible : Visibility.Hidden,
-                Tag          = "NewBar"
-            };
-            SetDynamicBrush(newBar, Border.BackgroundProperty, "AccentBrush");
-            Grid.SetColumn(newBar, 0);
-
-            var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            Grid.SetColumn(grid, 1);
-
-            var iconSmall = BuildIconBorderCompact(ch);
-            var nameText  = new TextBlock
-            {
-                Text              = ch.ChannelName,
-                FontSize          = 12,
-                FontWeight        = FontWeights.SemiBold,
-                TextTrimming      = TextTrimming.CharacterEllipsis,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin            = new Thickness(8, 0, 0, 0)
-            };
-            SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-
-            Grid.SetColumn(iconSmall, 0);
-            Grid.SetColumn(nameText,  1);
-
-            grid.Children.Add(iconSmall);
-            grid.Children.Add(nameText);
-            outerGrid.Children.Add(newBar);
-            outerGrid.Children.Add(grid);
-            row.Child = outerGrid;
-        }
-        else
-        {
-            // 通常モード: [4px帯] [アイコン] [情報] [アクション]
-            var outerGrid = new Grid();
-            outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
-            outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            var newBar = new Border
-            {
-                CornerRadius = new CornerRadius(4, 0, 0, 4),
-                Visibility   = ch.HasUnread ? Visibility.Visible : Visibility.Hidden,
-                Tag          = "NewBar"
-            };
-            SetDynamicBrush(newBar, Border.BackgroundProperty, "AccentBrush");
-            Grid.SetColumn(newBar, 0);
-
-            var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 12, 0) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(56) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            Grid.SetColumn(grid, 1);
-
-            var iconBorder   = BuildIconBorder(ch);
-            var infoPanel    = BuildInfoPanel(ch);
-            var actionsPanel = BuildActionsPanel(ch);
-
-            Grid.SetColumn(iconBorder,   0);
-            Grid.SetColumn(infoPanel,    1);
-            Grid.SetColumn(actionsPanel, 2);
-
-            grid.Children.Add(iconBorder);
-            grid.Children.Add(infoPanel);
-            grid.Children.Add(actionsPanel);
-            outerGrid.Children.Add(newBar);
-            outerGrid.Children.Add(grid);
-            row.Child = outerGrid;
-        }
-        return row;
-    }
-
-    private static Border BuildIconBorderCompact(ChannelInfo ch)
-    {
-        const int size = 22; // 通常44の半分
-        var iconBorder = new Border
-        {
-            Width             = size, Height = size,
-            CornerRadius      = new CornerRadius(size / 2),
-            VerticalAlignment = VerticalAlignment.Center,
-            Clip              = new EllipseGeometry(new System.Windows.Point(size / 2, size / 2), size / 2, size / 2),
-        };
-        var img = GetCachedIcon(ch.ThumbnailUrl);
-        if (img != null)
-            iconBorder.Child = new System.Windows.Controls.Image { Source = img, Stretch = Stretch.UniformToFill };
-        return iconBorder;
-    }
-
-    private static Border BuildIconBorder(ChannelInfo ch)
-    {
-        var iconBorder = new Border
-        {
-            Width             = 44, Height = 44,
-            CornerRadius      = new CornerRadius(22),
-            Margin            = new Thickness(0, 0, 12, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Clip              = new EllipseGeometry(new System.Windows.Point(22, 22), 22, 22),
-            Cursor            = Cursors.Hand,
-            ToolTip           = "クリックして最新動画を開く",
-            Tag               = ch
-        };
-        iconBorder.PreviewMouseLeftButtonDown += (_, e) => e.Handled = true;
-        iconBorder.MouseLeftButtonUp += async (s, _) =>
-        {
-            if (s is Border b && b.Tag is ChannelInfo c)
-                await OpenChannelLatestVideoAsync(c);
-        };
-        var img = GetCachedIcon(ch.ThumbnailUrl);
-        if (img != null)
-            iconBorder.Child = new System.Windows.Controls.Image { Source = img, Stretch = Stretch.UniformToFill };
-        return iconBorder;
-    }
-
-    private static StackPanel BuildInfoPanel(ChannelInfo ch)
-    {
-        var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-
-        // チャンネル名 + NEWバッジ
-        var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
-        var nameText = new TextBlock
-        {
-            Text          = ch.ChannelName,
-            FontSize      = 13,
-            FontWeight    = FontWeights.SemiBold,
-            TextTrimming  = TextTrimming.CharacterEllipsis,
-            TextWrapping  = TextWrapping.NoWrap,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-
-        nameRow.Children.Add(nameText);
-        info.Children.Add(nameRow);
-
-        // 種別トグル
-        var kindRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
-        kindRow.Children.Add(MakeKindToggle("動画",  ch.NotifyVideo, v => { ch.NotifyVideo = v; SettingsService.Instance.UpdateChannel(ch); }));
-        kindRow.Children.Add(MakeKindToggle("Short", ch.NotifyShort, v => { ch.NotifyShort = v; SettingsService.Instance.UpdateChannel(ch); }));
-        kindRow.Children.Add(MakeKindToggle("ライブ", ch.NotifyLive,  v => { ch.NotifyLive  = v; SettingsService.Instance.UpdateChannel(ch); }));
-        info.Children.Add(kindRow);
-
-        return info;
-    }
-
-    private static StackPanel BuildActionsPanel(ChannelInfo ch)
-    {
-        var delIcon = new TextBlock { Text = "✕", FontSize = 13 };
-        SetDynamicBrush(delIcon, TextBlock.ForegroundProperty, "ErrorBrush");
-
-        var delBtn = new Button
-        {
-            Content           = delIcon,
-            Background        = Brushes.Transparent,
-            BorderThickness   = new Thickness(0),
-            Padding           = new Thickness(6),
-            Cursor            = Cursors.Hand,
-            VerticalAlignment = VerticalAlignment.Center,
-            Visibility        = Visibility.Collapsed,
-            Tag               = ch,
-            ToolTip           = "削除"
-        };
-        delBtn.Click += DeleteChannel_Click;
-
-        return new StackPanel
-        {
-            Orientation       = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children          = { delBtn }
-        };
-    }
-
-    private ContextMenu BuildChannelContextMenu(ChannelInfo ch)
-    {
-        var menu = new ContextMenu();
-
-        var clearItem = new MenuItem { Header = "🔔 NEWバッジを消す", Tag = ch };
-        clearItem.Click += (s, _) =>
-        {
-            if (s is MenuItem mi && mi.Tag is ChannelInfo c)
-            {
-                c.HasUnread = false;
-                SettingsService.Instance.UpdateChannel(c);
-                RefreshChannelList();
-            }
-        };
-
-        var renameItem = new MenuItem { Header = "✏ 名称を変更", Tag = ch };
-        renameItem.Click += (s, _) =>
-        {
-            if (s is MenuItem mi && mi.Tag is ChannelInfo c)
-                ShowRenameDialog(c);
-        };
-
-        var newCatItem = new MenuItem { Header = "📁 新規カテゴリを作成して移動", Tag = ch };
-        newCatItem.Click += (_, _) =>
-        {
-            var catName = ShowCategoryNameDialog("新規カテゴリを作成");
-            if (catName != null)
-            {
-                var cat = SettingsService.Instance.AddCategory(catName);
-                SettingsService.Instance.SetChannelCategory(ch.ChannelId, cat.CategoryId);
-                RefreshChannelList();
-            }
-        };
-
-        var moveToCatItem = new MenuItem { Header = "📂 カテゴリに移動" };
-
-        var sep1 = new Separator();
-        var sep2 = new Separator();
-
-        menu.Items.Add(clearItem);
-        menu.Items.Add(sep1);
-        menu.Items.Add(renameItem);
-        menu.Items.Add(sep2);
-        menu.Items.Add(newCatItem);
-        menu.Items.Add(moveToCatItem);
-
-        // 開いた時に編集モードに応じて表示切替
-        menu.Opened += (_, _) =>
-        {
-            var editOn = _editMode;
-            sep1.Visibility        = editOn ? Visibility.Visible : Visibility.Collapsed;
-            renameItem.Visibility  = editOn ? Visibility.Visible : Visibility.Collapsed;
-            sep2.Visibility        = editOn ? Visibility.Visible : Visibility.Collapsed;
-            newCatItem.Visibility  = editOn ? Visibility.Visible : Visibility.Collapsed;
-            moveToCatItem.Visibility = editOn ? Visibility.Visible : Visibility.Collapsed;
-
-            // カテゴリ一覧を毎回更新
-            moveToCatItem.Items.Clear();
-            var categories = SettingsService.Instance.Categories;
-            foreach (var cat in categories.OrderBy(c => c.SortOrder))
-            {
-                var catMenuItem = new MenuItem
-                {
-                    Header = cat.CategoryName,
-                    Tag    = (ch, cat)
-                };
-                catMenuItem.Click += (s, _) =>
-                {
-                    if (s is MenuItem mi && mi.Tag is (ChannelInfo c, CategoryInfo ca))
-                    {
-                        SettingsService.Instance.SetChannelCategory(c.ChannelId, ca.CategoryId);
-                        RefreshChannelList();
-                    }
-                };
-                moveToCatItem.Items.Add(catMenuItem);
-            }
-            // 未分類へ移動
-            var uncatItem = new MenuItem { Header = "（未分類）", Tag = ch };
-            uncatItem.Click += (_, _) =>
-            {
-                SettingsService.Instance.SetChannelCategory(ch.ChannelId, null);
-                RefreshChannelList();
-            };
-            if (categories.Count > 0)
-                moveToCatItem.Items.Add(new Separator());
-            moveToCatItem.Items.Add(uncatItem);
-        };
-
-        return menu;
-    }
-
-    private static UIElement MakeKindToggle(string label, bool initial, Action<bool> onChanged)
-    {
-        var border = new Border
-        {
-            CornerRadius    = new CornerRadius(4),
-            Padding         = new Thickness(7, 3, 7, 3),
-            Margin          = new Thickness(0, 0, 6, 0),
-            Cursor          = Cursors.Hand,
-            BorderThickness = new Thickness(1)
-        };
-        SetDynamicBrush(border, Border.BorderBrushProperty, "BorderBrush");
-        SetDynamicBrush(border, Border.BackgroundProperty, initial ? "PrimaryBrush" : "SurfaceElevatedBrush");
-
-        var tb = new TextBlock { Text = label, FontSize = 10, FontWeight = FontWeights.SemiBold };
-        if (initial) tb.Foreground = Brushes.White;
-        else SetDynamicBrush(tb, TextBlock.ForegroundProperty, "TextMutedBrush");
-        border.Child = tb;
-
-        bool current = initial;
-        border.PreviewMouseLeftButtonDown += (_, e) =>
-        {
-            // 編集モード中のみ変更可能
-            var win = Application.Current.MainWindow as MainWindow;
-            if (win == null || !win._editMode) return;
-            e.Handled = true;
-            current = !current;
-            onChanged(current);
-            SetDynamicBrush(border, Border.BackgroundProperty, current ? "PrimaryBrush" : "SurfaceElevatedBrush");
-            if (current) tb.Foreground = Brushes.White;
-            else SetDynamicBrush(tb, TextBlock.ForegroundProperty, "TextMutedBrush");
-        };
-        // 編集モード外はカーソルをデフォルトに
-        border.Cursor = Cursors.Arrow;
-        return border;
-    }
-
-    // ===== チャンネル操作 =====
-    // トースト通知クリック時に MonitorService から呼び出すための static ラッパー
-    public static async Task OpenChannelLatestVideoFromToastAsync(ChannelInfo ch)
-        => await OpenChannelLatestVideoAsync(ch);
-
-    private static async Task OpenChannelLatestVideoAsync(ChannelInfo ch)
-    {
-        if (ch.HasUnread)
-        {
-            ch.HasUnread = false;
-            SettingsService.Instance.UpdateChannel(ch);
-            Application.Current.Dispatcher.Invoke(
-                () => (Application.Current.MainWindow as MainWindow)?.RefreshChannelList());
-        }
-
-        if (!ch.NotifyVideo && !ch.NotifyShort && !ch.NotifyLive)
-        {
-            OpenUrl(ch.ChannelUrl);
-            LoggerService.Instance.Info("チャンネルページを開きます（全種別オフ）", ch.ChannelName);
-            return;
-        }
-
-        string url = ch.ChannelUrl;
-        var apiKey = SettingsService.Instance.Settings.ApiKey;
-
-        if (!string.IsNullOrEmpty(apiKey))
-        {
-            LoggerService.Instance.Info("最新動画を検索中...", ch.ChannelName);
-            try
-            {
-                var client = new YouTubeApiClient();
-                var result = await client.FetchLatestAllowedVideoAsync(
-                    ch.ChannelId, ch.NotifyVideo, ch.NotifyShort, ch.NotifyLive);
-
-                if (result.HasValue)
-                {
-                    var (videoId, kind) = result.Value;
-                    if (kind == VideoKind.Video && videoId != null)
-                    {
-                        ch.LastVideoId = videoId;
-                        SettingsService.Instance.UpdateChannel(ch);
-                    }
-                    url = $"https://www.youtube.com/watch?v={videoId ?? string.Empty}";
-                    LoggerService.Instance.Info($"最新{KindLabel(kind)}を開きます", ch.ChannelName);
-                }
-                else
-                {
-                    url = !string.IsNullOrEmpty(ch.LastVideoId)
-                        ? $"https://www.youtube.com/watch?v={ch.LastVideoId}" : ch.ChannelUrl;
-                    LoggerService.Instance.Info("対象動画が見つかりませんでした", ch.ChannelName);
-                }
-            }
-            catch
-            {
-                url = !string.IsNullOrEmpty(ch.LastVideoId)
-                    ? $"https://www.youtube.com/watch?v={ch.LastVideoId}" : ch.ChannelUrl;
-                LoggerService.Instance.Warning("API失敗、フォールバック", ch.ChannelName);
-            }
-        }
-        else if (!string.IsNullOrEmpty(ch.LastVideoId))
-        {
-            url = $"https://www.youtube.com/watch?v={ch.LastVideoId}";
-            LoggerService.Instance.Info("最新動画を開きます（APIキー未設定）", ch.ChannelName);
-        }
-
-        OpenUrl(url);
-    }
-
-    private static void OpenUrl(string url) =>
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-
-    private void ShowRenameDialog(ChannelInfo ch)
-    {
-        var dlg = new Window
-        {
-            Title = "名称を変更", Width = 360, Height = 160,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Owner = this, ResizeMode = ResizeMode.NoResize, WindowStyle = WindowStyle.None
-        };
-        SetDynamicBrush(dlg, Window.BackgroundProperty, "SurfaceBrush");
-
-        var root = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6) };
-        SetDynamicBrush(root, Border.BorderBrushProperty, "BorderBrush");
-
-        var panel  = new StackPanel { Margin = new Thickness(20) };
-        var label  = new TextBlock { Text = "チャンネルの表示名を入力してください", FontSize = 12, Margin = new Thickness(0, 0, 0, 8) };
-        SetDynamicBrush(label, TextBlock.ForegroundProperty, "TextSecondaryBrush");
-
-        var input = new TextBox
-        {
-            Text = ch.ChannelName, FontSize = 13, Margin = new Thickness(0, 0, 0, 14),
-            Style = (Style)Application.Current.Resources["ModernTextBox"]
-        };
-
-        var btnRow    = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        var cancelBtn = new Button { Content = "キャンセル", Margin = new Thickness(0, 0, 8, 0),
-            Style = (Style)Application.Current.Resources["SecondaryButton"], Padding = new Thickness(14, 7, 14, 7) };
-        var okBtn     = new Button { Content = "変更", IsDefault = true,
-            Style = (Style)Application.Current.Resources["PrimaryButton"], Padding = new Thickness(14, 7, 14, 7) };
-
-        cancelBtn.Click += (_, _) => dlg.Close();
-        okBtn.Click += (_, _) =>
-        {
-            var name = input.Text.Trim();
-            if (!string.IsNullOrEmpty(name))
-            {
-                ch.ChannelName = name;
-                SettingsService.Instance.UpdateChannel(ch);
-                LoggerService.Instance.Info($"名称を変更しました → {name}", ch.ChannelName);
-                RefreshChannelList();
-            }
-            dlg.Close();
-        };
-        input.KeyDown += (_, e) =>
-        {
-            if (e.Key == Key.Enter)  okBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            if (e.Key == Key.Escape) dlg.Close();
-        };
-
-        btnRow.Children.Add(cancelBtn);
-        btnRow.Children.Add(okBtn);
-        panel.Children.Add(label);
-        panel.Children.Add(input);
-        panel.Children.Add(btnRow);
-        root.Child  = panel;
-        dlg.Content = root;
-        dlg.ShowDialog();
-        input.Focus();
-    }
-
-    private static void DeleteChannel_Click(object sender, RoutedEventArgs e)
-    {
-        e.Handled = true;
-        if (sender is not Button btn || btn.Tag is not ChannelInfo ch) return;
-        if (MessageBox.Show($"「{ch.ChannelName}」を削除しますか？", "確認",
-                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-        SettingsService.Instance.RemoveChannel(ch.ChannelId);
-        LoggerService.Instance.Info("チャンネルを削除しました", ch.ChannelName);
-        (Application.Current.MainWindow as MainWindow)?.RefreshChannelList();
-    }
-
-    // ===== 監視ステータス =====
-    private void UpdateMonitorStatus(bool isRunning)
-    {
-        // StatusBadge は Button テンプレート内の要素を FindName で取得
-        if (StatusBadge.Template?.FindName("StatusText", StatusBadge)
-            is TextBlock st)
-        {
-            st.Text = isRunning ? "監視中" : "停止中";
-            SetDynamicBrush(st, TextBlock.ForegroundProperty,
-                isRunning ? "SuccessBrush" : "SidebarTextBrush");
-        }
-        if (StatusBadge.Template?.FindName("StatusDot", StatusBadge)
-            is SolidColorBrush dot)
-        {
-            var brush = Application.Current.TryFindResource(
-                isRunning ? "SuccessBrush" : "SidebarTextBrush") as SolidColorBrush;
-            if (brush != null) dot.Color = brush.Color;
-        }
-        SetDynamicBrush(StatusBadge, Button.BackgroundProperty,
-            isRunning ? "SidebarStatusBgBrush" : "SidebarStatusBgBrush");
-        StatusBadge.ToolTip = isRunning ? "クリックして監視を停止" : "クリックして監視を開始";
-
-        if (_sidebarCollapsed)
-            UpdateToggleIconColor(isRunning);
-    }
-
-    // ===== サイドバー =====
-    private void SidebarToggle_Click(object sender, RoutedEventArgs e)
-    {
-        _sidebarCollapsed = !_sidebarCollapsed;
-
-        SidebarColumn.Width = new GridLength(_sidebarCollapsed ? SidebarCollapsedWidth : SidebarExpandedWidth);
-
-        if (_sidebarCollapsed)
-        {
-            MenuLabel.Text              = " ";
-            StatusBadge.Visibility      = Visibility.Collapsed;
-            NavWatch.Content            = "";
-            NavLog.Content              = "";
-            NavSettings.Content         = "";
-            SidebarToggleButton.ToolTip = "メニューを展開する";
-            UpdateToggleIcon("▶");
-            UpdateToggleIconColor(MonitorService.Instance.IsRunning);
-        }
-        else
-        {
-            MenuLabelWrap.Visibility  = Visibility.Visible;
-            MenuLabel.Text            = "MENU";
-            StatusBadge.Visibility    = Visibility.Visible;
-            NavWatch.Content          = "チャンネル";
-            NavLog.Content            = "動作ログ";
-            NavSettings.Content       = "基本設定";
-            UpdateMonitorStatus(MonitorService.Instance.IsRunning);
-            SidebarToggleButton.ToolTip = "メニューを折り畳む";
-            UpdateToggleIcon("◀");
-            UpdateToggleIconColor(false); // 展開時は常にデフォルト色
-        }
-
-        UpdateMinWidth();
-        SettingsService.Instance.Settings.SidebarCollapsed = _sidebarCollapsed;
-        SettingsService.Instance.SaveSettings();
-        SyncWindowWidth();
-    }
-
-    // サイドバー + 右ペイン固定幅
-    private const int ContentPaneWidth   = 286;
-    private const int ExpandedTotalWidth = 110 + 303; // 413
-    private const int CollapsedTotalWidth = 44 + 303;  // 347
-
-    private void UpdateMinWidth()
-    {
-        MinHeight = 460;
-        // 幅は SyncWindowWidth で管理
-    }
-
-    private void SyncWindowWidth()
-    {
-        if (SettingsService.Instance.Settings.CompactMode) return;
-        var target = _sidebarCollapsed ? CollapsedTotalWidth : ExpandedTotalWidth;
-        MaxWidth = target;
-        MinWidth = target;
-        if ((int)Width != target)
-            Width = target;
-    }
-
-    private void UpdateToggleIcon(string icon)
-    {
-        if (SidebarToggleButton.Template?.FindName("ToggleIcon", SidebarToggleButton)
-            is TextBlock tb)
-            tb.Text = icon;
-    }
-
-    private void UpdateToggleIconColor(bool isRunning)
-    {
-        if (SidebarToggleButton.Template?.FindName("ToggleIcon", SidebarToggleButton)
-            is TextBlock tb)
-        {
-            if (isRunning)
-                SetDynamicBrush(tb, TextBlock.ForegroundProperty, "SuccessBrush");
-            else
-                SetDynamicBrush(tb, TextBlock.ForegroundProperty, "SidebarTextBrush");
-        }
-    }
-
-    // ===== 設定サブナビゲーション =====
-    private void SettingsNav_Click(object sender, RoutedEventArgs e) { }
-
-    private void SettingsNavBorder_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        SettingsPageApp.Visibility     = Visibility.Collapsed;
-        SettingsPageMonitor.Visibility = Visibility.Collapsed;
-        SettingsPageLog.Visibility     = Visibility.Collapsed;
-        SettingsPageApi.Visibility     = Visibility.Collapsed;
-        SettingsPageAbout.Visibility   = Visibility.Collapsed;
-
-        var navItems = new[] { SettingsNavApp, SettingsNavMonitor, SettingsNavLog, SettingsNavApi, SettingsNavAbout };
-        foreach (var nav in navItems)
-        {
-            nav.BorderBrush = new SolidColorBrush(Colors.Transparent);
-            if (nav.Child is TextBlock tb)
-                SetDynamicBrush(tb, TextBlock.ForegroundProperty, "TextMutedBrush");
-        }
-
-        if (sender is not Border active) return;
-        active.BorderBrush = (Brush)Application.Current.Resources["PrimaryBrush"];
-        if (active.Child is TextBlock activeTb)
-            SetDynamicBrush(activeTb, TextBlock.ForegroundProperty, "PrimaryBrush");
-
-        if      (sender == SettingsNavApp)     SettingsPageApp.Visibility     = Visibility.Visible;
-        else if (sender == SettingsNavMonitor) SettingsPageMonitor.Visibility = Visibility.Visible;
-        else if (sender == SettingsNavLog)     SettingsPageLog.Visibility     = Visibility.Visible;
-        else if (sender == SettingsNavApi)     SettingsPageApi.Visibility     = Visibility.Visible;
-        else if (sender == SettingsNavAbout)   SettingsPageAbout.Visibility   = Visibility.Visible;
-    }
-
-    // ===== ナビゲーション =====
-    private void Nav_Click(object sender, RoutedEventArgs e)
-    {
-        PageWatch.Visibility    = Visibility.Collapsed;
-        PageLog.Visibility      = Visibility.Collapsed;
-        PageSettings.Visibility = Visibility.Collapsed;
-        NavWatch.Style    = (Style)FindResource("NavButton");
-        NavLog.Style      = (Style)FindResource("NavButton");
-        NavSettings.Style = (Style)FindResource("NavButton");
-
-        if      (sender == NavWatch)    { PageWatch.Visibility    = Visibility.Visible; NavWatch.Style    = (Style)FindResource("NavButtonActive"); }
-        else if (sender == NavLog)      { PageLog.Visibility      = Visibility.Visible; NavLog.Style      = (Style)FindResource("NavButtonActive"); }
-        else if (sender == NavSettings) { PageSettings.Visibility = Visibility.Visible; NavSettings.Style = (Style)FindResource("NavButtonActive"); }
-    }
-
-    // ===== タイトルバー =====
-    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ClickCount == 2) { TitleBar_Maximize(sender, e); return; }
-        if (e.ButtonState == MouseButtonState.Pressed)
-            SendMessage(new WindowInteropHelper(this).Handle, WM_NCLBUTTONDOWN, new IntPtr(HTCAPTION), IntPtr.Zero);
-    }
-
-    private void TitleBar_Minimize(object sender, RoutedEventArgs e) =>
-        WindowState = System.Windows.WindowState.Minimized;
-
-    private void TitleBar_Maximize(object sender, RoutedEventArgs e) =>
-        WindowState = WindowState == System.Windows.WindowState.Maximized
-            ? System.Windows.WindowState.Normal
-            : System.Windows.WindowState.Maximized;
-
-    private void TitleBar_Close(object sender, RoutedEventArgs e) => Close();
-
-    // ===== チャンネル追加 =====
-    private void AddChannelHeader_Click(object sender, RoutedEventArgs e)
-    {
-        var dlg = new AddChannelWindow { Owner = this };
-        dlg.ShowDialog();
-        if (dlg.ChannelAdded)
-            RefreshChannelList();
-    }
-
-
-    // ===== アクションボタン =====
-    private async void ManualCheckButton_Click(object sender, RoutedEventArgs e)
-    {
-        InlineCheckButton.IsEnabled = false;
-        Nav_Click(NavWatch, e);
-        await MonitorService.Instance.ManualCheckAsync();
-        RefreshChannelList();
-        InlineCheckButton.IsEnabled = true;
-    }
-
-    private void MonitorToggleButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (MonitorService.Instance.IsRunning) MonitorService.Instance.Stop();
-        else MonitorService.Instance.Start();
-        Nav_Click(NavLog, e);
-    }
-
-    // ===== 設定ハンドラ =====
-    private void SaveApiKey_Click(object sender, RoutedEventArgs e)
-    {
-        if (SaveApiKeyButton.Content?.ToString() == "変更")
-        {
-            // 変更ボタン → 編集可能にする
-            UpdateApiKeyState(false);
-            ApiKeyBox.Focus();
-            return;
-        }
-
-        // 保存ボタン
-        var key = ApiKeyBox.IsReadOnly ? _actualApiKey : ApiKeyBox.Text.Trim();
-        if (string.IsNullOrEmpty(key)) return;
-        _actualApiKey = key;
-        SettingsService.Instance.Settings.ApiKey = key;
-        SettingsService.Instance.SaveSettings();
-        LoggerService.Instance.Success("APIキーを保存しました");
-        UpdateApiKeyState(true);
-    }
-
-    private string _actualApiKey = "";
-
-    private void UpdateApiKeyState(bool saved)
-    {
-        if (saved)
-        {
-            _actualApiKey     = ApiKeyBox.Text.Trim();
-            // マスク文字で中央表示
-            ApiKeyBox.Text      = new string('●', Math.Min(_actualApiKey.Length, 32));
-            ApiKeyBox.IsReadOnly = true;
-            ApiKeyBox.TextAlignment = System.Windows.TextAlignment.Center;
-        }
-        else
-        {
-            ApiKeyBox.Text      = _actualApiKey;
-            ApiKeyBox.IsReadOnly = false;
-            ApiKeyBox.TextAlignment = System.Windows.TextAlignment.Left;
-            ApiKeyBox.Focus();
-            ApiKeyBox.SelectAll();
-        }
-        SaveApiKeyButton.Content = saved ? "変更" : "保存";
-        SetDynamicBrush(SaveApiKeyButton, Button.BackgroundProperty,
-            saved ? "SurfaceElevatedBrush" : "PrimaryBrush");
-        if (saved)
-            SetDynamicBrush(SaveApiKeyButton, Button.ForegroundProperty, "TextPrimaryBrush");
-        else
-            SaveApiKeyButton.Foreground = Brushes.White;
-    }
-
-    private void DarkModeToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        var isDark = DarkModeToggle.IsChecked == true;
-        SettingsService.Instance.Settings.IsDarkMode = isDark;
-        SettingsService.Instance.SaveSettings();
-        App.ApplyTheme(isDark);
-        RefreshChannelList();
-        InvalidateVisual();
-        UpdateLayout();
-    }
-
-    private void NotificationToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        SettingsService.Instance.Settings.ShowDesktopNotification = NotificationToggle.IsChecked == true;
-        SettingsService.Instance.SaveSettings();
-    }
-
-    // コンパクトモード前の状態保存
-    private double _preCompactWidth            = 0;
-    private bool   _preCompactSidebarCollapsed = false;
-    private bool   _applyingCompactMode        = false;
-
-    private void CompactModeToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_applyingCompactMode) return;
-        var enabled = CompactModeToggle.IsChecked == true;
-        SettingsService.Instance.Settings.CompactMode = enabled;
-        SettingsService.Instance.SaveSettings();
-        ApplyCompactMode(enabled);
-    }
-
-    // ===== ミュートボタン =====
-    private bool _isMuted                    = false;
-    private bool _preMuteDesktopNotification = false;
-    private bool _preMuteNotificationSound   = false;
-
-    private void MuteButton_Click(object sender, RoutedEventArgs e)
-    {
-        _isMuted = !_isMuted;
-        var settings = SettingsService.Instance.Settings;
-
-        if (_isMuted)
-        {
-            // 現在の設定を保存してOFFに
-            _preMuteDesktopNotification              = settings.ShowDesktopNotification;
-            _preMuteNotificationSound                = settings.NotificationSound;
-            settings.PreMuteDesktopNotification      = _preMuteDesktopNotification;
-            settings.PreMuteNotificationSound        = _preMuteNotificationSound;
-            settings.IsMuted                         = true;
-            settings.ShowDesktopNotification         = false;
-            settings.NotificationSound               = false;
-        }
-        else
-        {
-            // 設定を復元
-            settings.ShowDesktopNotification = _preMuteDesktopNotification;
-            settings.NotificationSound       = _preMuteNotificationSound;
-            settings.IsMuted                 = false;
-        }
-
-        SettingsService.Instance.SaveSettings();
-
-        // トグル UI も同期
-        NotificationToggle.IsChecked      = settings.ShowDesktopNotification;
-        NotificationSoundToggle.IsChecked = settings.NotificationSound;
-
-        UpdateMuteButton(_isMuted);
-    }
-
-    private void UpdateMuteButton(bool muted)
-    {
-        if (MuteButton.Template?.FindName("MuteIcon", MuteButton)
-            is TextBlock icon)
-        {
-            icon.Text = muted ? "🔕" : "🔔";
-            if (muted)
-                SetDynamicBrush(icon, TextBlock.ForegroundProperty, "ErrorBrush");
-            else
-                SetDynamicBrush(icon, TextBlock.ForegroundProperty, "SidebarTextBrush");
-        }
-        MuteButton.ToolTip = muted ? "ミュート: ON（クリックで解除）" : "ミュート: OFF";
-    }
-
-    private void CompactModeButton_Click(object sender, RoutedEventArgs e)
-    {
-        var enabled = !SettingsService.Instance.Settings.CompactMode;
-        ApplyCompactMode(enabled);
-    }
-
-    private void ApplyCompactMode(bool enabled)
-    {
-        if (_applyingCompactMode) return;
-        _applyingCompactMode = true;
-
-        try
-        {
-            SettingsService.Instance.Settings.CompactMode = enabled;
-            SettingsService.Instance.SaveSettings();
-            CompactModeToggle.IsChecked = enabled;
-
-            if (enabled)
-            {
-                // ON: 現在の状態を保存
-                _preCompactWidth            = ActualWidth;
-                _preCompactSidebarCollapsed = _sidebarCollapsed;
-
-                // サイドバーを先に折り畳む
-                if (!_sidebarCollapsed)
-                {
-                    _sidebarCollapsed = true;
-                    SidebarColumn.Width = new GridLength(SidebarCollapsedWidth);
-                    UpdateToggleIcon("▶");
-                    UpdateToggleIconColor(MonitorService.Instance.IsRunning);
-                    SettingsService.Instance.Settings.SidebarCollapsed = _sidebarCollapsed;
-                    SettingsService.Instance.SaveSettings();
-                }
-                SidebarToggleButton.IsEnabled = false;
-                SidebarToggleButton.Opacity   = 0.3;
-
-                // サイドバー折り畳み後に幅を固定
-                Dispatcher.Invoke(() =>
-                {
-                    MaxWidth = 338;
-                    MinWidth = 338;
-                    Width    = 338;
-                }, System.Windows.Threading.DispatcherPriority.Render);
-            }
-            else
-            {
-                // OFF: まず MaxWidth/MinWidth を無制限に解放してから SyncWindowWidth で再固定
-                MaxWidth = double.PositiveInfinity;
-                MinWidth = 330;
-
-                SidebarToggleButton.IsEnabled = true;
-                SidebarToggleButton.Opacity   = 1.0;
-
-                // サイドバー状態を復元
-                if (_sidebarCollapsed != _preCompactSidebarCollapsed)
-                {
-                    _sidebarCollapsed = _preCompactSidebarCollapsed;
-                    SidebarColumn.Width = new GridLength(_sidebarCollapsed ? SidebarCollapsedWidth : SidebarExpandedWidth);
-                    UpdateToggleIcon(_sidebarCollapsed ? "▶" : "◀");
-                    UpdateToggleIconColor(MonitorService.Instance.IsRunning);
-                    SettingsService.Instance.Settings.SidebarCollapsed = _sidebarCollapsed;
-                    SettingsService.Instance.SaveSettings();
-                }
-
-                // サイドバー状態に応じた固定幅に同期
-                Dispatcher.Invoke(SyncWindowWidth, System.Windows.Threading.DispatcherPriority.Render);
-            }
-
-            UpdateCompactModeButton(enabled);
-            RefreshChannelList();
-        }
-        finally
-        {
-            _applyingCompactMode = false;
-        }
-    }
-
-    private void UpdateCompactModeButton(bool enabled)
-    {
-        if (CompactModeButton.Template?.FindName("CompactIcon", CompactModeButton)
-            is TextBlock icon)
-        {
-            icon.Text    = enabled ? "⊞" : "⊟";
-            if (enabled)
-                SetDynamicBrush(icon, TextBlock.ForegroundProperty, "ErrorBrush");
-            else
-                SetDynamicBrush(icon, TextBlock.ForegroundProperty, "SidebarTextBrush");
-        }
-        CompactModeButton.ToolTip = enabled ? "コンパクトモード: ON（クリックで解除）" : "コンパクトモード: OFF";
-    }
-
-    private void NotificationSoundToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        SettingsService.Instance.Settings.NotificationSound = NotificationSoundToggle.IsChecked == true;
-        SettingsService.Instance.SaveSettings();
-    }
-
-    private void TrayToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        SettingsService.Instance.Settings.MinimizeToTray = TrayToggle.IsChecked == true;
-        SettingsService.Instance.SaveSettings();
-    }
-
-    // ===== バックアップ / インポート =====
-    private void ExportBackup_Click(object sender, RoutedEventArgs e)
-    {
-        var dlg = new Microsoft.Win32.SaveFileDialog
-        {
-            Title            = "バックアップの保存先を選択",
-            Filter           = "ZIPファイル (*.zip)|*.zip",
-            FileName         = $"YTNotifier_backup_{DateTime.Now:yyyyMMdd_HHmmss}.zip",
-            DefaultExt       = ".zip",
-            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
-        };
-        if (dlg.ShowDialog() != true) return;
-        try
-        {
-            var path = SettingsService.Instance.ExportBackup(dlg.FileName);
-            BackupStatusText.Text = $"✅ エクスポート完了: {System.IO.Path.GetFileName(path)}";
-            SetDynamicBrush(BackupStatusText, TextBlock.ForegroundProperty, "SuccessBrush");
-        }
-        catch (Exception ex)
-        {
-            BackupStatusText.Text = $"❌ エラー: {ex.Message}";
-            SetDynamicBrush(BackupStatusText, TextBlock.ForegroundProperty, "ErrorBrush");
-        }
-    }
-
-    private void ImportBackup_Click(object sender, RoutedEventArgs e)
-    {
-        var dlg = new Microsoft.Win32.OpenFileDialog
-        {
-            Title            = "バックアップファイルを選択",
-            Filter           = "ZIPファイル (*.zip)|*.zip",
-            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
-        };
-        if (dlg.ShowDialog() != true) return;
-
-        if (MessageBox.Show(
-            "現在の設定がバックアップで上書きされます。\n続行しますか？",
-            "インポート確認", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
-            return;
-
-        var (success, message) = SettingsService.Instance.ImportBackup(dlg.FileName);
-        BackupStatusText.Text = success ? $"✅ {message}" : $"❌ {message}";
-        SetDynamicBrush(BackupStatusText, TextBlock.ForegroundProperty,
-            success ? "SuccessBrush" : "ErrorBrush");
-
-        if (success)
-        {
-            LoadSettings();
-            RefreshChannelList();
-        }
-    }
-
-    private void AlwaysOnTopToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        var enabled = AlwaysOnTopToggle.IsChecked == true;
-        Topmost = enabled;
-        SettingsService.Instance.Settings.AlwaysOnTop = enabled;
-        SettingsService.Instance.SaveSettings();
-        UpdatePinButton(enabled);
-    }
-
-    private void PinButton_Click(object sender, RoutedEventArgs e)
-    {
-        var enabled = !SettingsService.Instance.Settings.AlwaysOnTop;
-        Topmost = enabled;
-        SettingsService.Instance.Settings.AlwaysOnTop = enabled;
-        SettingsService.Instance.SaveSettings();
-        AlwaysOnTopToggle.IsChecked = enabled;
-        UpdatePinButton(enabled);
-    }
-
-    private void UpdatePinButton(bool pinned)
-    {
-        if (PinButton.Template?.FindName("PinIcon", PinButton)
-            is TextBlock icon)
-        {
-            icon.Opacity = 1.0;
-            if (pinned)
-                icon.Foreground = (Brush)Application.Current.Resources["ErrorBrush"];
-            else
-                SetDynamicBrush(icon, TextBlock.ForegroundProperty, "SidebarTextBrush");
-        }
-        PinButton.ToolTip = pinned ? "常に前面に表示: ON（クリックで解除）" : "常に前面に表示: OFF";
-    }
-
-    private void StartupToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        var enabled = StartupToggle.IsChecked == true;
-        SettingsService.Instance.Settings.StartWithWindows = enabled;
-        SettingsService.Instance.SaveSettings();
-        SetStartup(enabled);
-    }
-
-    private void IntervalComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (IntervalComboBox.SelectedItem is not ComboBoxItem item) return;
-        if (!int.TryParse(item.Tag?.ToString(), out var minutes)) return;
-
-        var channels = SettingsService.Instance.Channels.Count;
-        var (safe, recommended) = ApiQuotaHelper.ValidateInterval(minutes, channels);
-
-        if (!safe)
-        {
-            // 超過する場合は推奨値に自動修正
-            var recItem = IntervalComboBox.Items.Cast<ComboBoxItem>()
-                .FirstOrDefault(i => i.Tag?.ToString() == recommended.ToString());
-            if (recItem != null && recItem != item)
-            {
-                IntervalComboBox.SelectedItem = recItem;
-                MessageBox.Show(
-                    $"チャンネル数 {channels} 件では {minutes} 分間隔だと\n1日のAPIクォータ（10,000ユニット）を超過します。\n\n自動的に {recommended} 分間隔に調整しました。",
-                    "API クォータ超過防止", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return; // 再帰的に SelectionChanged が呼ばれる
-            }
-        }
-
-        SettingsService.Instance.Settings.CheckIntervalMinutes = minutes;
-        SettingsService.Instance.SaveSettings();
-        MonitorService.Instance.RestartWithNewInterval();
-        UpdateQuotaInfo();
-    }
-
-    private void TestNotification_Click(object sender, RoutedEventArgs e)
-    {
-        try   { MonitorService.Instance.SendTestNotification(); LoggerService.Instance.Info("テスト通知を送信しました"); }
-        catch (Exception ex) { LoggerService.Instance.Error($"テスト通知失敗: {ex.Message}"); }
-    }
-
-    private void OpenLogFolder_Click(object sender, RoutedEventArgs e)
-    {
-        var dir = Path.Combine(SettingsService.Instance.AppDataDir, "logs");
-        Directory.CreateDirectory(dir);
-        Process.Start(new ProcessStartInfo("explorer.exe", dir) { UseShellExecute = true });
-    }
-
-    private void ClearLog_Click(object sender, RoutedEventArgs e)      => LoggerService.Instance.ClearUiLog();
-
-    // ===== ログメンテナンス =====
-    private void RefreshLogStats()
-    {
-        var (count, bytes, oldest, newest) = LoggerService.Instance.GetLogStats();
-        if (count == 0)
-        {
-            LogStatsText.Text = "ログファイルはありません";
-            return;
-        }
-        var mb = bytes / 1024.0 / 1024.0;
-        var sizeStr = mb >= 1 ? $"{mb:F1} MB" : $"{bytes / 1024.0:F0} KB";
-        LogStatsText.Text = $"ファイル数: {count} 件  合計サイズ: {sizeStr}\n最古: {oldest:yyyy/MM/dd}  最新: {newest:yyyy/MM/dd}";
-    }
-
-    private void AutoCleanLogsToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        SettingsService.Instance.Settings.AutoCleanLogs = AutoCleanLogsToggle.IsChecked == true;
-        SettingsService.Instance.SaveSettings();
-    }
-
-    private void LogRetentionComboBox_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        if (LogRetentionComboBox.SelectedItem is ComboBoxItem item &&
-            int.TryParse(item.Tag?.ToString(), out var days))
-        {
-            SettingsService.Instance.Settings.LogRetentionDays = days;
-            SettingsService.Instance.SaveSettings();
-        }
-    }
-
-    private void CleanLogsNow_Click(object sender, RoutedEventArgs e)
-    {
-        var days = SettingsService.Instance.Settings.LogRetentionDays;
-        if (days == -1)
-        {
-            LogCleanResultText.Text = "保持期間が「無制限」のため削除しません";
-            return;
-        }
-        var (deleted, freed) = LoggerService.Instance.CleanOldLogs(days);
-        var mb = freed / 1024.0 / 1024.0;
-        var sizeStr = mb >= 1 ? $"{mb:F1} MB" : $"{freed / 1024.0:F0} KB";
-        LogCleanResultText.Text = deleted > 0
-            ? $"✅ {deleted} 件削除（{sizeStr} 解放）"
-            : "削除対象のログファイルはありませんでした";
-        LoggerService.Instance.Info($"ログ手動削除: {deleted}件 ({sizeStr})");
-        RefreshLogStats();
-    }
-    private void ApiKeyLink_Click(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
-    {
-        OpenUrl(e.Uri.AbsoluteUri);
-        e.Handled = true;
-    }
-
-    private static void SetStartup(bool enable)
-    {
-        try
-        {
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-            if (key == null) return;
-            var exe = Environment.ProcessPath
-                   ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
-            if (enable) key.SetValue("YTNotifier", $"\"{exe}\"");
-            else        key.DeleteValue("YTNotifier", false);
-        }
-        catch { }
-    }
-
-    // ===== ドラッグアンドドロップ =====
-    private void ChannelRow_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton != MouseButton.Left) return;
-        _dragStartPoint = e.GetPosition(null);
-        _isDragging     = false;
-        _dragSource     = null;
-        if (sender is FrameworkElement fe && fe.Tag is ChannelInfo src)
-        {
-            _dragSource      = src;
-            _dragSourceIndex = SettingsService.Instance.Channels.FindIndex(c => c.ChannelId == src.ChannelId);
-        }
-    }
-
-    private void ChannelRow_MouseMove(object sender, MouseEventArgs e)
-    {
-        if (!_editMode) return;
-        if (e.LeftButton != MouseButtonState.Pressed || _dragSource == null || _isDragging) return;
-
-        var diff = _dragStartPoint - e.GetPosition(null);
-        if (Math.Abs(diff.X) < SystemParameters.MinimumHorizontalDragDistance &&
-            Math.Abs(diff.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-
-        _isDragging = true;
-        if (sender is Border rowBorder)
-        {
-            AttachDragAdorner(rowBorder, e.GetPosition(ChannelList));
-            rowBorder.Opacity = 0.4;
-            // ドラッグ中は手を閉じたカーソル
-            Mouse.OverrideCursor = Cursors.ScrollAll;
-            ChannelList.PreviewDragOver += OnDragOverUpdateAdorner;
-            DragDrop.DoDragDrop(rowBorder, new DataObject("ChannelDrag", _dragSource.ChannelId), DragDropEffects.Move);
-            ChannelList.PreviewDragOver -= OnDragOverUpdateAdorner;
-            Mouse.OverrideCursor = null;
-            rowBorder.Opacity = 1.0;
-            DetachDragAdorner();
-            HideDropIndicator();
-        }
-        _isDragging = false;
-    }
-
-    private void ChannelRow_MouseUp(object sender, MouseButtonEventArgs e)
-    {
-        _dragSource = null; _dragSourceIndex = -1; _isDragging = false;
-        e.Handled   = false;
-    }
-
-    private void AttachDragAdorner(Border source, System.Windows.Point pos)
-    {
-        var visual = new Rectangle
-        {
-            Width  = source.ActualWidth,
-            Height = source.ActualHeight,
-            Fill   = new VisualBrush(source) { Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top },
-            Opacity = 0.85,
-            Effect  = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 12, ShadowDepth = 4, Opacity = 0.4, Direction = 270 }
-        };
-        _dragAdorner = new DragAdorner(ChannelScrollViewer, visual, pos.X, pos.Y - source.ActualHeight / 2);
-    }
-
-    private void DetachDragAdorner() { _dragAdorner?.Detach(); _dragAdorner = null; }
-
-    private void OnDragOverUpdateAdorner(object sender, DragEventArgs e)
-    {
-        if (_dragAdorner == null) return;
-        var pos = e.GetPosition(ChannelScrollViewer);
-        _dragAdorner.UpdatePosition(pos.X, pos.Y - 30);
-    }
-
-    private void ShowDropIndicator(int insertIndex)
-    {
-        if (_dropIndicatorIndex == insertIndex) return;
-        HideDropIndicator();
-        _dropIndicatorIndex = insertIndex;
-        _dropIndicator = new Border
-        {
-            Height              = 2,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            IsHitTestVisible    = false,
-            Margin              = new Thickness(8, 0, 8, 0)
-        };
-        SetDynamicBrush(_dropIndicator, Border.BackgroundProperty, "PrimaryBrush");
-        var idx = Math.Min(insertIndex, ChannelList.Children.Count);
-        ChannelList.Children.Insert(idx, _dropIndicator);
-    }
-
-    private void HideDropIndicator()
-    {
-        if (_dropIndicator != null && ChannelList.Children.Contains(_dropIndicator))
-            ChannelList.Children.Remove(_dropIndicator);
-        _dropIndicator      = null;
-        _dropIndicatorIndex = -1;
-    }
-
-    private int CalcDropIndex(double posY)
-    {
-        double cumY  = 0;
-        int    count = 0;
-        foreach (var child in ChannelList.Children.OfType<FrameworkElement>())
-        {
-            if (child == _dropIndicator) continue;
-            double rowH   = child.ActualHeight + child.Margin.Bottom;
-            double rowTop = cumY;
-            cumY += rowH;
-            if (posY <= cumY)
-                return posY > rowTop + rowH / 2 ? count + 1 : count;
-            count++;
-        }
-        return count;
-    }
-
-    private void ChannelList_DragOver(object sender, DragEventArgs e)
-    {
-        bool isChannel  = e.Data.GetDataPresent("ChannelDrag");
-        bool isCategory = e.Data.GetDataPresent("CategoryDrag");
-        if (!isChannel && !isCategory) { e.Effects = DragDropEffects.None; return; }
-        e.Effects = DragDropEffects.Move;
-        var posY = e.GetPosition(ChannelList).Y;
-
-        if (isCategory)
-        {
-            if (_catBoundaries.Count == 0) { e.Handled = true; return; }
-
-            // キャッシュ済みのカテゴリ境界から最近傍を選択
-            int bestIdx   = _catBoundaries[^1].childIndex;
-            double bestDist = double.MaxValue;
-            foreach (var (y, idx) in _catBoundaries)
-            {
-                double dist = Math.Abs(posY - y);
-                if (dist < bestDist) { bestDist = dist; bestIdx = idx; }
-            }
-            ShowDropIndicator(bestIdx);
-        }
-        else
-        {
-            ShowDropIndicator(CalcDropIndex(posY));
-        }
-        e.Handled = true;
-    }
-
-    private void ChannelList_Drop(object sender, DragEventArgs e)
-    {
-        HideDropIndicator();
-
-        // ===== カテゴリ D&D =====
-        if (e.Data.GetDataPresent("CategoryDrag"))
-        {
-            var catSrcId   = e.Data.GetData("CategoryDrag") as string;
-            if (string.IsNullOrEmpty(catSrcId)) return;
-
-            var categories = SettingsService.Instance.Categories;
-            var catSrcIdx  = categories.FindIndex(c => c.CategoryId == catSrcId);
-            if (catSrcIdx < 0) return;
-
-            // CalcDropIndex で挿入位置を取得し、何番目のカテゴリの前に挿入するか算出
-            var catPosY    = e.GetPosition(ChannelList).Y;
-            int dropIdx    = CalcDropIndex(catPosY);
-
-            // dropIdx より前にある最後のカテゴリ行のインデックスを探す
-            var rows = ChannelList.Children.OfType<Border>()
-                .Where(b => b != _dropIndicator).ToList();
-
-            // dropIdx 以降で最初のカテゴリ行 or 末尾
-            int catDstIdx = categories.Count;
-            int scanned   = 0;
-            foreach (var row in rows)
-            {
-                if (scanned >= dropIdx && row.Tag is CategoryInfo dropCat)
-                {
-                    catDstIdx = categories.FindIndex(c => c.CategoryId == dropCat.CategoryId);
-                    break;
-                }
-                scanned++;
-            }
-
-            if (catDstIdx == catSrcIdx || catDstIdx == catSrcIdx + 1) return;
-            var movingCat = categories[catSrcIdx];
-            categories.RemoveAt(catSrcIdx);
-            if (catDstIdx > catSrcIdx) catDstIdx--;
-            catDstIdx = Math.Max(0, Math.Min(catDstIdx, categories.Count));
-            categories.Insert(catDstIdx, movingCat);
-
-            for (int i = 0; i < categories.Count; i++)
-                categories[i].SortOrder = i;
-
-            SettingsService.Instance.SaveCategories();
-            RefreshChannelList();
-            e.Handled = true;
-            return;
-        }
-
-        if (!e.Data.GetDataPresent("ChannelDrag")) return;
-        var sourceId = e.Data.GetData("ChannelDrag") as string;
-        if (string.IsNullOrEmpty(sourceId)) return;
-
-        var channels = SettingsService.Instance.Channels;
-        var srcIdx   = channels.FindIndex(c => c.ChannelId == sourceId);
-        if (srcIdx < 0) return;
-
-        var srcCh = channels[srcIdx];
-        var posY  = e.GetPosition(ChannelList).Y;
-
-        // ドロップ先の行を Y 座標から特定
-        double cumY = 0;
-        Border? targetRow = null;
-        bool    insertAfter = false;
-
-        foreach (var child in ChannelList.Children.OfType<Border>())
-        {
-            if (child == _dropIndicator) continue;
-            double rowH = child.ActualHeight + child.Margin.Top + child.Margin.Bottom;
-            if (posY <= cumY + rowH)
-            {
-                targetRow   = child;
-                insertAfter = posY > cumY + rowH / 2;
-                break;
-            }
-            cumY += rowH;
-        }
-
-        // ドロップ先がカテゴリ行の場合: そのカテゴリに移動
-        if (targetRow?.Tag is CategoryInfo targetCat)
-        {
-            srcCh.CategoryId = targetCat.CategoryId;
-            SettingsService.Instance.SaveChannels();
-            RefreshChannelList();
-            _dragSource = null; _dragSourceIndex = -1;
-            e.Handled = true;
-            return;
-        }
-
-        // ドロップ先がチャンネル行の場合: 同カテゴリ内で並び替え
-        if (targetRow?.Tag is ChannelInfo targetCh)
-        {
-            // カテゴリを合わせる
-            srcCh.CategoryId = targetCh.CategoryId;
-
-            var dstIdx = channels.FindIndex(c => c.ChannelId == targetCh.ChannelId);
-            if (dstIdx < 0) { SettingsService.Instance.SaveChannels(); RefreshChannelList(); return; }
-
-            channels.RemoveAt(srcIdx);
-            // RemoveAt でインデックスがずれるので調整
-            if (dstIdx > srcIdx) dstIdx--;
-            if (insertAfter) dstIdx++;
-            dstIdx = Math.Max(0, Math.Min(dstIdx, channels.Count));
-            channels.Insert(dstIdx, srcCh);
-        }
-        else
-        {
-            // リスト末尾にドロップ
-            channels.RemoveAt(srcIdx);
-            channels.Add(srcCh);
-        }
-
-        SettingsService.Instance.SaveChannels();
-        RefreshChannelList();
-        _dragSource = null; _dragSourceIndex = -1;
-        e.Handled   = true;
-    }
 }
