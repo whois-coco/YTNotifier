@@ -5,8 +5,6 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Forms;
 using System.Windows.Threading;
-using YTNotifier.Services;
-using YTNotifier.Views;
 
 namespace YTNotifier;
 
@@ -353,8 +351,8 @@ public partial class App : System.Windows.Application
     {
         MonitorService.Instance.Stop();
         // 変更があれば bkup/auto_backup.ytbk へ自動保存
-        try { SettingsService.Instance.SaveAutoBackupIfDirty(); } catch { }
-        try { SettingsService.Instance.SaveChannelsSilent(); } catch { }
+        try { SettingsService.Instance.SaveAutoBackupIfDirty(); } catch (Exception ex) { LoggerService.Instance.Warning($"終了時バックアップ失敗: {ex.Message}"); }
+        try { SettingsService.Instance.SaveChannelsSilent(); }    catch (Exception ex) { LoggerService.Instance.Warning($"終了時保存失敗: {ex.Message}"); }
         _notifyIcon?.Dispose();
         _mutex?.ReleaseMutex();
         _mutex?.Dispose();

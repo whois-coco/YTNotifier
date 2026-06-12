@@ -1,30 +1,12 @@
 using Google.Apis.Services;
-using YTNotifier.Models;
 using GoogleYouTubeService = Google.Apis.YouTube.v3.YouTubeService;
 
 namespace YTNotifier.Services;
 
-public enum VideoKind { Video, Short, Live, Premiere }
-
-public class VideoInfo
+public class YouTubeApiClient : IYouTubeApiClient
 {
-    public string    VideoId      { get; set; } = string.Empty;
-    public string    Title        { get; set; } = string.Empty;
-    public string?   ThumbnailUrl { get; set; }
-    public VideoKind Kind         { get; set; } = VideoKind.Video;
-    /// <summary>liveBroadcastContent == "upcoming" の時 true（待機所状態）</summary>
-    public bool      IsUpcoming   { get; set; } = false;
-    public string KindLabel => Kind switch
-    {
-        VideoKind.Short    => "Short",
-        VideoKind.Live     => "ライブ",
-        VideoKind.Premiere => "プレミア",
-        _                  => "動画"
-    };
-}
+    public static IYouTubeApiClient Instance { get; } = new YouTubeApiClient();
 
-public partial class YouTubeApiClient
-{
     private GoogleYouTubeService? _ytService;
     private string _currentApiKey = string.Empty;
 
@@ -165,72 +147,43 @@ public partial class YouTubeApiClient
     }
 
     /// <summary>
-    /// 動画種別判定（フェーズ1〜4）
+    /// 動画種別判定フェーズ1〜3（純粋関数 — 単体テスト対象）。
+    /// Complete=false の場合はフェーズ4（外部 HTTP/API）に進む必要がある。
     ///
-    /// フェーズ1: リアルタイム・予定の判定
-    ///   liveBroadcastContent == "live"
-    ///     concurrentViewers != null → ライブ配信
-    ///     concurrentViewers == null → プレミア公開（公開中）
-    ///   liveBroadcastContent == "upcoming"
-    ///     scheduledEndTime != null  → プレミア公開（公開前）
-    ///     scheduledEndTime == null  → ライブ配信（配信前）
-    ///
-    /// フェーズ2: アーカイブ判定
-    ///   liveStreamingDetails != null
-    ///     actualEndTime < publishedAt or scheduledEndTime == null → ライブアーカイブ
-    ///     それ以外 → プレミア公開（終了後）
-    ///
-    /// フェーズ3: duration > 180秒 → 通常動画
-    ///
-    /// フェーズ4: HEAD リクエスト → Short or 通常動画（フォールバック: UUSHプレイリスト）
+    /// フェーズ1: liveBroadcastContent == "live" / "upcoming"
+    ///   uploadStatus == "processed" → Premiere、それ以外 → Live
+    /// フェーズ2: liveStreamingDetails != null
+    ///   scheduledEndTime あり → Premiere（プレミア終了後）
+    ///   なし → Live（ライブアーカイブ）
+    /// フェーズ3: duration > 180秒 → Video
     /// </summary>
-    private static async Task<VideoKind> ClassifyVideoAsync(
-        Google.Apis.YouTube.v3.Data.Video v,
-        GoogleYouTubeService svc)
+    public static (VideoKind? Kind, bool Complete) ClassifyVideoPhase123(
+        Google.Apis.YouTube.v3.Data.Video v)
     {
         var lbc = v.Snippet?.LiveBroadcastContent;
         var lsd = v.LiveStreamingDetails;
 
-        // ── フェーズ1: リアルタイム・予定 ────────────────────────────
         if (lbc == "live")
-        {
-            // uploadStatus == "processed" → プレミア公開中（事前アップロード済み）
-            // それ以外（"uploaded"等） → ライブ配信中
-            return v.Status?.UploadStatus == "processed"
-                ? VideoKind.Premiere
-                : VideoKind.Live;
-        }
+            return (v.Status?.UploadStatus == "processed" ? VideoKind.Premiere : VideoKind.Live, true);
         if (lbc == "upcoming")
-        {
-            // uploadStatus == "processed" → プレミア公開予約（動画ファイル処理済み）
-            // それ以外 → ライブ配信予約（ストリームキー待機中）
-            return v.Status?.UploadStatus == "processed"
-                ? VideoKind.Premiere
-                : VideoKind.Live;
-        }
+            return (v.Status?.UploadStatus == "processed" ? VideoKind.Premiere : VideoKind.Live, true);
 
-        // ── フェーズ2: アーカイブ判定 ─────────────────────────────────
         if (lsd != null)
-        {
-            var actualEnd    = lsd.ActualEndTimeDateTimeOffset;
-            var actualStart  = lsd.ActualStartTimeDateTimeOffset;
-            var publishedAt  = v.Snippet?.PublishedAtDateTimeOffset;
+            return (lsd.ScheduledEndTimeDateTimeOffset != null ? VideoKind.Premiere : VideoKind.Live, true);
 
-            // publishedAt ≒ actualStartTime（差2秒以内）→ プレミア公開
-            bool isPremiere = actualStart.HasValue && publishedAt.HasValue
-                && Math.Abs((publishedAt.Value - actualStart.Value).TotalSeconds) < 2.0;
-
-            if (isPremiere)
-                return VideoKind.Premiere;
-
-            // それ以外でliveStreamingDetailsがある → ライブ配信アーカイブ
-            return VideoKind.Live;
-        }
-
-        // ── フェーズ3: duration > 180秒 → 通常動画 ───────────────────
         var secs = ParseDurationSeconds(v.ContentDetails?.Duration ?? "");
         if (secs > 180)
-            return VideoKind.Video;
+            return (VideoKind.Video, true);
+
+        return (null, false);
+    }
+
+    private static async Task<VideoKind> ClassifyVideoAsync(
+        Google.Apis.YouTube.v3.Data.Video v,
+        GoogleYouTubeService svc)
+    {
+        var (kind, complete) = ClassifyVideoPhase123(v);
+        if (complete) return kind!.Value;
 
         // ── フェーズ4: HEAD リクエスト ────────────────────────────────
         var videoId = v.Id;
@@ -275,117 +228,26 @@ public partial class YouTubeApiClient
         return VideoKind.Video;
     }
 
-    private static double ParseDurationSeconds(string iso)
+    public static double ParseDurationSeconds(string iso)
     {
         try { return System.Xml.XmlConvert.ToTimeSpan(iso).TotalSeconds; }
         catch { return 0; }
     }
 
-    // ===== 新着チェック（通知用） =====
-    public async Task<VideoInfo?> CheckLatestVideoAsync(string channelId, string lastVideoId,
-        string uploadsPlaylistId = "", string pendingUpcomingVideoId = "")
-    {
-        var svc = GetService();
-
-        // 保存済みのプレイリストIDを優先、なければUC→UU変換（フォールバック）
-        var playlistId = !string.IsNullOrEmpty(uploadsPlaylistId)
-            ? uploadsPlaylistId
-            : "UU" + channelId[2..];
-        var plReq = svc.PlaylistItems.List("snippet,contentDetails");
-        plReq.PlaylistId = playlistId;
-        plReq.MaxResults = 5;
-
-        Google.Apis.YouTube.v3.Data.PlaylistItemListResponse plResp;
-        try
-        {
-            plResp = await plReq.ExecuteAsync();
-            SettingsService.Instance.AddApiUnits(1); // PlaylistItems.list = 1unit
-        }
-        catch { return null; }
-
-        if (plResp.Items == null || plResp.Items.Count == 0) return null;
-
-        var items = plResp.Items
-            .Where(i => i.ContentDetails?.VideoId != null)
-            .ToList();
-
-        if (items.Count == 0) return null;
-
-        // 先頭IDが前回と同じでも、upcoming待ち中なら再判定（live化を検知するため）
-        var firstId = items[0].ContentDetails!.VideoId;
-        if (firstId == lastVideoId && firstId != pendingUpcomingVideoId) return null;
-
-        // 全IDの種別を一括取得（IsUpcomingも含む）
-        var kindMap = await GetVideoKindsAsync(svc,
-            items.Select(i => i.ContentDetails!.VideoId));
-
-        foreach (var item in items)
-        {
-            var vid = item.ContentDetails!.VideoId;
-            if (vid == lastVideoId) break;
-
-            var (kind, isUpcoming) = kindMap.TryGetValue(vid, out var kv)
-                ? kv : (VideoKind.Video, false);
-            var thumb = item.Snippet?.Thumbnails?.Medium?.Url
-                        ?? item.Snippet?.Thumbnails?.Default__?.Url;
-
-            return new VideoInfo
-            {
-                VideoId      = vid,
-                Title        = item.Snippet?.Title ?? string.Empty,
-                ThumbnailUrl = thumb,
-                Kind         = kind,
-                IsUpcoming   = isUpcoming
-            };
-        }
-
-        return null;
-    }
-
     /// <summary>
-    /// 新着動画を複数件返す（通知フィルタ対応のため最大件数まで走査）
-    /// lastVideoId より新しい動画を新着順で返す
+    /// プレイリストアイテムと kindMap から VideoInfo リストを構築する（単体テスト対象）。
+    /// lastVideoId と一致した時点で走査を止める（それより古い動画は対象外）。
     /// </summary>
-    public async Task<List<VideoInfo>> CheckLatestVideosAsync(
-        string channelId, string lastVideoId,
-        string uploadsPlaylistId = "", string pendingUpcomingVideoId = "",
-        int maxResults = 10)
+    public static List<VideoInfo> BuildVideoInfoList(
+        IEnumerable<Google.Apis.YouTube.v3.Data.PlaylistItem> items,
+        string lastVideoId,
+        IReadOnlyDictionary<string, (VideoKind Kind, bool IsUpcoming)> kindMap)
     {
         var result = new List<VideoInfo>();
-        var playlistId = !string.IsNullOrEmpty(uploadsPlaylistId)
-            ? uploadsPlaylistId : "UU" + channelId[2..];
-
-        Google.Apis.YouTube.v3.Data.PlaylistItemListResponse? plResp = null;
-        var svc = GetService();
-        try
-        {
-            var plReq = svc.PlaylistItems.List("snippet,contentDetails");
-            plReq.PlaylistId = playlistId;
-            plReq.MaxResults  = maxResults;
-            plResp = await plReq.ExecuteAsync();
-            SettingsService.Instance.AddApiUnits(1);
-        }
-        catch { return result; }
-
-        if (plResp?.Items == null || plResp.Items.Count == 0) return result;
-
-        var items = plResp.Items
-            .Where(i => i.ContentDetails?.VideoId != null)
-            .ToList();
-
-        if (items.Count == 0) return result;
-
-        // pending upcoming がある場合は同IDでも再判定
-        var firstId = items[0].ContentDetails!.VideoId;
-        if (firstId == lastVideoId && firstId != pendingUpcomingVideoId)
-            return result;
-
-        var kindMap = await GetVideoKindsAsync(svc,
-            items.Select(i => i.ContentDetails!.VideoId));
-
         foreach (var item in items)
         {
-            var vid = item.ContentDetails!.VideoId;
+            var vid = item.ContentDetails?.VideoId;
+            if (vid == null) continue;
             if (vid == lastVideoId) break;
 
             var (kind, isUpcoming) = kindMap.TryGetValue(vid, out var kv)
@@ -405,6 +267,109 @@ public partial class YouTubeApiClient
         return result;
     }
 
+    /// <summary>
+    /// 新着動画と pending プレミア公開の遷移を返す
+    /// - videos: lastVideoId より新しい動画リスト（新着順）
+    /// - pendingTransitioned: upcoming → live に遷移した pending 動画リスト（空 = 遷移なし）
+    /// </summary>
+    public async Task<(List<VideoInfo> videos, List<VideoInfo> pendingTransitioned)> CheckLatestVideosAsync(
+        string channelId, string lastVideoId,
+        string uploadsPlaylistId = "", IReadOnlyList<string>? pendingUpcomingVideoIds = null,
+        int maxResults = 10)
+    {
+        var result = new List<VideoInfo>();
+        if (channelId.Length < 2 && string.IsNullOrEmpty(uploadsPlaylistId)) return (result, new());
+        var playlistId = !string.IsNullOrEmpty(uploadsPlaylistId)
+            ? uploadsPlaylistId : "UU" + channelId[2..];
+
+        Google.Apis.YouTube.v3.Data.PlaylistItemListResponse? plResp = null;
+        var svc = GetService();
+        try
+        {
+            var plReq = svc.PlaylistItems.List("snippet,contentDetails");
+            plReq.PlaylistId = playlistId;
+            plReq.MaxResults  = maxResults;
+            plResp = await plReq.ExecuteAsync();
+            SettingsService.Instance.AddApiUnits(1);
+        }
+        catch { return (result, new()); }
+
+        if (plResp?.Items == null || plResp.Items.Count == 0) return (result, new());
+
+        var items = plResp.Items
+            .Where(i => i.ContentDetails?.VideoId != null)
+            .ToList();
+
+        if (items.Count == 0) return (result, new());
+
+        bool hasPending = pendingUpcomingVideoIds?.Count > 0;
+        var firstId = items[0].ContentDetails!.VideoId;
+
+        // 新着なし && pending なし → 即リターン
+        if (firstId == lastVideoId && !hasPending)
+            return (result, new());
+
+        // 新着なし && pending あり → pending の状態だけ確認（1回の videos.list で全ID一括チェック）
+        if (firstId == lastVideoId && hasPending)
+        {
+            var visiblePending = pendingUpcomingVideoIds!
+                .Where(id => items.Any(i => i.ContentDetails!.VideoId == id))
+                .ToList();
+            if (visiblePending.Count == 0) return (result, new());
+
+            var pKindMap = await GetVideoKindsAsync(svc, visiblePending);
+            var transitioned = new List<VideoInfo>();
+            foreach (var pid in visiblePending)
+            {
+                if (pKindMap.TryGetValue(pid, out var pkv) && !pkv.IsUpcoming)
+                {
+                    var pi = items.First(i => i.ContentDetails!.VideoId == pid);
+                    var thumb = pi.Snippet?.Thumbnails?.Medium?.Url ?? pi.Snippet?.Thumbnails?.Default__?.Url;
+                    transitioned.Add(new VideoInfo
+                    {
+                        VideoId      = pid,
+                        Title        = pi.Snippet?.Title ?? string.Empty,
+                        ThumbnailUrl = thumb,
+                        Kind         = pkv.Kind,
+                        IsUpcoming   = false
+                    });
+                }
+            }
+            return (result, transitioned);
+        }
+
+        // 新着あり → kindMap を一括構築してメインループ
+        var kindMap = await GetVideoKindsAsync(svc, items.Select(i => i.ContentDetails!.VideoId));
+        result = BuildVideoInfoList(items, lastVideoId, kindMap);
+
+        // pending が遷移済みかチェック（kindMap に含まれるもの全て一括判定）
+        var transitionedList = new List<VideoInfo>();
+        if (hasPending)
+        {
+            foreach (var pid in pendingUpcomingVideoIds!)
+            {
+                if (kindMap.TryGetValue(pid, out var pkv) && !pkv.IsUpcoming)
+                {
+                    var pi = items.FirstOrDefault(i => i.ContentDetails!.VideoId == pid);
+                    if (pi != null)
+                    {
+                        var thumb = pi.Snippet?.Thumbnails?.Medium?.Url ?? pi.Snippet?.Thumbnails?.Default__?.Url;
+                        transitionedList.Add(new VideoInfo
+                        {
+                            VideoId      = pid,
+                            Title        = pi.Snippet?.Title ?? string.Empty,
+                            ThumbnailUrl = thumb,
+                            Kind         = pkv.Kind,
+                            IsUpcoming   = false
+                        });
+                    }
+                }
+            }
+        }
+
+        return (result, transitionedList);
+    }
+
     // ===== クリック用: 有効な種別の中で最新のIDを取得 =====
     // notifyVideo/notifyShort/notifyLive の組み合わせに従い
     // 有効な種別の中で最も新しい動画IDを返す
@@ -415,6 +380,7 @@ public partial class YouTubeApiClient
         var svc = GetService();
         try
         {
+            if (channelId.Length < 2 && string.IsNullOrEmpty(uploadsPlaylistId)) return null;
             var playlistId = !string.IsNullOrEmpty(uploadsPlaylistId)
                 ? uploadsPlaylistId
                 : "UU" + channelId[2..];

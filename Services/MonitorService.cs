@@ -3,7 +3,6 @@ using System.Windows;
 using Application = System.Windows.Application;
 using Timer = System.Threading.Timer;
 using Microsoft.Toolkit.Uwp.Notifications;
-using YTNotifier.Models;
 
 namespace YTNotifier.Services;
 
@@ -12,17 +11,14 @@ public class MonitorService : IDisposable
     private static MonitorService? _instance;
     public static MonitorService Instance => _instance ??= new MonitorService();
 
-    private readonly YouTubeApiClient _youtubeClient = new();
+    private readonly IYouTubeApiClient _youtubeClient = YouTubeApiClient.Instance;
     private Timer? _timer;
     private bool _isRunning    = false;
-    private bool _isChecking   = false;
+    private int  _isChecking; // 0=idle, 1=running — Interlocked で操作
     private bool _isStartupCheck = true; // 起動時チェックフラグ
 
     public event Action<bool>? StatusChanged;
     public event Action? ChannelUpdated;
-    public event Action? QuotaUpdated;
-
-    public void NotifyQuotaUpdated() => QuotaUpdated?.Invoke();
     public bool IsRunning => _isRunning;
 
     private MonitorService()
@@ -92,100 +88,161 @@ public class MonitorService : IDisposable
     // ===== チャンネル一括チェック =====
     private async Task CheckAllChannelsAsync(bool forceAll = false)
     {
-        if (_isChecking) return;
-        _isChecking = true;
+        if (Interlocked.CompareExchange(ref _isChecking, 1, 0) != 0) return;
+        try
+        {
+            var now = DateTime.Now;
+            var allChannels = SettingsService.Instance.Channels.Where(c => c.IsEnabled).ToList();
 
-        var now = DateTime.Now;
-        var allChannels = SettingsService.Instance.Channels.Where(c => c.IsEnabled).ToList();
+            // 通常は NextCheckAt を過ぎたチャンネルのみ。手動チェック(forceAll)時は全チャンネル
+            var channels = forceAll
+                ? allChannels
+                : allChannels.Where(c => c.NextCheckAt <= now).ToList();
 
-        // 通常は NextCheckAt を過ぎたチャンネルのみ。手動チェック(forceAll)時は全チャンネル
-        var channels = forceAll
-            ? allChannels
-            : allChannels.Where(c => c.NextCheckAt <= now).ToList();
+            if (channels.Count == 0) return;
 
-        if (channels.Count == 0) { _isChecking = false; return; }
+            var label = _isStartupCheck ? "起動時チェック" : "定期チェック";
+            LoggerService.Instance.Info($"{label}開始 ({channels.Count}/{allChannels.Count}チャンネル)");
 
-        var label = _isStartupCheck ? "起動時チェック" : "定期チェック";
-        LoggerService.Instance.Info($"{label}開始 ({channels.Count}/{allChannels.Count}チャンネル)");
+            var tasks = channels.Select(ch => CheckChannelAsync(ch)).ToList();
+            await Task.WhenAll(tasks);
 
-        var tasks = channels.Select(ch => CheckChannelAsync(ch)).ToList();
-        await Task.WhenAll(tasks);
-
-        _isChecking = false;
-        _isStartupCheck = false;
-        LoggerService.Instance.Info($"{label}完了");
+            _isStartupCheck = false;
+            SettingsService.Instance.SaveSettingsSilent();  // クォータを一括保存
+            SettingsService.Instance.SaveChannelsSilent();  // 全チャンネル状態を一括保存
+            LoggerService.Instance.Info($"{label}完了");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isChecking, 0);
+        }
     }
 
     private async Task CheckChannelAsync(ChannelInfo channel)
     {
         try
         {
-            // UploadsPlaylistIdが未取得の場合はAPIから取得して保存
-            if (string.IsNullOrEmpty(channel.UploadsPlaylistId))
-            {
-                var pid = await _youtubeClient.GetUploadsPlaylistIdAsync(channel.ChannelId);
-                if (!string.IsNullOrEmpty(pid))
-                {
-                    channel.UploadsPlaylistId = pid;
-                    SettingsService.Instance.SaveChannelsSilent();
-                }
-            }
+            List<VideoInfo> videos;
+            List<VideoInfo> pendingTransitionedList;
 
-            var videos = await _youtubeClient.CheckLatestVideosAsync(
-                channel.ChannelId, channel.LastCheckedVideoId,
-                channel.UploadsPlaylistId, channel.PendingUpcomingVideoId);
+            if (channel.IsTestChannel)
+            {
+                (videos, pendingTransitionedList) = TestChannelService.GetNextCheckResult(channel);
+            }
+            else
+            {
+                // UploadsPlaylistIdが未取得の場合はAPIから取得して保存
+                if (string.IsNullOrEmpty(channel.UploadsPlaylistId))
+                {
+                    var pid = await _youtubeClient.GetUploadsPlaylistIdAsync(channel.ChannelId);
+                    if (!string.IsNullOrEmpty(pid))
+                    {
+                        channel.UploadsPlaylistId = pid;
+                        SettingsService.Instance.SaveChannelsSilent();
+                    }
+                }
+                (videos, pendingTransitionedList) = await _youtubeClient.CheckLatestVideosAsync(
+                    channel.ChannelId, channel.LastCheckedVideoId,
+                    channel.UploadsPlaylistId, channel.PendingUpcomingVideoIds);
+            }
 
             channel.LastCheckedAt = DateTime.Now;
 
-            if (videos.Count == 0)
+            if (videos.Count == 0 && pendingTransitionedList.Count == 0)
             {
                 LoggerService.Instance.Info("新着なし", channel.ChannelName, YTNotifier.Models.LogCategory.NoNew);
-                SettingsService.Instance.UpdateChannelSilent(channel);
+                SettingsService.Instance.UpdateChannelInMemory(channel);
                 return;
             }
+
+            var settings = SettingsService.Instance.Settings;
+
+            // ───── pending プレミア公開の live 遷移処理 ─────
+            string? checkpointOverrideId = null;
+            VideoInfo? checkpointTransition = null;
+            if (pendingTransitionedList.Count > 0)
+            {
+                foreach (var pendingTransitioned in pendingTransitionedList)
+                {
+                    // pending が新着リストの先頭（最新）なら、除去後も先頭IDをチェックポイントとして維持
+                    if (videos.Count > 0 && videos[0].VideoId == pendingTransitioned.VideoId)
+                    {
+                        checkpointOverrideId = pendingTransitioned.VideoId;
+                        checkpointTransition = pendingTransitioned;
+                    }
+                    channel.PendingUpcomingVideoIds.Remove(pendingTransitioned.VideoId);
+                    videos.RemoveAll(v => v.VideoId == pendingTransitioned.VideoId);
+
+                    bool pendingAllowed = NotificationFilter.IsAllowed(pendingTransitioned, channel);
+
+                    if (pendingAllowed)
+                    {
+                        LoggerService.Instance.Success(
+                            $"新着{pendingTransitioned.KindLabel}: {pendingTransitioned.Title}",
+                            channel.ChannelName, YTNotifier.Models.LogCategory.NewFound);
+                        channel.HasUnread = true;
+                        SettingsService.Instance.UpdateChannelInMemory(channel);
+                        ChannelUpdated?.Invoke();
+
+                        var pendingUrl = $"https://www.youtube.com/watch?v={pendingTransitioned.VideoId}";
+                        if (settings.ShowDesktopNotification)
+                            await ShowToastNotificationAsync(
+                                channel.ChannelName, pendingTransitioned.Title, pendingTransitioned.KindLabel,
+                                pendingUrl, channel.ChannelId, pendingTransitioned.Kind,
+                                channel.ThumbnailUrl, pendingTransitioned.ThumbnailUrl);
+                        else if (settings.NotificationSound)
+                            PlayNotificationSound(pendingTransitioned.Kind);
+                    }
+                }
+
+                // pending が新着の最新だった場合: チェックポイントを更新して終了
+                if (videos.Count == 0 && checkpointTransition != null)
+                {
+                    channel.LastCheckedVideoId = checkpointTransition.VideoId;
+                    switch (checkpointTransition.Kind)
+                    {
+                        case VideoKind.Video:
+                        case VideoKind.Premiere: channel.LastVideoId = checkpointTransition.VideoId; break;
+                        case VideoKind.Live:     channel.LastLiveId  = checkpointTransition.VideoId; break;
+                        case VideoKind.Short:    channel.LastShortId = checkpointTransition.VideoId; break;
+                    }
+                    SettingsService.Instance.UpdateChannelInMemory(channel);
+                    return;
+                }
+            }
+
+            // ───── 通常の新着動画処理 ─────
+            if (videos.Count == 0) return;
 
             // 新着動画を順に確認し、通知対象の最初の動画を探す
             VideoInfo? notifyVideo = null;
             foreach (var video in videos)
             {
-                // 待機所スキップ判定
-                if (video.IsUpcoming)
+                // 待機所スキップ判定（return せず後続の新着も処理する）
+                if (NotificationFilter.ShouldSkipUpcoming(video, channel, settings))
                 {
-                    bool globalOff  = !SettingsService.Instance.Settings.GlobalNotifyUpcoming;
-                    bool channelOff = !channel.NotifyUpcoming;
-                    if (globalOff || channelOff)
-                    {
-                        LoggerService.Instance.Info(
-                            $"待機所スキップ（live待ち）: {video.Title}",
-                            channel.ChannelName, YTNotifier.Models.LogCategory.NoNew);
-                        channel.LastCheckedAt          = DateTime.Now;
-                        channel.PendingUpcomingVideoId = video.VideoId;
-                        SettingsService.Instance.UpdateChannelSilent(channel);
-                        return;
-                    }
+                    LoggerService.Instance.Info(
+                        $"待機所スキップ（live待ち）: {video.Title}",
+                        channel.ChannelName, YTNotifier.Models.LogCategory.NoNew);
+                    if (!channel.PendingUpcomingVideoIds.Contains(video.VideoId))
+                        channel.PendingUpcomingVideoIds.Add(video.VideoId);
+                    continue;
                 }
 
                 // upcoming待ちの動画が live になった場合はペンディングをクリア
-                if (!video.IsUpcoming && video.VideoId == channel.PendingUpcomingVideoId)
-                    channel.PendingUpcomingVideoId = string.Empty;
+                if (!video.IsUpcoming)
+                    channel.PendingUpcomingVideoIds.Remove(video.VideoId);
 
                 // 種別フィルター確認
-                bool allowed = video.Kind switch
-                {
-                    VideoKind.Short    => channel.NotifyShort,
-                    VideoKind.Live     => channel.NotifyLive,
-                    VideoKind.Premiere => channel.NotifyVideo,
-                    _                  => channel.NotifyVideo
-                };
+                bool allowed = NotificationFilter.IsAllowed(video, channel);
 
                 if (allowed)
                 {
                     notifyVideo = video;
-                    break; // 通知対象の最初の動画が見つかった
+                    break;
                 }
                 else
                 {
-                    // フィルター対象外の種別はスキップ（既読にして次へ）
                     LoggerService.Instance.Info(
                         $"種別フィルタースキップ [{video.KindLabel}]: {video.Title}",
                         channel.ChannelName, YTNotifier.Models.LogCategory.NoNew);
@@ -193,19 +250,23 @@ public class MonitorService : IDisposable
             }
 
             // 最新動画の既読更新（通知対象外でも更新）
+            // upcoming でもチェックポイントは進める（遷移は pending パスが追跡する）
             var latestVideo = videos[0];
-            channel.LastCheckedVideoId = latestVideo.VideoId;
-            switch (latestVideo.Kind)
+            channel.LastCheckedVideoId = checkpointOverrideId ?? latestVideo.VideoId;
+            if (!latestVideo.IsUpcoming)
             {
-                case VideoKind.Video:   channel.LastVideoId = latestVideo.VideoId; break;
-                case VideoKind.Live:    channel.LastLiveId  = latestVideo.VideoId; break;
-                case VideoKind.Short:   channel.LastShortId = latestVideo.VideoId; break;
+                switch (latestVideo.Kind)
+                {
+                    case VideoKind.Video:
+                    case VideoKind.Premiere: channel.LastVideoId = latestVideo.VideoId; break;
+                    case VideoKind.Live:     channel.LastLiveId  = latestVideo.VideoId; break;
+                    case VideoKind.Short:    channel.LastShortId = latestVideo.VideoId; break;
+                }
             }
-            SettingsService.Instance.UpdateChannelSilent(channel);
+            SettingsService.Instance.UpdateChannelInMemory(channel);
 
             if (notifyVideo == null) return;
 
-            var settings  = SettingsService.Instance.Settings;
             var videoUrl = $"https://www.youtube.com/watch?v={notifyVideo!.VideoId}";
 
             LoggerService.Instance.Success(
@@ -213,11 +274,11 @@ public class MonitorService : IDisposable
 
             // 未読フラグをセット
             channel.HasUnread = true;
-            SettingsService.Instance.UpdateChannelSilent(channel);
+            SettingsService.Instance.UpdateChannelInMemory(channel);
             ChannelUpdated?.Invoke();
 
             if (settings.ShowDesktopNotification)
-                ShowToastNotification(channel.ChannelName, notifyVideo.Title, notifyVideo.KindLabel, videoUrl, channel.ChannelId, notifyVideo.Kind, channel.ThumbnailUrl, notifyVideo.ThumbnailUrl);
+                await ShowToastNotificationAsync(channel.ChannelName, notifyVideo.Title, notifyVideo.KindLabel, videoUrl, channel.ChannelId, notifyVideo.Kind, channel.ThumbnailUrl, notifyVideo.ThumbnailUrl);
             else if (settings.NotificationSound)
                 PlayNotificationSound(notifyVideo.Kind);
         }
@@ -235,7 +296,7 @@ public class MonitorService : IDisposable
         {
             // モードに応じて次回チェック時刻を設定
             channel.NextCheckAt = CalcNextCheckAt(channel);
-            SettingsService.Instance.UpdateChannelSilent(channel);
+            SettingsService.Instance.UpdateChannelInMemory(channel);
         }
     }
 
@@ -314,7 +375,7 @@ public class MonitorService : IDisposable
     }
 
     // ===== トースト通知送信 =====
-    private static void ShowToastNotification(
+    private static async Task ShowToastNotificationAsync(
         string channelName, string videoTitle, string kindLabel, string videoUrl,
         string channelId = "", VideoKind kind = VideoKind.Video,
         string? channelThumbnailUrl = null, string? videoThumbnailUrl = null)
@@ -333,7 +394,7 @@ public class MonitorService : IDisposable
                 // ヒーロー画像: 動画サムネイルをディスクキャッシュ経由で参照
                 if (!string.IsNullOrEmpty(videoThumbnailUrl))
                 {
-                    var heroPath = GetOrDownloadThumbnail(videoThumbnailUrl);
+                    var heroPath = await GetOrDownloadThumbnailAsync(videoThumbnailUrl);
                     if (!string.IsNullOrEmpty(heroPath))
                     {
                         try { builder.AddHeroImage(new Uri("file:///" + heroPath.Replace("\\", "/"))); }
@@ -344,7 +405,7 @@ public class MonitorService : IDisposable
                 // チャンネルアイコン（丸型・ディスクキャッシュから）
                 if (!string.IsNullOrEmpty(channelThumbnailUrl))
                 {
-                    var iconPath = GetIconDiskPath(channelThumbnailUrl);
+                    var iconPath = SettingsService.Instance.GetIconDiskPath(channelThumbnailUrl);
                     if (System.IO.File.Exists(iconPath))
                         builder.AddAppLogoOverride(
                             new Uri("file:///" + iconPath.Replace("\\", "/")),
@@ -363,7 +424,7 @@ public class MonitorService : IDisposable
                 // ─── デフォルト通知 ──────────────────────────────────────
                 if (!string.IsNullOrEmpty(channelThumbnailUrl))
                 {
-                    var iconPath = GetIconDiskPath(channelThumbnailUrl);
+                    var iconPath = SettingsService.Instance.GetIconDiskPath(channelThumbnailUrl);
                     if (System.IO.File.Exists(iconPath))
                         builder.AddAppLogoOverride(
                             new Uri("file:///" + iconPath.Replace("\\", "/")),
@@ -389,7 +450,7 @@ public class MonitorService : IDisposable
     }
 
     /// <summary>動画サムネイルをディスクにキャッシュしてパスを返す（ヒーロー画像用）</summary>
-    private static string? GetOrDownloadThumbnail(string url)
+    private static async Task<string?> GetOrDownloadThumbnailAsync(string url)
     {
         try
         {
@@ -402,30 +463,21 @@ public class MonitorService : IDisposable
                 if (System.IO.File.GetLastWriteTime(old) < DateTime.Now.AddDays(-7))
                     try { System.IO.File.Delete(old); } catch { }
 
-            using var sha1 = System.Security.Cryptography.SHA1.Create();
-            var hash     = sha1.ComputeHash(System.Text.Encoding.UTF8.GetBytes(url));
-            var fileName = BitConverter.ToString(hash).Replace("-", "").ToLower() + ".jpg";
+            var hash     = System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(url));
+            var fileName = Convert.ToHexString(hash).ToLower() + ".jpg";
             var filePath = System.IO.Path.Combine(cacheDir, fileName);
 
             if (System.IO.File.Exists(filePath)) return filePath;
 
             using var http = new System.Net.Http.HttpClient();
             http.Timeout   = TimeSpan.FromSeconds(5);
-            var bytes      = http.GetByteArrayAsync(url).GetAwaiter().GetResult();
+            var bytes      = await http.GetByteArrayAsync(url);
             System.IO.File.WriteAllBytes(filePath, bytes);
             return filePath;
         }
         catch { return null; }
     }
 
-    /// <summary>アイコンキャッシュのディスクパスを返す（MainWindow の GetDiskPath と同じロジック）</summary>
-    private static string GetIconDiskPath(string url)
-    {
-        using var sha1 = System.Security.Cryptography.SHA1.Create();
-        var hash = sha1.ComputeHash(System.Text.Encoding.UTF8.GetBytes(url));
-        var fileName = BitConverter.ToString(hash).Replace("-", "").ToLower() + ".png";
-        return System.IO.Path.Combine(SettingsService.Instance.AppDataDir, "icons", fileName);
-    }
 
     // ===== 通知音再生 =====
     /// <summary>
@@ -556,7 +608,7 @@ public class MonitorService : IDisposable
 
     public async Task<bool> ManualCheckAsync()
     {
-        if (_isChecking) return false;
+        if (_isChecking != 0) return false;
         await CheckAllChannelsAsync(forceAll: true);
         return true;
     }

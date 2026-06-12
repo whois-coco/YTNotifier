@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -14,8 +13,6 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
-using YTNotifier.Models;
-using YTNotifier.Services;
 using Application      = System.Windows.Application;
 using Brush            = System.Windows.Media.Brush;
 using Brushes          = System.Windows.Media.Brushes;
@@ -209,10 +206,35 @@ public partial class MainWindow : System.Windows.Window
     }
 
     // ===== チャンネル一覧 =====
+
+    // 監視中の連続 ChannelUpdated イベントを1回の RefreshChannelList にまとめる
+    internal void ScheduleRefreshChannelList()
+    {
+        if (_refreshScheduled) return;
+        _refreshScheduled = true;
+        Dispatcher.BeginInvoke(() => { _refreshScheduled = false; RefreshChannelList(); },
+            System.Windows.Threading.DispatcherPriority.Render);
+    }
+
+    private static int CalcCategoriesHashCode(List<CategoryInfo> cats)
+    {
+        var h = cats.Count;
+        foreach (var c in cats) h = h * 31 + c.SortOrder;
+        return h;
+    }
+
     internal void RefreshChannelList()
     {
         var channels   = SettingsService.Instance.Channels;
-        var categories = SettingsService.Instance.Categories.OrderBy(c => c.SortOrder).ToList();
+
+        var rawCats  = SettingsService.Instance.Categories;
+        var catsHash = CalcCategoriesHashCode(rawCats);
+        if (_sortedCategories == null || catsHash != _categoriesHashCode)
+        {
+            _sortedCategories   = rawCats.OrderBy(c => c.SortOrder).ToList();
+            _categoriesHashCode = catsHash;
+        }
+        var categories = _sortedCategories;
 
         ChannelList.Children.Clear();
         ChannelCountText.Text = $"{channels.Count} チャンネル";
@@ -596,7 +618,7 @@ public partial class MainWindow : System.Windows.Window
     private void UpdateIntervalComboBoxItems(int channelCount)
     {
         if (IntervalComboBox == null) return;
-        var channels = SettingsService.Instance.Channels;
+        var channels = SettingsService.Instance.Channels.Where(c => c.IsEnabled).ToList();
         foreach (System.Windows.Controls.ComboBoxItem item in IntervalComboBox.Items)
         {
             if (item.Tag is string tagStr && int.TryParse(tagStr, out int mins))
@@ -646,7 +668,7 @@ public partial class MainWindow : System.Windows.Window
         {
             row.MouseLeftButtonUp += async (s, e) =>
             {
-                if (!_editMode && s is Border b && b.Tag is ChannelInfo c) { e.Handled = true; await OpenChannelLatestVideoAsync(c); }
+                if (!_editMode && s is Border b && b.Tag is ChannelInfo c && !c.IsTestChannel) { e.Handled = true; await OpenChannelLatestVideoAsync(c); }
             };
 
             var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 0) };
@@ -660,7 +682,8 @@ public partial class MainWindow : System.Windows.Window
             var icon     = BuildIconBorderCompact(ch);
             var nameText = new TextBlock
             {
-                Text = ch.ChannelName, FontSize = 12, FontWeight = FontWeights.SemiBold,
+                Text = ch.IsTestChannel ? $"⚗ {ch.ChannelName}" : ch.ChannelName,
+                FontSize = 12, FontWeight = FontWeights.SemiBold,
                 TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(8, 0, 0, 0)
             };
@@ -992,10 +1015,13 @@ public partial class MainWindow : System.Windows.Window
             Width = 44, Height = 44, CornerRadius = new CornerRadius(22),
             Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center,
             Clip   = new EllipseGeometry(new System.Windows.Point(22, 22), 22, 22),
-            Cursor = Cursors.Hand, ToolTip = "クリックして最新動画を開く", Tag = "IconBorder"
+            Cursor = ch.IsTestChannel ? Cursors.Arrow : Cursors.Hand,
+            ToolTip = ch.IsTestChannel ? null : "クリックして最新動画を開く",
+            Tag = "IconBorder"
         };
         b.PreviewMouseLeftButtonDown += (_, e) => e.Handled = true;
-        b.MouseLeftButtonUp += async (_, _) => await OpenChannelLatestVideoAsync(ch);
+        if (!ch.IsTestChannel)
+            b.MouseLeftButtonUp += async (_, _) => await OpenChannelLatestVideoAsync(ch);
         var img = GetCachedIcon(ch.ThumbnailUrl);
         if (img != null) b.Child = new System.Windows.Controls.Image { Source = img, Stretch = Stretch.UniformToFill };
         return b;
@@ -1012,12 +1038,34 @@ public partial class MainWindow : System.Windows.Window
             VerticalAlignment = VerticalAlignment.Center
         };
         SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-        info.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { nameText } });
+
+        var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
+        nameRow.Children.Add(nameText);
+        if (ch.IsTestChannel)
+        {
+            var badge = new Border
+            {
+                Background        = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x7C, 0x3A, 0xED)),
+                CornerRadius      = new CornerRadius(3),
+                Padding           = new Thickness(4, 1, 4, 1),
+                Margin            = new Thickness(6, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            badge.Child = new TextBlock
+            {
+                Text       = "TEST",
+                FontSize   = 9,
+                FontWeight = FontWeights.Bold,
+                Foreground = Brushes.White
+            };
+            nameRow.Children.Add(badge);
+        }
+        info.Children.Add(nameRow);
 
         var kindRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
-        kindRow.Children.Add(MakeKindToggle("動画",  ch.NotifyVideo, ch.MonitorMode, YTNotifier.Services.VideoKind.Video,  v => { ch.NotifyVideo = v; SettingsService.Instance.UpdateChannel(ch); }));
-        kindRow.Children.Add(MakeKindToggle("Short", ch.NotifyShort, ch.MonitorMode, YTNotifier.Services.VideoKind.Short,  v => { ch.NotifyShort = v; SettingsService.Instance.UpdateChannel(ch); }));
-        kindRow.Children.Add(MakeKindToggle("ライブ", ch.NotifyLive,  ch.MonitorMode, YTNotifier.Services.VideoKind.Live,   v => { ch.NotifyLive  = v; SettingsService.Instance.UpdateChannel(ch); }));
+        kindRow.Children.Add(MakeKindToggle("動画",  ch.NotifyVideo, ch.MonitorMode, VideoKind.Video,  v => { ch.NotifyVideo = v; SettingsService.Instance.UpdateChannel(ch); }));
+        kindRow.Children.Add(MakeKindToggle("Short", ch.NotifyShort, ch.MonitorMode, VideoKind.Short,  v => { ch.NotifyShort = v; SettingsService.Instance.UpdateChannel(ch); }));
+        kindRow.Children.Add(MakeKindToggle("ライブ", ch.NotifyLive,  ch.MonitorMode, VideoKind.Live,   v => { ch.NotifyLive  = v; SettingsService.Instance.UpdateChannel(ch); }));
         info.Children.Add(kindRow);
 
         return info;
@@ -1057,6 +1105,21 @@ public partial class MainWindow : System.Windows.Window
         var clearItem = new MenuItem { Header = "🔔 NEWバッジを消す" };
         clearItem.Click += (_, _) => { ch.HasUnread = false; SettingsService.Instance.UpdateChannel(ch); RefreshChannelList(); };
 
+        // テストチャンネル専用: 状態リセット
+        var resetTestItem    = new MenuItem { Header = "⚗ テスト状態をリセット" };
+        var sepResetTest     = new Separator();
+        resetTestItem.Visibility = ch.IsTestChannel ? Visibility.Visible : Visibility.Collapsed;
+        sepResetTest.Visibility  = ch.IsTestChannel ? Visibility.Visible : Visibility.Collapsed;
+        resetTestItem.Click += (_, _) =>
+        {
+            ch.TestStateIndex      = 0;
+            ch.LastCheckedVideoId  = string.Empty;
+            ch.PendingUpcomingVideoIds.Clear();
+            SettingsService.Instance.UpdateChannel(ch);
+            RefreshChannelList();
+            LoggerService.Instance.Info("テスト状態をリセットしました", ch.ChannelName);
+        };
+
         var renameItem = new MenuItem { Header = "✏ 名称を変更" };
         renameItem.Click += (_, _) => ShowRenameDialog(ch);
 
@@ -1080,6 +1143,8 @@ public partial class MainWindow : System.Windows.Window
         };
 
         menu.Items.Add(clearItem);
+        menu.Items.Add(resetTestItem);
+        menu.Items.Add(sepResetTest);
         menu.Items.Add(renameItem);
         menu.Items.Add(sepRename);
         menu.Items.Add(newCatItem);
@@ -1118,7 +1183,7 @@ public partial class MainWindow : System.Windows.Window
 
     // ===== 種別トグル =====
     private static UIElement MakeKindToggle(string label, bool initial,
-        YTNotifier.Models.MonitorMode mode, YTNotifier.Services.VideoKind kind,
+        MonitorMode mode, VideoKind kind,
         Action<bool> onChanged)
     {
         // アクティブ時の背景色: 通常=青、低頻度=黄、時間指定=緑（種別ごと）
@@ -1209,7 +1274,7 @@ public partial class MainWindow : System.Windows.Window
             LoggerService.Instance.Info("最新動画を検索中...", ch.ChannelName);
             try
             {
-                var result = await new YouTubeApiClient().FetchLatestAllowedVideoAsync(
+                var result = await YouTubeApiClient.Instance.FetchLatestAllowedVideoAsync(
                     ch.ChannelId, ch.NotifyVideo, ch.NotifyShort, ch.NotifyLive,
                     ch.UploadsPlaylistId);
 
@@ -1217,8 +1282,10 @@ public partial class MainWindow : System.Windows.Window
                 {
                     var (videoId, kind) = result.Value;
                     if (kind == VideoKind.Video && videoId != null) { ch.LastVideoId = videoId; SettingsService.Instance.UpdateChannel(ch); }
-                    url = $"https://www.youtube.com/watch?v={videoId ?? string.Empty}";
-                    LoggerService.Instance.Info($"最新{KindLabel(kind)}を開きます", ch.ChannelName);
+                    url = videoId != null
+                        ? $"https://www.youtube.com/watch?v={videoId}"
+                        : !string.IsNullOrEmpty(ch.LastVideoId) ? $"https://www.youtube.com/watch?v={ch.LastVideoId}" : ch.ChannelUrl;
+                    LoggerService.Instance.Info($"最新{kind.ToLabel()}を開きます", ch.ChannelName);
                 }
                 else
                 {
@@ -1241,8 +1308,13 @@ public partial class MainWindow : System.Windows.Window
         OpenUrl(url);
     }
 
-    private static void OpenUrl(string url) =>
+    private static void OpenUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+            return;
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+    }
 
     private void ShowRenameDialog(ChannelInfo ch)
     {

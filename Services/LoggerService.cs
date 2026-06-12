@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using Application = System.Windows.Application;
-using YTNotifier.Models;
 
 namespace YTNotifier.Services;
 
@@ -13,6 +12,7 @@ public class LoggerService
 
     public ObservableCollection<LogEntry> Entries { get; } = new();
     private readonly string _logDir;
+    private readonly object _fileLock = new();
     private const int MaxUiEntries = 200;
 
     private LoggerService()
@@ -66,7 +66,7 @@ public class LoggerService
             Entries.Add(entry);
 
             while (Entries.Count > MaxUiEntries)
-                Entries.RemoveAt(Entries.Count - 1);
+                Entries.RemoveAt(0);
         });
 
         WriteToFile(entry);
@@ -77,15 +77,9 @@ public class LoggerService
     public void Success(string msg, string? ch = null, LogCategory cat = LogCategory.System)
         => Log(msg, LogLevel.Success, ch, cat);
     public void Warning(string msg, string? ch = null, LogCategory cat = LogCategory.System)
-    {
-        Log(msg, LogLevel.Warning, ch, cat);
-        LogError(msg, LogLevel.Warning, ch);
-    }
+        => Log(msg, LogLevel.Warning, ch, cat);
     public void Error(string msg, string? ch = null, LogCategory cat = LogCategory.System)
-    {
-        Log(msg, LogLevel.Error, ch, cat);
-        LogError(msg, LogLevel.Error, ch);
-    }
+        => Log(msg, LogLevel.Error, ch, cat);
 
     private void WriteToFile(LogEntry entry)
     {
@@ -96,7 +90,8 @@ public class LoggerService
             var line     = $"[{entry.Timestamp:HH:mm:ss}] [{entry.LevelText,-7}]";
             if (entry.ChannelName != null) line += $" [{entry.ChannelName}]";
             line += $" {entry.Message}";
-            File.AppendAllText(path, line + Environment.NewLine);
+            lock (_fileLock)
+                File.AppendAllText(path, line + Environment.NewLine);
         }
         catch { }
     }
@@ -165,29 +160,4 @@ public class LoggerService
         catch { return (0, 0, null, null); }
     }
 
-    // ===== エラーログ専用コレクション（ローテーションなし・全件保持） =====
-    public ObservableCollection<LogEntry> ErrorEntries { get; } = new();
-
-    public void LogError(string message, LogLevel level, string? channelName = null)
-    {
-        var entry = new LogEntry
-        {
-            Timestamp   = DateTime.Now,
-            Level       = level,
-            Message     = message,
-            ChannelName = channelName
-        };
-
-        Application.Current?.Dispatcher.Invoke(() =>
-        {
-            ErrorEntries.Insert(0, entry);
-        });
-
-        WriteToFile(entry);
-    }
-
-    public void ClearErrorLog()
-    {
-        Application.Current?.Dispatcher.Invoke(() => ErrorEntries.Clear());
-    }
 }

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -14,8 +13,6 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
-using YTNotifier.Models;
-using YTNotifier.Services;
 using Application      = System.Windows.Application;
 using Brush            = System.Windows.Media.Brush;
 using Brushes          = System.Windows.Media.Brushes;
@@ -93,6 +90,11 @@ public partial class MainWindow : System.Windows.Window
     private string _actualApiKey = "";
     // 検索
     private string _searchQuery = "";
+    // RefreshChannelList デバウンス（監視中の連続更新を1回にまとめる）
+    private bool _refreshScheduled;
+    // カテゴリソートキャッシュ（ソート順が変わるたびに再計算）
+    private List<CategoryInfo>? _sortedCategories;
+    private int _categoriesHashCode;
 
     // Win32
     [DllImport("user32.dll")]
@@ -101,18 +103,6 @@ public partial class MainWindow : System.Windows.Window
     private const int HTCAPTION        = 2;
 
     // ===== アイコンキャッシュ =====
-    private static string GetIconCacheDir() =>
-        System.IO.Path.Combine(SettingsService.Instance.AppDataDir, "icons");
-
-    private static string GetDiskPath(string url)
-    {
-        using var sha1 = System.Security.Cryptography.SHA1.Create();
-        var hash = sha1.ComputeHash(System.Text.Encoding.UTF8.GetBytes(url));
-        return System.IO.Path.Combine(
-            GetIconCacheDir(),
-            BitConverter.ToString(hash).Replace("-", "").ToLower() + ".png");
-    }
-
     private static BitmapImage? LoadBitmapFromFile(string filePath)
     {
         try
@@ -134,11 +124,9 @@ public partial class MainWindow : System.Windows.Window
         if (string.IsNullOrEmpty(url)) return null;
         if (_iconCache.TryGetValue(url, out var cached)) return cached;
 
-        var cacheDir = GetIconCacheDir();
-        try { System.IO.Directory.CreateDirectory(cacheDir); }
+        var diskPath = SettingsService.Instance.GetIconDiskPath(url);
+        try { System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diskPath)!); }
         catch { return null; }
-
-        var diskPath = GetDiskPath(url);
         if (System.IO.File.Exists(diskPath))
         {
             var bmp = LoadBitmapFromFile(diskPath);
@@ -196,15 +184,24 @@ public partial class MainWindow : System.Windows.Window
     }
 
     // ===== 初期化 =====
+    private readonly Action<bool> _onStatusChanged;
+    private readonly Action       _onChannelUpdated;
+    private readonly Action       _onApiUnitsUpdated;
+
     public MainWindow()
     {
         InitializeComponent();
         Loaded       += MainWindow_Loaded;
         Closing      += MainWindow_Closing;
         StateChanged += MainWindow_StateChanged;
-        MonitorService.Instance.StatusChanged  += isRunning => Dispatcher.Invoke(() => UpdateMonitorStatus(isRunning));
-        MonitorService.Instance.ChannelUpdated += ()        => Dispatcher.Invoke(RefreshChannelList);
-        MonitorService.Instance.QuotaUpdated   += ()        => Dispatcher.Invoke(UpdateQuotaInfo);
+
+        _onStatusChanged   = isRunning => Dispatcher.Invoke(() => UpdateMonitorStatus(isRunning));
+        _onChannelUpdated  = ()        => Dispatcher.BeginInvoke(ScheduleRefreshChannelList);
+        _onApiUnitsUpdated = ()        => Dispatcher.Invoke(UpdateQuotaInfo);
+
+        MonitorService.Instance.StatusChanged    += _onStatusChanged;
+        MonitorService.Instance.ChannelUpdated   += _onChannelUpdated;
+        SettingsService.Instance.ApiUnitsUpdated += _onApiUnitsUpdated;
     }
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -307,6 +304,9 @@ public partial class MainWindow : System.Windows.Window
         }
         else
         {
+            MonitorService.Instance.StatusChanged    -= _onStatusChanged;
+            MonitorService.Instance.ChannelUpdated   -= _onChannelUpdated;
+            SettingsService.Instance.ApiUnitsUpdated -= _onApiUnitsUpdated;
             MonitorService.Instance.Stop();
             Application.Current.Shutdown();
         }
@@ -413,24 +413,5 @@ public partial class MainWindow : System.Windows.Window
     // ===== 汎用ヘルパー =====
     private static void SetDynamicBrush(FrameworkElement el, DependencyProperty dp, string key)
         => el.SetResourceReference(dp, key);
-
-    private static string KindLabel(VideoKind kind) => kind switch
-    {
-        VideoKind.Short    => "Short",
-        VideoKind.Live     => "ライブ",
-        VideoKind.Premiere => "プレミア",
-        _               => "動画"
-    };
-
-    private static IEnumerable<T> FindVisualChildren<T>(System.Windows.DependencyObject parent)
-        where T : System.Windows.DependencyObject
-    {
-        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
-        {
-            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
-            if (child is T t) yield return t;
-            foreach (var sub in FindVisualChildren<T>(child)) yield return sub;
-        }
-    }
 
 }

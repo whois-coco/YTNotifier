@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -14,8 +13,6 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
-using YTNotifier.Models;
-using YTNotifier.Services;
 using Application      = System.Windows.Application;
 using Brush            = System.Windows.Media.Brush;
 using Brushes          = System.Windows.Media.Brushes;
@@ -334,7 +331,6 @@ public partial class MainWindow : System.Windows.Window
         SetSidebarLabels(Visibility.Collapsed);
         SetStatusTextVisibility(Visibility.Collapsed);
         UpdateToggleIcon("▶");
-        UpdateToggleIconColor(MonitorService.Instance.IsRunning);
         SettingsService.Instance.Settings.SidebarCollapsed = true;
         SettingsService.Instance.SaveSettingsSilent();
         UpdateMinWidth();
@@ -352,7 +348,6 @@ public partial class MainWindow : System.Windows.Window
         SetSidebarLabels(Visibility.Visible);
         SetStatusTextVisibility(Visibility.Visible);
         UpdateToggleIcon("◀");
-        UpdateToggleIconColor(false);
         UpdateMonitorStatus(MonitorService.Instance.IsRunning);
         SettingsService.Instance.Settings.SidebarCollapsed = false;
         SettingsService.Instance.SaveSettingsSilent();
@@ -461,7 +456,7 @@ public partial class MainWindow : System.Windows.Window
             if (enable) key.SetValue("YTNotifier", $"\"{exe}\"");
             else        key.DeleteValue("YTNotifier", false);
         }
-        catch { }
+        catch (Exception ex) { LoggerService.Instance.Warning($"スタートアップ設定の変更に失敗: {ex.Message}"); }
     }
 
     // ===== チェック間隔 =====
