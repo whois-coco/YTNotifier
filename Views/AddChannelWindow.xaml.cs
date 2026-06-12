@@ -1,18 +1,18 @@
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
-using Brush      = System.Windows.Media.Brush;
-using Brushes    = System.Windows.Media.Brushes;
-using Application = System.Windows.Application;
+using YTNotifier.Models;
+using YTNotifier.Services;
 
 namespace YTNotifier.Views;
 
 public partial class AddChannelWindow : Window
 {
-    private readonly IYouTubeApiClient _youtubeClient = YouTubeApiClient.Instance;
+    private readonly YouTubeApiClient _youtubeClient = new();
     private ChannelInfo? _previewChannel;
     private readonly Action? _onChannelAdded;
 
@@ -31,117 +31,27 @@ public partial class AddChannelWindow : Window
         // 連続追加モードの前回値を復元（デフォルトON）
         ContinuousAddCheckBox.IsChecked = SettingsService.Instance.Settings.ContinuousAddMode;
 
+        // カテゴリコンボボックスを初期化
         PopulateCategoryComboBox();
-        SwitchToNormalMode();
-
-        if (!MainWindow.IsDebugDllAvailable())
-            TestTabBorder.Visibility = Visibility.Collapsed;
 
         ChannelInputBox.Focus();
     }
 
     private void PopulateCategoryComboBox()
     {
-        foreach (var combo in new[] { CategoryComboBox, TestCategoryComboBox })
+        CategoryComboBox.Items.Clear();
+        CategoryComboBox.Items.Add(new System.Windows.Controls.ComboBoxItem
         {
-            combo.Items.Clear();
-            combo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "（未設定）", Tag = null });
-            foreach (var cat in SettingsService.Instance.Categories.OrderBy(c => c.SortOrder))
-                combo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = cat.CategoryName, Tag = cat.CategoryId });
-            combo.SelectedIndex = 0;
+            Content = "（未設定）", Tag = null
+        });
+        foreach (var cat in SettingsService.Instance.Categories.OrderBy(c => c.SortOrder))
+        {
+            CategoryComboBox.Items.Add(new System.Windows.Controls.ComboBoxItem
+            {
+                Content = cat.CategoryName, Tag = cat.CategoryId
+            });
         }
-    }
-
-    // ===== モード切替 =====
-
-    private void SwitchToNormalMode()
-    {
-        NormalModePanel.Visibility = Visibility.Visible;
-        TestModePanel.Visibility   = Visibility.Collapsed;
-        NormalTabBorder.Background = (Brush)Application.Current.Resources["AccentBrush"];
-        NormalTabText.Foreground   = Brushes.White;
-        TestTabBorder.Background   = (Brush)Application.Current.Resources["SurfaceAltBrush"];
-        TestTabText.Foreground     = (Brush)Application.Current.Resources["TextSecondaryBrush"];
-    }
-
-    private void SwitchToTestMode()
-    {
-        NormalModePanel.Visibility = Visibility.Collapsed;
-        TestModePanel.Visibility   = Visibility.Visible;
-        TestTabBorder.Background   = (Brush)Application.Current.Resources["AccentBrush"];
-        TestTabText.Foreground     = Brushes.White;
-        NormalTabBorder.Background = (Brush)Application.Current.Resources["SurfaceAltBrush"];
-        NormalTabText.Foreground   = (Brush)Application.Current.Resources["TextSecondaryBrush"];
-        TestNameBox.Focus();
-    }
-
-    private void NormalTab_Click(object sender, MouseButtonEventArgs e) => SwitchToNormalMode();
-    private void TestTab_Click(object sender, MouseButtonEventArgs e)   => SwitchToTestMode();
-
-    // ===== テストチャンネル =====
-
-    private void BrowseTestFile_Click(object sender, RoutedEventArgs e)
-    {
-        var dlg = new Microsoft.Win32.OpenFileDialog
-        {
-            Title           = "テストデータファイルを選択",
-            Filter          = "JSONファイル (*.json)|*.json|すべてのファイル (*.*)|*.*",
-            CheckFileExists = true
-        };
-        if (dlg.ShowDialog(this) == true)
-        {
-            TestDataPathBox.Text               = dlg.FileName;
-            TestDataPathPlaceholder.Visibility = Visibility.Collapsed;
-            TestStatusText.Text                = string.Empty;
-        }
-    }
-
-    private void AddTestChannel_Click(object sender, RoutedEventArgs e)
-    {
-        var name = TestNameBox.Text.Trim();
-        var path = TestDataPathBox.Text.Trim();
-
-        if (string.IsNullOrEmpty(name))
-        { TestStatusText.Text = "⚠ チャンネル名を入力してください。"; return; }
-        if (string.IsNullOrEmpty(path))
-        { TestStatusText.Text = "⚠ JSONファイルを選択してください。"; return; }
-        if (!System.IO.File.Exists(path))
-        { TestStatusText.Text = "⚠ 指定されたファイルが見つかりません。"; return; }
-
-        var testData = TestChannelService.LoadTestData(path);
-        if (testData == null)
-        { TestStatusText.Text = "⚠ JSONの読み込みに失敗しました。"; return; }
-        if (testData.States.Count == 0)
-        { TestStatusText.Text = "⚠ テストデータが空です（states が0件）。"; return; }
-
-        var channelId   = "TEST_" + Guid.NewGuid().ToString("N")[..8].ToUpper();
-        var selectedCat = TestCategoryComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem;
-
-        var channel = new ChannelInfo
-        {
-            ChannelId      = channelId,
-            ChannelName    = name,
-            IsTestChannel  = true,
-            TestDataPath   = path,
-            TestStateIndex = 0,
-            IsEnabled      = true,
-            CategoryId     = selectedCat?.Tag as string,
-            AddedAt        = DateTime.Now,
-            NotifyVideo    = true,
-            NotifyShort    = true,
-            NotifyLive     = true,
-        };
-
-        SettingsService.Instance.AddChannel(channel);
-        LoggerService.Instance.Success(
-            $"テストチャンネルを追加しました（{testData.States.Count} ステート）", name);
-        ChannelAdded = true;
-        _onChannelAdded?.Invoke();
-        TestStatusText.Text = $"✅ 追加しました（{testData.States.Count} ステート）";
-
-        TestNameBox.Text                   = string.Empty;
-        TestDataPathBox.Text               = string.Empty;
-        TestDataPathPlaceholder.Visibility = Visibility.Visible;
+        CategoryComboBox.SelectedIndex = 0;
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -289,7 +199,7 @@ public partial class AddChannelWindow : Window
         // UploadsPlaylistIdをAPIから取得（トピックチャンネル対応）
         try
         {
-            var pid = await YouTubeApiClient.Instance.GetUploadsPlaylistIdAsync(_previewChannel.ChannelId);
+            var pid = await new YouTubeApiClient().GetUploadsPlaylistIdAsync(_previewChannel.ChannelId);
             if (!string.IsNullOrEmpty(pid))
                 _previewChannel.UploadsPlaylistId = pid;
         }

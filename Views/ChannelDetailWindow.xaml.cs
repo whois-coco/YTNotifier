@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -10,6 +11,8 @@ using Color       = System.Windows.Media.Color;
 using Orientation = System.Windows.Controls.Orientation;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using VerticalAlignment   = System.Windows.VerticalAlignment;
+using YTNotifier.Models;
+using YTNotifier.Services;
 
 namespace YTNotifier.Views;
 

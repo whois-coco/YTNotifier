@@ -1,6 +1,7 @@
 using System.IO;
 using System.IO.Compression;
 using Newtonsoft.Json;
+using YTNotifier.Models;
 
 namespace YTNotifier.Services;
 
@@ -19,8 +20,6 @@ public class SettingsService
     public AppSettings Settings { get; private set; } = new();
     public List<ChannelInfo> Channels { get; private set; } = new();
     public List<CategoryInfo> Categories { get; private set; } = new();
-
-    public event Action? ApiUnitsUpdated;
 
     // Channels/Categories への並行アクセスを直列化するロック
     private readonly object _persistLock = new();
@@ -54,13 +53,6 @@ public class SettingsService
 
     public string AppDataDir => _appDataDir;
 
-    public string GetIconDiskPath(string url)
-    {
-        var hash     = System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(url));
-        var fileName = Convert.ToHexString(hash).ToLower() + ".png";
-        return Path.Combine(_appDataDir, "icons", fileName);
-    }
-
     // ===== バックアップ / インポート =====
 
     /// <summary>Sounds フォルダのパス（exe と同じディレクトリ）</summary>
@@ -90,14 +82,12 @@ public class SettingsService
 
             // Sounds フォルダ（フォルダごと・全ファイル再帰）
             var soundsDir = SoundsDir;
-            LoggerService.Instance.Info($"[Backup] SoundsDir: {soundsDir} / Exists: {Directory.Exists(soundsDir)}");
             if (Directory.Exists(soundsDir))
                 foreach (var file in Directory.GetFiles(soundsDir, "*", SearchOption.AllDirectories))
                 {
                     // Sounds\ からの相対パスで ZIPエントリ名を構築
                     var relativePath = file.Substring(soundsDir.Length).TrimStart(Path.DirectorySeparatorChar);
                     var entryName    = "Sounds/" + relativePath.Replace(Path.DirectorySeparatorChar, '/');
-                    LoggerService.Instance.Info($"[Backup] Adding: {entryName}");
                     zip.CreateEntryFromFile(file, entryName);
                 }
         }
@@ -151,15 +141,18 @@ public class SettingsService
                 }
 
                 // Sounds フォルダ（フォルダ構造ごと exe ディレクトリに復元）
-                // ZIPエントリ名は "Sounds/live.wav" 形式（スラッシュ区切り）
                 var fullNameFwd = entry.FullName.Replace('\\', '/');
                 if (fullNameFwd.StartsWith("Sounds/", StringComparison.OrdinalIgnoreCase)
                     && !string.IsNullOrEmpty(entry.Name))
                 {
-                    var exeDir   = Path.GetDirectoryName(
-                        Environment.ProcessPath
-                        ?? System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "";
-                    // スラッシュをOSのセパレータに変換してパスを構築
+                    var exeDir = Path.GetDirectoryName(
+                                     Environment.ProcessPath)
+                              ?? Path.GetDirectoryName(
+                                     System.Reflection.Assembly.GetExecutingAssembly().Location)
+                              ?? AppDomain.CurrentDomain.BaseDirectory;
+                    exeDir = exeDir.TrimEnd(Path.DirectorySeparatorChar);
+                    if (string.IsNullOrEmpty(exeDir)) continue;
+
                     var destPath = Path.Combine(exeDir,
                         fullNameFwd.Replace('/', Path.DirectorySeparatorChar));
                     Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
@@ -206,11 +199,11 @@ public class SettingsService
             Directory.CreateDirectory(Path.GetDirectoryName(BkupPath)!);
             ExportBackup(BkupPath);
             _dirty = false;
-            LoggerService.Instance.Success("自動バックアップを保存しました", null, LogCategory.System);
+            LoggerService.Instance.Success("自動バックアップを保存しました", null, YTNotifier.Models.LogCategory.System);
         }
         catch (Exception ex)
         {
-            LoggerService.Instance.Error($"自動バックアップに失敗しました: {ex.Message}", null, LogCategory.System);
+            LoggerService.Instance.Error($"自動バックアップに失敗しました: {ex.Message}", null, YTNotifier.Models.LogCategory.System);
         }
     }
 
@@ -255,7 +248,7 @@ public class SettingsService
         {
             try
             {
-                var channels = Newtonsoft.Json.JsonConvert.DeserializeObject<List<ChannelInfo>>(
+                var channels = Newtonsoft.Json.JsonConvert.DeserializeObject<List<Models.ChannelInfo>>(
                     File.ReadAllText(_channelsPath));
                 if (channels == null || channels.Count == 0)
                 {
@@ -316,7 +309,9 @@ public class SettingsService
             Settings.TodayApiDate  = quotaKey;
         }
         Settings.TodayApiUnits += units;
-        ApiUnitsUpdated?.Invoke();
+        SaveSettingsSilent();
+        // クォータ更新をUIに通知
+        MonitorService.Instance.NotifyQuotaUpdated();
     }
 
     public void SaveCategories()
@@ -328,7 +323,7 @@ public class SettingsService
                 json = JsonConvert.SerializeObject(Categories, Formatting.Indented);
             File.WriteAllText(_categoriesPath, json);
         }
-        catch (Exception ex) { LoggerService.Instance.Warning($"カテゴリの保存に失敗: {ex.Message}"); }
+        catch { }
     }
 
     public CategoryInfo AddCategory(string name)
@@ -370,7 +365,6 @@ public class SettingsService
         var ch = Channels.FirstOrDefault(c => c.ChannelId == channelId);
         if (ch == null) return;
         ch.CategoryId = categoryId;
-        MarkDirty();
         SaveChannels();
     }
 
@@ -383,13 +377,11 @@ public class SettingsService
 
     private void LoadSettings()
     {
-        var configJson = File.Exists(_configPath) ? File.ReadAllText(_configPath) : null;
-
         try
         {
-            if (configJson != null)
+            if (File.Exists(_configPath))
             {
-                var json = configJson;
+                var json = File.ReadAllText(_configPath);
 
                 // toastStyle が数値で保存されている場合（旧バージョン互換）を文字列に変換
                 var jobj = Newtonsoft.Json.JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(json);
@@ -412,9 +404,10 @@ public class SettingsService
         // 旧バージョン移行: config.json に平文 ApiKey が残っていれば api_key.dat に移行して除去
         try
         {
-            if (configJson != null && string.IsNullOrEmpty(Settings.ApiKey))
+            if (File.Exists(_configPath) && string.IsNullOrEmpty(Settings.ApiKey))
             {
-                var legacy = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(configJson);
+                var raw = File.ReadAllText(_configPath);
+                var legacy = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(raw);
                 var legacyKey = legacy?["ApiKey"]?.ToString();
                 if (!string.IsNullOrEmpty(legacyKey))
                 {
@@ -441,15 +434,6 @@ public class SettingsService
             }
         }
         catch { Channels = new List<ChannelInfo>(); }
-
-        // 旧フォーマット移行: 単一 PendingUpcomingVideoId → PendingUpcomingVideoIds リスト
-        foreach (var ch in Channels)
-        {
-            if (!string.IsNullOrEmpty(ch.PendingUpcomingVideoId) &&
-                !ch.PendingUpcomingVideoIds.Contains(ch.PendingUpcomingVideoId))
-                ch.PendingUpcomingVideoIds.Add(ch.PendingUpcomingVideoId);
-            ch.PendingUpcomingVideoId = string.Empty;
-        }
     }
 
     /// <summary>通常の設定保存（ダーティフラグを立てる）</summary>
@@ -470,7 +454,7 @@ public class SettingsService
             var json = JsonConvert.SerializeObject(Settings, Formatting.Indented);
             File.WriteAllText(_configPath, json);
         }
-        catch (Exception ex) { LoggerService.Instance.Warning($"設定の保存に失敗: {ex.Message}"); }
+        catch { }
     }
 
     /// <summary>通常の保存（ダーティフラグを立てる）</summary>
@@ -487,13 +471,12 @@ public class SettingsService
     {
         try
         {
+            string json;
             lock (_persistLock)
-            {
-                var json = JsonConvert.SerializeObject(Channels, Formatting.Indented);
-                File.WriteAllText(_channelsPath, json);
-            }
+                json = JsonConvert.SerializeObject(Channels, Formatting.Indented);
+            File.WriteAllText(_channelsPath, json);
         }
-        catch (Exception ex) { LoggerService.Instance.Warning($"チャンネルデータの保存に失敗: {ex.Message}"); }
+        catch { }
     }
 
     public void AddChannel(ChannelInfo channel)
@@ -530,9 +513,6 @@ public class SettingsService
         SaveChannelsSilent();
     }
 
-    /// <summary>監視ループ内の一時更新。並列チェック中の個別保存を避け、サイクル末尾でまとめて保存するためのメモリのみ更新</summary>
-    public void UpdateChannelInMemory(ChannelInfo channel) => ReplaceChannel(channel);
-
     private void ReplaceChannel(ChannelInfo channel)
     {
         lock (_persistLock)
@@ -543,4 +523,25 @@ public class SettingsService
         }
     }
 
+    public void MoveChannelUp(string channelId)
+    {
+        lock (_persistLock)
+        {
+            var idx = Channels.FindIndex(c => c.ChannelId == channelId);
+            if (idx <= 0) return;
+            (Channels[idx], Channels[idx - 1]) = (Channels[idx - 1], Channels[idx]);
+        }
+        SaveChannels();
+    }
+
+    public void MoveChannelDown(string channelId)
+    {
+        lock (_persistLock)
+        {
+            var idx = Channels.FindIndex(c => c.ChannelId == channelId);
+            if (idx < 0 || idx >= Channels.Count - 1) return;
+            (Channels[idx], Channels[idx + 1]) = (Channels[idx + 1], Channels[idx]);
+        }
+        SaveChannels();
+    }
 }

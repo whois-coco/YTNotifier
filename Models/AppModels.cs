@@ -1,3 +1,4 @@
+using YTNotifier.Services;
 using Newtonsoft.Json;
 
 namespace YTNotifier.Models;
@@ -160,11 +161,7 @@ public class ChannelInfo
     [JsonProperty("notifyUpcoming")]
     public bool NotifyUpcoming { get; set; } = false;
 
-    /// <summary>upcoming待ちの動画IDリスト（複数のライブ・プレミアを並行追跡）</summary>
-    [JsonProperty("pendingUpcomingVideoIds")]
-    public List<string> PendingUpcomingVideoIds { get; set; } = new();
-
-    /// <summary>旧フォーマット互換: LoadChannels で PendingUpcomingVideoIds に移行後クリアされる</summary>
+    /// <summary>upcoming待ちの動画ID（NotifyUpcoming=OFFでliveになるまで監視継続するため）</summary>
     [JsonProperty("pendingUpcomingVideoId")]
     public string PendingUpcomingVideoId { get; set; } = string.Empty;
 
@@ -216,16 +213,6 @@ public class ChannelInfo
     // 次回チェック予定時刻
     [JsonProperty("nextCheckAt")]
     public DateTime NextCheckAt { get; set; } = DateTime.MinValue;
-
-    // ===== テストチャンネル =====
-    [JsonProperty("isTestChannel")]
-    public bool IsTestChannel { get; set; } = false;
-
-    [JsonProperty("testDataPath")]
-    public string TestDataPath { get; set; } = string.Empty;
-
-    [JsonProperty("testStateIndex")]
-    public int TestStateIndex { get; set; } = 0;
 
     [JsonIgnore]
     public string ChannelUrl => $"https://www.youtube.com/channel/{ChannelId}";
@@ -295,7 +282,7 @@ public enum LogCategory
 public class FocusSlot
 {
     [JsonProperty("notifyKind")]
-    public VideoKind NotifyKind { get; set; } = VideoKind.Video;
+    public YTNotifier.Services.VideoKind NotifyKind { get; set; } = YTNotifier.Services.VideoKind.Video;
     /// <summary>曜日ビットマスク (bit0=Sun..bit6=Sat, 0=全曜日)</summary>
     [JsonProperty("days")]
     public int Days { get; set; } = 0;
@@ -315,27 +302,4 @@ public enum ToastStyle
 {
     Standard,      // デフォルト通知（チャンネルアイコン＋動画情報）
     Thumbnail      // サムネイル通知（サムネイル大表示＋チャンネル名＋種別＋タイトル）
-}
-
-public enum VideoKind { Video, Short, Live, Premiere }
-
-public class VideoInfo
-{
-    public string    VideoId      { get; set; } = string.Empty;
-    public string    Title        { get; set; } = string.Empty;
-    public string?   ThumbnailUrl { get; set; }
-    public VideoKind Kind         { get; set; } = VideoKind.Video;
-    public bool      IsUpcoming   { get; set; } = false;
-    public string KindLabel => Kind.ToLabel();
-}
-
-public static class VideoKindExtensions
-{
-    public static string ToLabel(this VideoKind kind) => kind switch
-    {
-        VideoKind.Short    => "Short",
-        VideoKind.Live     => "ライブ",
-        VideoKind.Premiere => "プレミア",
-        _                  => "動画"
-    };
 }

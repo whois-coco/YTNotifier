@@ -1,3 +1,4 @@
+using System.Linq;
 
 namespace YTNotifier.Services;
 
@@ -30,7 +31,7 @@ public static class ApiQuotaHelper
     /// </summary>
     public static (bool safe, int recommendedMinutes) ValidateInterval(
         int intervalMinutes,
-        IEnumerable<ChannelInfo> channels)
+        IEnumerable<YTNotifier.Models.ChannelInfo> channels)
     {
         var channelList = channels.ToList();
         if (channelList.Count == 0) return (true, intervalMinutes);
@@ -72,7 +73,7 @@ public static class ApiQuotaHelper
     /// 同じ計算式を共有するための単一ソース。
     /// </summary>
     public static int EstimateDailyUnitsForMode(
-        MonitorMode mode,
+        YTNotifier.Models.MonitorMode mode,
         int globalIntervalMinutes,
         int focusWindowMinutes,
         int focusIntervalMinutes,
@@ -80,11 +81,11 @@ public static class ApiQuotaHelper
     {
         switch (mode)
         {
-            case MonitorMode.LowFreq:
+            case YTNotifier.Models.MonitorMode.LowFreq:
                 var lowInterval = Math.Max(1, lowFreqIntervalMinutes);
                 return (MinutesPerDay / lowInterval) * UnitsPerCheck;
 
-            case MonitorMode.Focus:
+            case YTNotifier.Models.MonitorMode.Focus:
                 var window   = focusWindowMinutes * 2; // 前後の合計分
                 var interval = Math.Max(1, focusIntervalMinutes);
                 return (window / interval) * UnitsPerCheck;
@@ -97,7 +98,7 @@ public static class ApiQuotaHelper
 
     /// <summary>時間指定モード（複数スロット）の1日推定ユニット数。有効スロットを合算する</summary>
     public static int EstimateDailyUnitsForFocusSlots(
-        IEnumerable<FocusSlot> slots)
+        IEnumerable<YTNotifier.Models.FocusSlot> slots)
     {
         int total = 0;
         foreach (var slot in slots.Where(s => s.IsEnabled))
@@ -121,13 +122,13 @@ public static class ApiQuotaHelper
     /// <summary>全チャンネルの監視モードを考慮した1日の推定消費ユニット数を計算する</summary>
     public static int EstimateDailyUnitsForChannels(
         int globalIntervalMinutes,
-        IEnumerable<ChannelInfo> channels)
+        IEnumerable<YTNotifier.Models.ChannelInfo> channels)
     {
         int total = 0;
-        foreach (var ch in channels.Where(c => c.IsEnabled && !c.IsTestChannel))
+        foreach (var ch in channels.Where(c => c.IsEnabled))
         {
             // 時間指定モードでFocusSlotsがあれば複数スロット計算を使用
-            if (ch.MonitorMode == MonitorMode.Focus
+            if (ch.MonitorMode == YTNotifier.Models.MonitorMode.Focus
                 && ch.FocusSlots.Any(s => s.IsEnabled))
             {
                 total += EstimateDailyUnitsForFocusSlots(ch.FocusSlots);
@@ -138,5 +139,10 @@ public static class ApiQuotaHelper
                 ch.FocusWindowMinutes, ch.FocusIntervalMinutes, ch.LowFreqIntervalMinutes);
         }
         return total;
+    }
+    public static int SafeMinInterval(int channelCount)
+    {
+        var (_, rec) = ValidateInterval(1, channelCount);
+        return rec;
     }
 }

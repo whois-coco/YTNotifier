@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -13,6 +14,8 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using YTNotifier.Models;
+using YTNotifier.Services;
 using Application      = System.Windows.Application;
 using Brush            = System.Windows.Media.Brush;
 using Brushes          = System.Windows.Media.Brushes;
@@ -55,21 +58,23 @@ public partial class MainWindow : System.Windows.Window
 
         SetDynamicBrush(StatusBadge, Button.BackgroundProperty, "SidebarStatusBgBrush");
         StatusBadge.ToolTip = _isOffline ? "オフライン" : isRunning ? "クリックして監視を停止" : "クリックして監視を開始";
+        if (_sidebarCollapsed) UpdateToggleIconColor(isRunning);
     }
 
     /// <summary>実際にDNS解決を試みてネットワーク疎通を確認する</summary>
-    internal async void CheckNetworkState()
+    internal void CheckNetworkState()
     {
         var isAvailable = false;
         try
         {
+            // DNS解決で実際の疎通確認（単純なGetIsNetworkAvailableより確実）
             using var ping = new System.Net.NetworkInformation.Ping();
-            var reply = await ping.SendPingAsync("8.8.8.8", 1000);
+            var reply = ping.Send("8.8.8.8", 1000); // Google DNS、1秒タイムアウト
             isAvailable = reply.Status == System.Net.NetworkInformation.IPStatus.Success;
         }
         catch { isAvailable = false; }
 
-        if (isAvailable == _isOffline)
+        if (isAvailable == _isOffline) // 状態が変化した時のみ更新
             UpdateNetworkState(isAvailable);
     }
 
@@ -130,6 +135,11 @@ public partial class MainWindow : System.Windows.Window
             if (lbl      != null) lbl.Text            = showCollapse ? "折り畳む" : "展開する";
             SidebarToggleButton.ToolTip = showCollapse ? "折り畳む" : "展開する";
         }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void UpdateToggleIconColor(bool isRunning)
+    {
+        // 折り畳み時の色設定は不要（展開ボタンは常にSidebarTextBrush）
     }
 
     // ===== 設定サブナビゲーション =====

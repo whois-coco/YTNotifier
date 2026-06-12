@@ -5,6 +5,8 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Forms;
 using System.Windows.Threading;
+using YTNotifier.Services;
+using YTNotifier.Views;
 
 namespace YTNotifier;
 
@@ -12,7 +14,7 @@ public partial class App : System.Windows.Application
 {
     private static Mutex? _mutex;
     private MainWindow? _mainWindow;
-    private NotifyIcon? _notifyIcon;       // System.Windows.Forms.NotifyIcon
+    private TrayIconService? _trayIconService;
     private bool _errorShown = false;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -56,7 +58,8 @@ public partial class App : System.Windows.Application
         catch (Exception ex) { ShowFatalError("テーマの適用に失敗しました", ex); Shutdown(); return; }
 
         // システムトレイアイコン初期化
-        InitNotifyIcon();
+        _trayIconService = new TrayIconService(ShowMainWindow, ExitApp);
+        _trayIconService.Initialize();
 
         // APIキー未設定の初回起動時はセットアップウィンドウを先に表示
         if (string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKey))
@@ -94,155 +97,6 @@ public partial class App : System.Windows.Application
     }
 
     // ===== System.Windows.Forms.NotifyIcon 初期化 =====
-    private void InitNotifyIcon()
-    {
-        try
-        {
-            var icon = LoadIcon("app.ico");
-
-            _notifyIcon = new NotifyIcon
-            {
-                Icon = icon,
-                Text = "YTNotifier - YouTube通知",
-                Visible = true
-            };
-
-            // コンテキストメニュー
-            var menu = new ContextMenuStrip();
-            ApplyTrayMenuTheme(menu);
-
-            menu.Items.Add("🖥  ウィンドウを開く",  null, (_, _) => ShowMainWindow());
-            menu.Items.Add("🔄  今すぐチェック",    null, async (_, _) => await MonitorService.Instance.ManualCheckAsync());
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("▶  監視開始",           null, (_, _) => MonitorService.Instance.Start());
-            menu.Items.Add("⏸  監視停止",           null, (_, _) => MonitorService.Instance.Stop());
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("✖  終了",               null, (_, _) => ExitApp());
-
-            // 各アイテムにスタイル適用
-            foreach (ToolStripItem item in menu.Items)
-                ApplyTrayMenuItemTheme(item);
-
-            _notifyIcon.ContextMenuStrip = menu;
-            _notifyIcon.DoubleClick += (_, _) => ShowMainWindow();
-
-            // 監視ステータス変化でアイコン・ツールチップを更新
-            MonitorService.Instance.StatusChanged += OnMonitorStatusChanged;
-        }
-        catch (Exception ex)
-        {
-            LogError("トレイアイコン初期化失敗", ex.ToString());
-        }
-    }
-
-    private static void ApplyTrayMenuTheme(ContextMenuStrip menu)
-    {
-        // ダーク背景（メインウィンドウのサイドバー色に近い #1E2130）
-        menu.BackColor         = System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
-        menu.ForeColor         = System.Drawing.Color.FromArgb(0xE2, 0xE8, 0xF0);
-        menu.Font              = new System.Drawing.Font("Yu Gothic UI", 9.5f);
-        menu.ShowImageMargin   = false;
-        menu.ShowCheckMargin   = false;
-        menu.Padding           = new System.Windows.Forms.Padding(4, 4, 4, 4);
-        menu.Renderer          = new TrayMenuRenderer();
-        menu.Opening          += (_, _) =>
-        {
-            foreach (ToolStripItem item in menu.Items)
-                ApplyTrayMenuItemTheme(item);
-        };
-    }
-
-    private static void ApplyTrayMenuItemTheme(ToolStripItem item)
-    {
-        if (item is ToolStripMenuItem mi)
-        {
-            mi.BackColor = System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
-            mi.ForeColor = System.Drawing.Color.FromArgb(0xE2, 0xE8, 0xF0);
-            mi.Padding   = new System.Windows.Forms.Padding(8, 4, 8, 4);
-        }
-        else if (item is ToolStripSeparator sep)
-        {
-            sep.BackColor = System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
-            sep.ForeColor = System.Drawing.Color.FromArgb(0x2D, 0x34, 0x4F);
-        }
-    }
-
-    // カスタムレンダラー（ホバー色・区切り線をカスタマイズ）
-    private class TrayMenuRenderer : ToolStripProfessionalRenderer
-    {
-        public TrayMenuRenderer() : base(new TrayMenuColorTable()) { }
-
-        protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
-        {
-            var g = e.Graphics;
-            var y = e.Item.Height / 2;
-            using var pen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(0x2D, 0x34, 0x4F));
-            g.DrawLine(pen, 8, y, e.Item.Width - 8, y);
-        }
-
-        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
-        {
-            if (e.Item.Selected)
-            {
-                using var brush = new System.Drawing.SolidBrush(
-                    System.Drawing.Color.FromArgb(0x2D, 0x3A, 0x5A));
-                var rc = new System.Drawing.Rectangle(2, 1, e.Item.Width - 4, e.Item.Height - 2);
-                e.Graphics.FillRectangle(brush, rc);
-            }
-            else
-            {
-                using var brush = new System.Drawing.SolidBrush(
-                    System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30));
-                e.Graphics.FillRectangle(brush, e.Item.Bounds);
-            }
-        }
-    }
-
-    private class TrayMenuColorTable : ProfessionalColorTable
-    {
-        public override System.Drawing.Color MenuBorder
-            => System.Drawing.Color.FromArgb(0x2D, 0x34, 0x4F);
-        public override System.Drawing.Color ToolStripDropDownBackground
-            => System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
-        public override System.Drawing.Color ImageMarginGradientBegin
-            => System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
-        public override System.Drawing.Color ImageMarginGradientMiddle
-            => System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
-        public override System.Drawing.Color ImageMarginGradientEnd
-            => System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
-    }
-
-    private static Icon LoadIcon(string fileName)
-    {
-        // Resources フォルダのアイコンをストリームから読み込む
-        var uri = new Uri($"pack://application:,,,/Resources/{fileName}");
-        var sri = GetResourceStream(uri);
-        if (sri != null)
-            return new Icon(sri.Stream);
-
-        // フォールバック: 実行ファイルの隣の Resources フォルダ
-        var exeDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "";
-        var path = Path.Combine(exeDir, "Resources", fileName);
-        if (File.Exists(path))
-            return new Icon(path);
-
-        // さらにフォールバック: システムデフォルトアイコン
-        return SystemIcons.Application;
-    }
-
-    private void OnMonitorStatusChanged(bool isRunning)
-    {
-        Dispatcher.Invoke(() =>
-        {
-            if (_notifyIcon == null) return;
-            _notifyIcon.Text = isRunning ? "YTNotifier - 監視中" : "YTNotifier - 停止中";
-            try
-            {
-                _notifyIcon.Icon = LoadIcon(isRunning ? "app.ico" : "app_warn.ico");
-            }
-            catch { }
-        });
-    }
 
     // ===== 公開メソッド =====
 
@@ -285,7 +139,7 @@ public partial class App : System.Windows.Application
     private void ExitApp()
     {
         MonitorService.Instance.Stop();
-        _notifyIcon?.Dispose();
+        _trayIconService?.Dispose();
         Shutdown();
     }
 
@@ -351,9 +205,9 @@ public partial class App : System.Windows.Application
     {
         MonitorService.Instance.Stop();
         // 変更があれば bkup/auto_backup.ytbk へ自動保存
-        try { SettingsService.Instance.SaveAutoBackupIfDirty(); } catch (Exception ex) { LoggerService.Instance.Warning($"終了時バックアップ失敗: {ex.Message}"); }
-        try { SettingsService.Instance.SaveChannelsSilent(); }    catch (Exception ex) { LoggerService.Instance.Warning($"終了時保存失敗: {ex.Message}"); }
-        _notifyIcon?.Dispose();
+        try { SettingsService.Instance.SaveAutoBackupIfDirty(); } catch { }
+        try { SettingsService.Instance.SaveChannelsSilent(); } catch { }
+        _trayIconService?.Dispose();
         _mutex?.ReleaseMutex();
         _mutex?.Dispose();
         base.OnExit(e);

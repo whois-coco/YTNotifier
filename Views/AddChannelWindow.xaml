@@ -4,7 +4,7 @@
         Title="チャンネルを追加"
         Width="520" Height="215"
         MinWidth="520" MinHeight="215"
-        MaxWidth="520" MaxHeight="600"
+        MaxWidth="520" MaxHeight="520"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         WindowStyle="None"
@@ -58,320 +58,170 @@
             <!-- メインコンテンツ -->
             <StackPanel Margin="12,10,12,12">
 
-                <!-- モード切替タブ -->
-                <Grid Margin="0,0,0,10" Height="30">
+                <!-- 上段: プレビュー + 入力フォーム -->
+                <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="68"/>
+                        <ColumnDefinition Width="10"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <Border x:Name="NormalTabBorder" Grid.Column="0"
-                            CornerRadius="4,0,0,4" Cursor="Hand"
-                            BorderThickness="1,1,0,1"
+
+                    <!-- 左：プレビュー -->
+                    <Border Grid.Column="0"
+                            Width="68" Height="68"
+                            HorizontalAlignment="Left" VerticalAlignment="Top"
+                            Background="{DynamicResource SurfaceAltBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
-                            MouseLeftButtonUp="NormalTab_Click">
-                        <TextBlock x:Name="NormalTabText" Text="通常チャンネル"
-                                   FontSize="11" FontWeight="SemiBold"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <Border x:Name="TestTabBorder" Grid.Column="1"
-                            CornerRadius="0,4,4,0" Cursor="Hand"
-                            BorderThickness="0,1,1,1"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            MouseLeftButtonUp="TestTab_Click">
-                        <TextBlock x:Name="TestTabText" Text="⚗ テストチャンネル"
-                                   FontSize="11" FontWeight="SemiBold"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                </Grid>
-
-                <!-- 通常チャンネルパネル -->
-                <StackPanel x:Name="NormalModePanel">
-
-                    <!-- 上段: プレビュー + 入力フォーム -->
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="68"/>
-                            <ColumnDefinition Width="10"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <!-- 左：プレビュー -->
-                        <Border Grid.Column="0"
-                                Width="68" Height="68"
-                                HorizontalAlignment="Left" VerticalAlignment="Top"
-                                Background="{DynamicResource SurfaceAltBrush}"
-                                BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1">
-                            <Grid Width="68" Height="68">
-                                <StackPanel x:Name="PreviewEmptyState"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <TextBlock Text="🔍" FontSize="16" HorizontalAlignment="Center"/>
-                                </StackPanel>
-                                <Image x:Name="PreviewThumbnail"
-                                       Visibility="Collapsed" Stretch="UniformToFill"
-                                       Width="68" Height="68"/>
-                            </Grid>
-                        </Border>
-
-                        <!-- 右：入力フォーム -->
-                        <Grid Grid.Column="2">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-
-                            <TextBlock Grid.Row="0"
-                                       Text="チャンネルURL / ID / ハンドル"
-                                       FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Margin="0,0,0,4"/>
-                            <Grid Grid.Row="1">
-                                <TextBox x:Name="ChannelInputBox"
-                                         Style="{StaticResource ModernTextBox}"
-                                         Padding="10,8,44,8"
-                                         KeyDown="ChannelInputBox_KeyDown"
-                                         TextChanged="ChannelInputBox_TextChanged"/>
-                                <TextBlock x:Name="ChannelInputPlaceholder"
-                                           Text="https://youtube.com/... / @handle / UCxxxxxxx"
-                                           Foreground="{DynamicResource TextMutedBrush}"
-                                           FontSize="13" Margin="11,0,40,0"
-                                           VerticalAlignment="Center"
-                                           IsHitTestVisible="False"/>
-                                <Button x:Name="PasteButton"
-                                        Width="34" Height="34"
-                                        HorizontalAlignment="Right" VerticalAlignment="Center"
-                                        Margin="0,0,3,0" Background="Transparent"
-                                        BorderThickness="0" Cursor="Hand"
-                                        Click="PasteButton_Click" ToolTip="クリップボードから貼り付け">
-                                    <Button.Template>
-                                        <ControlTemplate TargetType="Button">
-                                            <Border x:Name="Bd" Background="Transparent" CornerRadius="4"
-                                                    Width="34" Height="34">
-                                                <Viewbox Width="17" Height="17">
-                                                    <Canvas Width="24" Height="24">
-                                                        <Path Data="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
-                                                              Stroke="{DynamicResource TextMutedBrush}" StrokeThickness="2"
-                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                                              StrokeLineJoin="Round" Fill="Transparent"/>
-                                                        <Path Data="M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"
-                                                              Stroke="{DynamicResource TextMutedBrush}" StrokeThickness="2"
-                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                                              StrokeLineJoin="Round" Fill="Transparent"/>
-                                                    </Canvas>
-                                                </Viewbox>
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background"
-                                                            Value="{DynamicResource HoverBrush}"/>
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Button.Template>
-                                </Button>
-                            </Grid>
-
-                            <!-- 連続追加チェックボックス -->
-                            <CheckBox Grid.Row="2" x:Name="ContinuousAddCheckBox"
-                                      Content="連続追加モード"
-                                      FontSize="11"
-                                      Foreground="{DynamicResource TextSecondaryBrush}"
-                                      Margin="0,6,0,0"
-                                      Style="{StaticResource ModernCheckBox}"
-                                      Checked="ContinuousAddCheckBox_Changed"
-                                      Unchecked="ContinuousAddCheckBox_Changed"/>
-
-                            <!-- ステータステキスト + 検索・追加ボタン -->
-                            <Grid Grid.Row="3" Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="PreviewStatusText" Grid.Column="0"
-                                           FontSize="10" Foreground="{DynamicResource TextMutedBrush}"
-                                           TextWrapping="Wrap" VerticalAlignment="Center"/>
-                                <Button Grid.Column="1" x:Name="PreviewButton"
-                                        Style="{StaticResource PrimaryButton}"
-                                        Content="検索" Padding="14,6"
-                                        Margin="0,0,8,0"
-                                        Click="PreviewChannel_Click"/>
-                                <Button Grid.Column="2" x:Name="AddChannelButton"
-                                        Style="{StaticResource PrimaryButton}"
-                                        Content="追加する" Padding="14,6"
-                                        IsEnabled="False" Click="AddChannel_Click"/>
-                            </Grid>
-                        </Grid>
-                    </Grid>
-
-                    <!-- 拡張エリア: チャンネル発見時に表示 -->
-                    <Border x:Name="ExpandedArea" Visibility="Collapsed"
-                            Margin="0,12,0,0"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="0,1,0,0" Padding="0,12,0,0">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="16"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="カテゴリ" FontSize="11" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,0,0,6"/>
-                                <ComboBox x:Name="CategoryComboBox"
-                                          Style="{StaticResource ModernComboBox}"/>
+                            BorderThickness="1">
+                        <Grid Width="68" Height="68">
+                            <StackPanel x:Name="PreviewEmptyState"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="🔍" FontSize="16" HorizontalAlignment="Center"/>
                             </StackPanel>
-
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="チェック対象" FontSize="11" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,0,0,6"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                    <CheckBox x:Name="CheckVideo" Content="動画"
-                                              IsChecked="True" FontSize="11"
-                                              Foreground="{DynamicResource TextPrimaryBrush}"
-                                              Style="{StaticResource ModernCheckBox}"
-                                              Margin="0,0,12,0"/>
-                                    <CheckBox x:Name="CheckShort" Content="Short"
-                                              IsChecked="True" FontSize="11"
-                                              Foreground="{DynamicResource TextPrimaryBrush}"
-                                              Style="{StaticResource ModernCheckBox}"
-                                              Margin="0,0,12,0"/>
-                                    <CheckBox x:Name="CheckLive" Content="ライブ"
-                                              IsChecked="True" FontSize="11"
-                                              Foreground="{DynamicResource TextPrimaryBrush}"
-                                              Style="{StaticResource ModernCheckBox}"/>
-                                </StackPanel>
-                            </StackPanel>
+                            <Image x:Name="PreviewThumbnail"
+                                   Visibility="Collapsed" Stretch="UniformToFill"
+                                   Width="68" Height="68"/>
                         </Grid>
                     </Border>
 
-                </StackPanel>
+                    <!-- 右：入力フォーム -->
+                    <Grid Grid.Column="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
 
-                <!-- テストチャンネルパネル -->
-                <StackPanel x:Name="TestModePanel" Visibility="Collapsed">
-
-                    <!-- アイコン + 入力フォーム -->
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="68"/>
-                            <ColumnDefinition Width="10"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <!-- テストアイコン -->
-                        <Border Grid.Column="0" Width="68" Height="68"
-                                HorizontalAlignment="Left" VerticalAlignment="Top"
-                                Background="{DynamicResource SurfaceAltBrush}"
-                                BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1">
-                            <TextBlock Text="⚗" FontSize="28"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-
-                        <!-- フォーム -->
-                        <Grid Grid.Column="2">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-
-                            <TextBlock Grid.Row="0" Text="テストチャンネル名"
-                                       FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Margin="0,0,0,4"/>
-                            <TextBox Grid.Row="1" x:Name="TestNameBox"
+                        <TextBlock Grid.Row="0"
+                                   Text="チャンネルURL / ID / ハンドル"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Margin="0,0,0,4"/>
+                        <Grid Grid.Row="1">
+                            <TextBox x:Name="ChannelInputBox"
                                      Style="{StaticResource ModernTextBox}"
-                                     Padding="10,8"/>
-
-                            <TextBlock Grid.Row="2" Text="テストデータ（JSON）ファイル"
-                                       FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Margin="0,8,0,4"/>
-                            <Grid Grid.Row="3">
-                                <TextBox x:Name="TestDataPathBox"
-                                         Style="{StaticResource ModernTextBox}"
-                                         Padding="10,8,44,8"
-                                         IsReadOnly="True"/>
-                                <TextBlock x:Name="TestDataPathPlaceholder"
-                                           Text="JSONファイルを選択..."
-                                           Foreground="{DynamicResource TextMutedBrush}"
-                                           FontSize="12" Margin="12,0,44,0"
-                                           VerticalAlignment="Center"
-                                           IsHitTestVisible="False"/>
-                                <Button x:Name="BrowseTestFileButton"
-                                        Width="34" Height="34"
-                                        HorizontalAlignment="Right" VerticalAlignment="Center"
-                                        Margin="0,0,3,0" Background="Transparent"
-                                        BorderThickness="0" Cursor="Hand"
-                                        Click="BrowseTestFile_Click"
-                                        ToolTip="ファイルを選択">
-                                    <Button.Template>
-                                        <ControlTemplate TargetType="Button">
-                                            <Border x:Name="Bd" Background="Transparent" CornerRadius="4"
-                                                    Width="34" Height="34">
-                                                <Viewbox Width="17" Height="17">
-                                                    <Canvas Width="24" Height="24">
-                                                        <Path Data="M3 7a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
-                                                              Stroke="{DynamicResource TextMutedBrush}" StrokeThickness="2"
-                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                                              StrokeLineJoin="Round" Fill="Transparent"/>
-                                                    </Canvas>
-                                                </Viewbox>
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background"
-                                                            Value="{DynamicResource HoverBrush}"/>
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Button.Template>
-                                </Button>
-                            </Grid>
+                                     Padding="10,8,44,8"
+                                     KeyDown="ChannelInputBox_KeyDown"
+                                     TextChanged="ChannelInputBox_TextChanged"/>
+                            <TextBlock x:Name="ChannelInputPlaceholder"
+                                       Text="https://youtube.com/... / @handle / UCxxxxxxx"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="13" Margin="11,0,40,0"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False"/>
+                            <Button x:Name="PasteButton"
+                                    Width="34" Height="34"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    Margin="0,0,3,0" Background="Transparent"
+                                    BorderThickness="0" Cursor="Hand"
+                                    Click="PasteButton_Click" ToolTip="クリップボードから貼り付け">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="Bd" Background="Transparent" CornerRadius="4"
+                                                Width="34" Height="34">
+                                            <Viewbox Width="17" Height="17">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path Data="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+                                                          Stroke="{DynamicResource TextMutedBrush}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          StrokeLineJoin="Round" Fill="Transparent"/>
+                                                    <Path Data="M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"
+                                                          Stroke="{DynamicResource TextMutedBrush}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          StrokeLineJoin="Round" Fill="Transparent"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="Background"
+                                                        Value="{DynamicResource HoverBrush}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
                         </Grid>
-                    </Grid>
 
-                    <!-- カテゴリ + 追加ボタン -->
-                    <Border Margin="0,12,0,0"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="0,1,0,0" Padding="0,12,0,0">
-                        <Grid>
+                        <!-- 連続追加チェックボックス -->
+                        <CheckBox Grid.Row="2" x:Name="ContinuousAddCheckBox"
+                                  Content="連続追加モード"
+                                  FontSize="11"
+                                  Foreground="{DynamicResource TextSecondaryBrush}"
+                                  Margin="0,6,0,0"
+                                  Style="{StaticResource ModernCheckBox}"
+                                  Checked="ContinuousAddCheckBox_Changed"
+                                  Unchecked="ContinuousAddCheckBox_Changed"/>
+
+                        <!-- ステータステキスト + 検索・追加ボタン -->
+                        <Grid Grid.Row="3" Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="カテゴリ" FontSize="11" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,0,0,6"/>
-                                <ComboBox x:Name="TestCategoryComboBox"
-                                          Style="{StaticResource ModernComboBox}"/>
-                            </StackPanel>
-
-                            <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
-                                <TextBlock x:Name="TestStatusText"
-                                           FontSize="10"
-                                           Foreground="{DynamicResource TextMutedBrush}"
-                                           Margin="0,0,0,6"
-                                           TextWrapping="Wrap" MaxWidth="180"/>
-                                <Button x:Name="AddTestChannelButton"
-                                        Style="{StaticResource PrimaryButton}"
-                                        Content="追加する" Padding="14,6"
-                                        Click="AddTestChannel_Click"/>
-                            </StackPanel>
+                            <TextBlock x:Name="PreviewStatusText" Grid.Column="0"
+                                       FontSize="10" Foreground="{DynamicResource TextMutedBrush}"
+                                       TextWrapping="Wrap" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" x:Name="PreviewButton"
+                                    Style="{StaticResource PrimaryButton}"
+                                    Content="検索" Padding="14,6"
+                                    Margin="0,0,8,0"
+                                    Click="PreviewChannel_Click"/>
+                            <Button Grid.Column="2" x:Name="AddChannelButton"
+                                    Style="{StaticResource PrimaryButton}"
+                                    Content="追加する" Padding="14,6"
+                                    IsEnabled="False" Click="AddChannel_Click"/>
                         </Grid>
-                    </Border>
+                    </Grid>
+                </Grid>
 
-                </StackPanel>
+                <!-- 拡張エリア: チャンネル発見時に表示 -->
+                <Border x:Name="ExpandedArea" Visibility="Collapsed"
+                        Margin="0,12,0,0"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="0,1,0,0" Padding="0,12,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- カテゴリ選択 -->
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="カテゴリ" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,0,0,6"/>
+                            <ComboBox x:Name="CategoryComboBox"
+                                      Style="{StaticResource ModernComboBox}"/>
+                        </StackPanel>
+
+                        <!-- チェック対象 -->
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="チェック対象" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,0,0,6"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                <CheckBox x:Name="CheckVideo" Content="動画"
+                                          IsChecked="True" FontSize="11"
+                                          Foreground="{DynamicResource TextPrimaryBrush}"
+                                          Style="{StaticResource ModernCheckBox}"
+                                          Margin="0,0,12,0"/>
+                                <CheckBox x:Name="CheckShort" Content="Short"
+                                          IsChecked="True" FontSize="11"
+                                          Foreground="{DynamicResource TextPrimaryBrush}"
+                                          Style="{StaticResource ModernCheckBox}"
+                                          Margin="0,0,12,0"/>
+                                <CheckBox x:Name="CheckLive" Content="ライブ"
+                                          IsChecked="True" FontSize="11"
+                                          Foreground="{DynamicResource TextPrimaryBrush}"
+                                          Style="{StaticResource ModernCheckBox}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
 
             </StackPanel>
         </DockPanel>

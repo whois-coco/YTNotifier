@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using KeyEventArgs  = System.Windows.Input.KeyEventArgs;
 using Application   = System.Windows.Application;
+using YTNotifier.Services;
 
 namespace YTNotifier.Views;
 
