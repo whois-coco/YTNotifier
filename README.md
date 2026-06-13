@@ -52,13 +52,6 @@ YTNotifier は以下の種別を自動判定して通知します。
 | **ライブ** | ライブ配信（配信中・アーカイブ） |
 | **プレミア** | プレミア公開（公開前・公開中） |
 
-### 判定ロジック
-
-1. `liveBroadcastContent` + `uploadStatus` → ライブ配信 / プレミア公開
-2. `liveStreamingDetails` の有無と `publishedAt ≒ actualStartTime` → アーカイブ判定
-3. `duration > 180秒` → 通常動画（即確定）
-4. HEAD リクエスト → Shorts / 通常動画
-
 ---
 
 ## 監視モード
