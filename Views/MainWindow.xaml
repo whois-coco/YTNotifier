@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="YTNotifier" Height="740" Width="980"
-        MinHeight="500" MinWidth="330"
+        MinHeight="500" MinWidth="360"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BackgroundBrush}"
         WindowStyle="None"
@@ -75,9 +75,13 @@
             </Setter>
         </Style>
 
-        <!-- アクティブナビ: 左に青ライン -->
-        <Style x:Key="NavButtonActive" TargetType="Button" BasedOn="{StaticResource NavButton}">
-            <Setter Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
+        <!-- アクティブナビ: 左に青ライン（BasedOn は使用しない。Template を完全置換するため） -->
+        <Style x:Key="NavButtonActive" TargetType="Button">
+            <Setter Property="Background"          Value="{DynamicResource SidebarHoverBrush}"/>
+            <Setter Property="BorderThickness"     Value="0"/>
+            <Setter Property="Height"              Value="40"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="Cursor"              Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -113,6 +117,9 @@
                             <Trigger Property="Content" Value="">
                                 <Setter TargetName="NavLabel" Property="Visibility"
                                         Value="Collapsed"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.85"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -153,7 +160,6 @@
                     <TextBlock x:Name="TitleText" Text="YTNotifier" FontSize="13" FontWeight="Bold"
                                Foreground="{DynamicResource SidebarTitleBrush}"
                                VerticalAlignment="Center"
-                               Visibility="Visible"
                                TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
 
@@ -219,7 +225,8 @@
                             <ControlTemplate TargetType="Button">
                                 <Border x:Name="Bd" Background="Transparent"
                                         Width="46" Height="40">
-                                    <TextBlock Text="✕" Foreground="{DynamicResource SidebarTextBrush}"
+                                    <TextBlock x:Name="CloseIcon" Text="✕"
+                                               Foreground="{DynamicResource SidebarTextBrush}"
                                                FontSize="11"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"/>
@@ -228,7 +235,7 @@
                                     <Trigger Property="IsMouseOver" Value="True">
                                         <Setter TargetName="Bd" Property="Background"
                                                 Value="#EF4444"/>
-                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter TargetName="CloseIcon" Property="Foreground" Value="White"/>
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -258,7 +265,6 @@
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition x:Name="StatusBadgeColumn" Width="*"/>
-                            <ColumnDefinition Width="0"/>
                         </Grid.ColumnDefinitions>
                         <!-- ステータスバッジ（クリックで監視トグル） -->
                         <Button x:Name="StatusBadge"
@@ -631,13 +637,6 @@
 
                 </StackPanel>
 
-                <!-- 区切りと ActionsLabel は不要になったが折り畳み制御のため残す -->
-                <Border DockPanel.Dock="Top" Height="0"/>
-                <StackPanel DockPanel.Dock="Top">
-                    <Border x:Name="ActionsLabelWrap" Visibility="Collapsed">
-                        <TextBlock x:Name="ActionsLabel" Text="" FontSize="9"/>
-                    </Border>
-                </StackPanel>
 
 
 
@@ -764,7 +763,7 @@
                                      BorderThickness="0"
                                      Padding="8,5,0,5"
                                      FontSize="12"
-                                     CaretBrush="Black"
+                                     CaretBrush="{DynamicResource TextPrimaryBrush}"
                                      VerticalAlignment="Center"
                                      KeyDown="ChannelSearchBox_KeyDown"
                                      TextChanged="ChannelSearchBox_TextChanged"
@@ -839,67 +838,7 @@
                     </Border>
 
                     <ScrollViewer x:Name="ChannelScrollViewer"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalContentAlignment="Stretch">
-                        <ScrollViewer.Template>
-                            <ControlTemplate TargetType="ScrollViewer">
-                                <Grid HorizontalAlignment="Stretch">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="4"/>
-                                    </Grid.ColumnDefinitions>
-                                    <ScrollContentPresenter
-                                        Grid.Column="0"
-                                        HorizontalAlignment="Stretch"
-                                        CanContentScroll="False"/>
-                                    <ScrollBar x:Name="PART_VerticalScrollBar"
-                                               Grid.Column="1"
-                                               Width="4"
-                                               Opacity="0"
-                                               Value="{TemplateBinding VerticalOffset}"
-                                               Maximum="{TemplateBinding ScrollableHeight}"
-                                               ViewportSize="{TemplateBinding ViewportHeight}"
-                                               Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"
-                                               Style="{StaticResource SlimScrollBar}">
-                                        <ScrollBar.Triggers>
-                                            <EventTrigger RoutedEvent="ScrollBar.MouseEnter">
-                                                <BeginStoryboard>
-                                                    <Storyboard>
-                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                         To="1" Duration="0:0:0.15"/>
-                                                    </Storyboard>
-                                                </BeginStoryboard>
-                                            </EventTrigger>
-                                            <EventTrigger RoutedEvent="ScrollBar.MouseLeave">
-                                                <BeginStoryboard>
-                                                    <Storyboard>
-                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                         To="0" Duration="0:0:0.3" BeginTime="0:0:0.5"/>
-                                                    </Storyboard>
-                                                </BeginStoryboard>
-                                            </EventTrigger>
-                                        </ScrollBar.Triggers>
-                                    </ScrollBar>
-                                </Grid>
-                                <ControlTemplate.Triggers>
-                                    <EventTrigger RoutedEvent="ScrollViewer.ScrollChanged">
-                                        <BeginStoryboard x:Name="ShowScrollBar">
-                                            <Storyboard>
-                                                <DoubleAnimation
-                                                    Storyboard.TargetName="PART_VerticalScrollBar"
-                                                    Storyboard.TargetProperty="Opacity"
-                                                    To="1" Duration="0:0:0.1"/>
-                                                <DoubleAnimation
-                                                    Storyboard.TargetName="PART_VerticalScrollBar"
-                                                    Storyboard.TargetProperty="Opacity"
-                                                    To="0" Duration="0:0:0.3" BeginTime="0:0:1.2"/>
-                                            </Storyboard>
-                                        </BeginStoryboard>
-                                    </EventTrigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </ScrollViewer.Template>
+                                  Style="{StaticResource SlimScrollViewer}">
                         <Grid>
                             <!-- オフライン時の表示 -->
                             <StackPanel x:Name="OfflinePanel" Visibility="Collapsed"
@@ -981,13 +920,13 @@
                         BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="0,0,0,1">
                     <StackPanel Orientation="Horizontal" Height="36">
-                        <Border x:Name="SettingsNavApp"
+                        <Border x:Name="SettingsNavDisplay"
                                 Padding="16,0" Cursor="Hand"
                                 Background="Transparent"
                                 BorderBrush="{DynamicResource PrimaryBrush}"
                                 BorderThickness="0,0,0,2"
                                 MouseLeftButtonUp="SettingsNavBorder_Click">
-                            <TextBlock Text="アプリ" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock Text="表示" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource PrimaryBrush}"
                                        VerticalAlignment="Center"/>
                         </Border>
@@ -997,27 +936,17 @@
                                 BorderBrush="Transparent"
                                 BorderThickness="0,0,0,2"
                                 MouseLeftButtonUp="SettingsNavBorder_Click">
-                            <TextBlock Text="監視" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock Text="通知" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        VerticalAlignment="Center"/>
                         </Border>
-                        <Border x:Name="SettingsNavLog"
+                        <Border x:Name="SettingsNavApp"
                                 Padding="16,0" Cursor="Hand"
                                 Background="Transparent"
                                 BorderBrush="Transparent"
                                 BorderThickness="0,0,0,2"
                                 MouseLeftButtonUp="SettingsNavBorder_Click">
-                            <TextBlock Text="ログフィルタ" FontSize="12" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextMutedBrush}"
-                                       VerticalAlignment="Center"/>
-                        </Border>
-                        <Border x:Name="SettingsNavActivityLog"
-                                Padding="16,0" Cursor="Hand"
-                                Background="Transparent"
-                                BorderBrush="Transparent"
-                                BorderThickness="0,0,0,2"
-                                MouseLeftButtonUp="SettingsNavBorder_Click">
-                            <TextBlock Text="動作ログ" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock Text="動作" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        VerticalAlignment="Center"/>
                         </Border>
@@ -1042,92 +971,116 @@
                     <ScrollViewer x:Name="SettingsPageMonitor" Style="{StaticResource SlimScrollViewer}" Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto" Margin="20,16">
                         <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="160"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="チェック間隔" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <ComboBox x:Name="IntervalComboBox" Grid.Column="1"
-                                          Style="{StaticResource ModernComboBox}"
-                                          SelectionChanged="IntervalComboBox_SelectionChanged">
-                                    <ComboBoxItem Content="3分"  Tag="3"  Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="5分"  Tag="5"  Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="10分" Tag="10" Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="15分" Tag="15" Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="20分" Tag="20" Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="30分" Tag="30" Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="60分" Tag="60" Style="{StaticResource ModernComboBoxItem}"/>
-                                </ComboBox>
-                            </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="プレミア/ライブ待機所通知" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <CheckBox x:Name="GlobalNotifyUpcomingToggle" Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitch}"
-                                          VerticalAlignment="Center"
-                                          Checked="GlobalNotifyUpcomingToggle_Changed"
-                                          Unchecked="GlobalNotifyUpcomingToggle_Changed"/>
-                            </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="通知音" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <CheckBox x:Name="NotificationSoundToggle" Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitch}"
-                                          VerticalAlignment="Center"
-                                          Checked="NotificationSoundToggle_Changed"
-                                          Unchecked="NotificationSoundToggle_Changed"/>
-                            </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="デスクトップ通知" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <CheckBox x:Name="NotificationToggle" Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitch}"
-                                          VerticalAlignment="Center"
-                                          Checked="NotificationToggle_Changed"
-                                          Unchecked="NotificationToggle_Changed"/>
-                            </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="通知スタイル" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <ComboBox x:Name="ToastStyleComboBox" Grid.Column="1"
-                                          Width="160"
-                                          Style="{StaticResource ModernComboBox}"
-                                          SelectionChanged="ToastStyleComboBox_Changed">
-                                    <ComboBoxItem Content="デフォルト通知" Tag="Standard"
-                                                  Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="サムネイル通知" Tag="Thumbnail"
-                                                  Style="{StaticResource ModernComboBoxItem}"/>
-                                </ComboBox>
-                            </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
+                            <!-- 通知グループ -->
+                            <TextBlock Text="通知" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Margin="2,0,0,6"/>
+                            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                    CornerRadius="6" Background="{DynamicResource SurfaceAltBrush}"
+                                    Padding="12,4">
+                                <StackPanel>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="チェック間隔" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="IntervalComboBox" Grid.Column="1"
+                                                  Style="{StaticResource ModernComboBox}"
+                                                  SelectionChanged="IntervalComboBox_SelectionChanged">
+                                            <ComboBoxItem Content="3分"  Tag="3"  Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="5分"  Tag="5"  Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="10分" Tag="10" Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="15分" Tag="15" Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="20分" Tag="20" Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="30分" Tag="30" Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="60分" Tag="60" Style="{StaticResource ModernComboBoxItem}"/>
+                                        </ComboBox>
+                                    </Grid>
+                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="プレミア/ライブ待機所通知" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="GlobalNotifyUpcomingToggle" Grid.Column="1"
+                                                  Style="{StaticResource ToggleSwitch}"
+                                                  VerticalAlignment="Center"
+                                                  Checked="GlobalNotifyUpcomingToggle_Changed"
+                                                  Unchecked="GlobalNotifyUpcomingToggle_Changed"/>
+                                    </Grid>
+                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="通知音" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="NotificationSoundToggle" Grid.Column="1"
+                                                  Style="{StaticResource ToggleSwitch}"
+                                                  VerticalAlignment="Center"
+                                                  Checked="NotificationSoundToggle_Changed"
+                                                  Unchecked="NotificationSoundToggle_Changed"/>
+                                    </Grid>
+                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="タスクバー点滅" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="FlashTaskbarToggle" Grid.Column="1"
+                                                  Style="{StaticResource ToggleSwitch}"
+                                                  VerticalAlignment="Center"
+                                                  Checked="FlashTaskbarToggle_Changed"
+                                                  Unchecked="FlashTaskbarToggle_Changed"/>
+                                    </Grid>
+                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="デスクトップ通知" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="NotificationToggle" Grid.Column="1"
+                                                  Style="{StaticResource ToggleSwitch}"
+                                                  VerticalAlignment="Center"
+                                                  Checked="NotificationToggle_Changed"
+                                                  Unchecked="NotificationToggle_Changed"/>
+                                    </Grid>
+                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="通知スタイル" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="ToastStyleComboBox" Grid.Column="1"
+                                                  Style="{StaticResource ModernComboBox}"
+                                                  SelectionChanged="ToastStyleComboBox_Changed">
+                                            <ComboBoxItem Content="デフォルト通知" Tag="Standard"
+                                                          Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="サムネイル通知" Tag="Thumbnail"
+                                                          Style="{StaticResource ModernComboBoxItem}"/>
+                                        </ComboBox>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                            <!-- 通知テスト（グループ外） -->
+                            <Grid Margin="0,16,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -1140,74 +1093,11 @@
                                         VerticalAlignment="Center"
                                         Click="TestNotification_Click"/>
                             </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Border Background="{DynamicResource SurfaceAltBrush}"
-                                    BorderBrush="{DynamicResource BorderBrush}"
-                                    BorderThickness="1" CornerRadius="4"
-                                    Padding="10,8" Margin="0,0,0,0">
-                                <StackPanel>
-                                    <TextBlock Text="API使用量(%)" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,0,0,6"/>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Border x:Name="QuotaBarBg" Grid.Column="0"
-                                                Background="{DynamicResource SurfaceElevatedBrush}"
-                                                CornerRadius="4" Height="10"
-                                                VerticalAlignment="Center">
-                                            <Grid HorizontalAlignment="Left">
-                                                <Border x:Name="QuotaBar"
-                                                        CornerRadius="4" Height="10" Width="0"
-                                                        MinWidth="0"/>
-                                            </Grid>
-                                        </Border>
-                                        <TextBlock x:Name="QuotaPercentText" Grid.Column="1"
-                                                   FontSize="11" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center"
-                                                   Margin="8,0,0,0"
-                                                   Foreground="{DynamicResource TextMutedBrush}"/>
-                                    </Grid>
-                                    <TextBlock x:Name="QuotaInfoText" FontSize="10"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,4,0,0"/>
-                                    <!-- 当日実使用量 -->
-                                    <TextBlock Text="本日の実使用量(%)" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,10,0,6"/>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Border x:Name="ActualQuotaBarBg" Grid.Column="0"
-                                                Background="{DynamicResource SurfaceElevatedBrush}"
-                                                CornerRadius="4" Height="10"
-                                                VerticalAlignment="Center">
-                                            <Grid HorizontalAlignment="Left">
-                                                <Border x:Name="ActualQuotaBar"
-                                                        CornerRadius="4" Height="10" Width="0"
-                                                        MinWidth="0"/>
-                                            </Grid>
-                                        </Border>
-                                        <TextBlock x:Name="ActualQuotaPercentText" Grid.Column="1"
-                                                   FontSize="11" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center"
-                                                   Margin="8,0,0,0"
-                                                   Foreground="{DynamicResource TextMutedBrush}"/>
-                                    </Grid>
-                                    <TextBlock x:Name="ActualQuotaInfoText" FontSize="10"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,4,0,0"/>
-                                </StackPanel>
-                            </Border>
                         </StackPanel>
                     </ScrollViewer>
 
                     <!-- アプリ -->
-                    <ScrollViewer x:Name="SettingsPageApp" Style="{StaticResource SlimScrollViewer}" Visibility="Visible"
+                    <ScrollViewer x:Name="SettingsPageApp" Style="{StaticResource SlimScrollViewer}" Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto" Margin="20,16">
                         <StackPanel>
                             <!-- APIキー -->
@@ -1239,22 +1129,6 @@
                                 </Hyperlink>
                             </TextBlock>
                             <Separator Style="{StaticResource HorizontalSeparator}" Margin="0,12,0,8"/>
-                            <!-- アプリ設定 -->
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="ダークモード" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <CheckBox x:Name="DarkModeToggle" Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitch}"
-                                          VerticalAlignment="Center"
-                                          Checked="DarkModeToggle_Changed"
-                                          Unchecked="DarkModeToggle_Changed"/>
-                            </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
                             <!-- CompactModeToggle は非表示（サイドバーボタンで制御） -->
                             <CheckBox x:Name="CompactModeToggle" Visibility="Collapsed"
                                       Checked="CompactModeToggle_Changed"
@@ -1323,108 +1197,183 @@
                             <TextBlock x:Name="BackupStatusText" FontSize="11"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,6,0,0" TextWrapping="Wrap"/>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <!-- API使用量 -->
+                            <Border Background="{DynamicResource SurfaceAltBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="4"
+                                    Padding="10,8" Margin="0,0,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="API使用量(%)" FontSize="11"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="0,0,0,6"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border x:Name="QuotaBarBg" Grid.Column="0"
+                                                Background="{DynamicResource SurfaceElevatedBrush}"
+                                                CornerRadius="4" Height="10"
+                                                VerticalAlignment="Center">
+                                            <Grid HorizontalAlignment="Left">
+                                                <Border x:Name="QuotaBar"
+                                                        CornerRadius="4" Height="10" Width="0"
+                                                        MinWidth="0"/>
+                                            </Grid>
+                                        </Border>
+                                        <TextBlock x:Name="QuotaPercentText" Grid.Column="1"
+                                                   FontSize="11" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="8,0,0,0"
+                                                   Foreground="{DynamicResource TextMutedBrush}"/>
+                                    </Grid>
+                                    <TextBlock x:Name="QuotaInfoText" FontSize="10"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="0,4,0,0"/>
+                                    <TextBlock Text="本日の実使用量(%)" FontSize="11"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="0,10,0,6"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border x:Name="ActualQuotaBarBg" Grid.Column="0"
+                                                Background="{DynamicResource SurfaceElevatedBrush}"
+                                                CornerRadius="4" Height="10"
+                                                VerticalAlignment="Center">
+                                            <Grid HorizontalAlignment="Left">
+                                                <Border x:Name="ActualQuotaBar"
+                                                        CornerRadius="4" Height="10" Width="0"
+                                                        MinWidth="0"/>
+                                            </Grid>
+                                        </Border>
+                                        <TextBlock x:Name="ActualQuotaPercentText" Grid.Column="1"
+                                                   FontSize="11" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="8,0,0,0"
+                                                   Foreground="{DynamicResource TextMutedBrush}"/>
+                                    </Grid>
+                                    <TextBlock x:Name="ActualQuotaInfoText" FontSize="10"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
 
-                    <!-- ログフィルタ + 動作ログ -->
-                    <ScrollViewer x:Name="SettingsPageLog" Style="{StaticResource SlimScrollViewer}" Visibility="Collapsed"
+                    <!-- 表示 -->
+                    <ScrollViewer x:Name="SettingsPageDisplay" Style="{StaticResource SlimScrollViewer}" Visibility="Visible"
                                   VerticalScrollBarVisibility="Auto" Margin="20,16">
                         <StackPanel>
-                            <!-- ログ表示フィルター -->
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="新着なし" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <CheckBox x:Name="LogShowNoNewToggle" Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitch}"
-                                          VerticalAlignment="Center"
-                                          Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
-                            </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="新着あり" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <CheckBox x:Name="LogShowNewFoundToggle" Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitch}"
-                                          VerticalAlignment="Center"
-                                          Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
-                            </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="チェックエラー" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <CheckBox x:Name="LogShowCheckErrorToggle" Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitch}"
-                                          VerticalAlignment="Center"
-                                          Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
-                            </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="通知送信" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <CheckBox x:Name="LogShowNotifyToggle" Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitch}"
-                                          VerticalAlignment="Center"
-                                          Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
-                            </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <!-- 表示グループ -->
+                            <TextBlock Text="表示" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Margin="2,0,0,6"/>
+                            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                    CornerRadius="6" Background="{DynamicResource SurfaceAltBrush}"
+                                    Padding="12,4">
+                                <StackPanel>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="ダークモード" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="DarkModeToggle" Grid.Column="1"
+                                                  Style="{StaticResource ToggleSwitch}"
+                                                  VerticalAlignment="Center"
+                                                  Checked="DarkModeToggle_Changed"
+                                                  Unchecked="DarkModeToggle_Changed"/>
+                                    </Grid>
+                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="カテゴリなし表示" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="NoCategoryModeToggle" Grid.Column="1"
+                                                  Style="{StaticResource ToggleSwitch}"
+                                                  VerticalAlignment="Center"
+                                                  Checked="NoCategoryModeToggle_Changed"
+                                                  Unchecked="NoCategoryModeToggle_Changed"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
 
-                            <Grid Margin="0,0,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="自動ログ削除" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <CheckBox x:Name="AutoCleanLogsToggle" Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitch}"
-                                          VerticalAlignment="Center"
-                                          Checked="AutoCleanLogsToggle_Changed"
-                                          Unchecked="AutoCleanLogsToggle_Changed"/>
-                            </Grid>
-                            <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid Margin="0,0,0,12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="160"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="ログ保持期間" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <ComboBox x:Name="LogRetentionComboBox" Grid.Column="1"
-                                          Style="{StaticResource ModernComboBox}"
-                                          SelectionChanged="LogRetentionComboBox_Changed">
-                                    <ComboBoxItem Content="0日（当日のみ）" Tag="0"  Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="1日"  Tag="1"   Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="3日"  Tag="3"   Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="5日"  Tag="5"   Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="7日"  Tag="7"   Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="無制限" Tag="-1" Style="{StaticResource ModernComboBoxItem}"/>
-                                </ComboBox>
-                            </Grid>
+                            <!-- ログフィルタグループ -->
+                            <TextBlock Text="ログフィルタ" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Margin="2,16,0,6"/>
+                            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                    CornerRadius="6" Background="{DynamicResource SurfaceAltBrush}"
+                                    Padding="12,4">
+                                <StackPanel>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="ログレベル" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="LogLevelComboBox" Grid.Column="1"
+                                                  Style="{StaticResource ModernComboBox}"
+                                                  SelectionChanged="LogLevelComboBox_Changed">
+                                            <ComboBoxItem Content="情報"  Tag="Info"    Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="警告"  Tag="Warning" Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="エラー" Tag="Error"   Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="DEBUG" Tag="Debug"   Style="{StaticResource ModernComboBoxItem}"/>
+                                        </ComboBox>
+                                    </Grid>
+                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="自動ログ削除" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="AutoCleanLogsToggle" Grid.Column="1"
+                                                  Style="{StaticResource ToggleSwitch}"
+                                                  VerticalAlignment="Center"
+                                                  Checked="AutoCleanLogsToggle_Changed"
+                                                  Unchecked="AutoCleanLogsToggle_Changed"/>
+                                    </Grid>
+                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="ログ保持期間" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="LogRetentionComboBox" Grid.Column="1"
+                                                  Style="{StaticResource ModernComboBox}"
+                                                  SelectionChanged="LogRetentionComboBox_Changed">
+                                            <ComboBoxItem Content="0日（当日のみ）" Tag="0"  Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="1日"  Tag="1"   Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="3日"  Tag="3"   Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="5日"  Tag="5"   Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="7日"  Tag="7"   Style="{StaticResource ModernComboBoxItem}"/>
+                                            <ComboBoxItem Content="無制限" Tag="-1" Style="{StaticResource ModernComboBoxItem}"/>
+                                        </ComboBox>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- ログ操作（グループ外） -->
                             <TextBlock x:Name="LogCleanResultText" FontSize="11"
                                        Foreground="{DynamicResource TextMutedBrush}"
-                                       Margin="0,0,0,6" Text=""/>
+                                       Margin="0,12,0,6" Text=""/>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -1433,18 +1382,19 @@
                                 </Grid.ColumnDefinitions>
                                 <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
                                         Content="🗑 削除実行" Padding="14,7"
-                                        Margin="0,0,8,0" VerticalAlignment="Center"
+                                        Margin="0,0,8,0"
+                                        VerticalAlignment="Center"
                                         Click="CleanLogsNow_Click"/>
                                 <Button Grid.Column="2" Style="{StaticResource SecondaryButton}"
-                                        Content="📁 フォルダを開く" Padding="14,7"
+                                        Content="📋 ログを表示" Padding="14,7"
                                         VerticalAlignment="Center"
-                                        Click="OpenLogFolder_Click"/>
+                                        Click="ShowActivityLog_Click"/>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
                             <Border Background="{DynamicResource SurfaceAltBrush}"
                                     BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="1" CornerRadius="4"
-                                    Padding="12,10" Margin="0,0,0,0">
+                                    Padding="12,10">
                                 <TextBlock x:Name="LogStatsText"
                                            Text="ログ情報を読み込み中..."
                                            FontSize="12"
@@ -1453,69 +1403,11 @@
                         </StackPanel>
                     </ScrollViewer>
 
-                    <!-- 動作ログ -->
-                    <Grid x:Name="SettingsPageActivityLog" Visibility="Collapsed" Margin="20,16">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        <Grid Grid.Row="0" Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="動作ログ" FontSize="20" FontWeight="Bold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"
-                                       VerticalAlignment="Center"/>
-                            <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
-                                    Click="ClearLog_Click" Padding="10,7"
-                                    Content="🗑 クリア"/>
-                        </Grid>
-                        <Border Grid.Row="1"
-                                BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="4">
-                            <Border Background="{DynamicResource LogBackgroundBrush}" CornerRadius="4">
-                                <ScrollViewer x:Name="LogScrollViewer" VerticalScrollBarVisibility="Auto" Padding="14">
-                                    <ItemsControl x:Name="LogList">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,3">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="52"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <Border Grid.Column="0" CornerRadius="2"
-                                                            Padding="5,1" Margin="0,0,6,0"
-                                                            VerticalAlignment="Center">
-                                                        <Border.Background>
-                                                            <SolidColorBrush Color="{Binding LevelColor, Mode=OneWay}"/>
-                                                        </Border.Background>
-                                                        <TextBlock Text="{Binding LevelText, Mode=OneWay}"
-                                                                   FontSize="9" FontWeight="Bold"
-                                                                   Foreground="White"
-                                                                   HorizontalAlignment="Center"/>
-                                                    </Border>
-                                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                                        <TextBlock FontFamily="Cascadia Code, Consolas"
-                                                                   FontSize="11"
-                                                                   Foreground="{DynamicResource PrimaryBrush}"
-                                                                   Text="{Binding ChannelNameFormatted, Mode=OneWay}"
-                                                                   VerticalAlignment="Center"/>
-                                                        <TextBlock FontFamily="Cascadia Code, Consolas"
-                                                                   FontSize="11"
-                                                                   Foreground="{DynamicResource LogTextBrush}"
-                                                                   Text="{Binding Message, Mode=OneWay}"
-                                                                   VerticalAlignment="Center"
-                                                                   TextWrapping="Wrap"/>
-                                                    </StackPanel>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </ScrollViewer>
-                            </Border>
-                        </Border>
-                    </Grid>
+                    <!-- ログフィルタ（空ページ・ナビ互換のため残す） -->
+                    <ScrollViewer x:Name="SettingsPageLog" Style="{StaticResource SlimScrollViewer}" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto" Margin="20,16">
+                        <StackPanel/>
+                    </ScrollViewer>
 
                     <!-- ABOUT -->
                     <ScrollViewer x:Name="SettingsPageAbout" Style="{StaticResource SlimScrollViewer}" Visibility="Collapsed"
@@ -1524,7 +1416,7 @@
                             <TextBlock Text="YTNotifier" FontSize="20" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,4"/>
-                            <TextBlock Text="v1.8.0" FontSize="13"
+                            <TextBlock Text="v1.8.1" FontSize="13"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,0,0,12"/>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>

@@ -37,7 +37,11 @@ public class TrayIconService : IDisposable
             var menu = new ContextMenuStrip();
             ApplyTrayMenuTheme(menu);
             menu.Items.Add("🖥  ウィンドウを開く",  null, (_, _) => _showMainWindow());
-            menu.Items.Add("🔄  今すぐチェック",    null, async (_, _) => await MonitorService.Instance.ManualCheckAsync());
+            menu.Items.Add("🔄  今すぐチェック",    null, async (_, _) =>
+            {
+                try { await MonitorService.Instance.ManualCheckAsync(); }
+                catch (Exception ex) { AppLogger.Log(LogMsg.CheckFailed, null, ex.Message); }
+            });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("▶  監視開始",           null, (_, _) => MonitorService.Instance.Start());
             menu.Items.Add("⏸  監視停止",           null, (_, _) => MonitorService.Instance.Stop());
@@ -54,7 +58,7 @@ public class TrayIconService : IDisposable
         }
         catch (Exception ex)
         {
-            LoggerService.Instance.Error($"トレイアイコン初期化失敗: {ex.Message}");
+            AppLogger.Log(LogMsg.TrayIconInitFailed, null, ex.Message);
         }
     }
 

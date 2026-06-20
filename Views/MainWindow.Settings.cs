@@ -14,6 +14,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using YTNotifier.Constants;
 using YTNotifier.Models;
 using YTNotifier.Services;
 using Application      = System.Windows.Application;
@@ -38,26 +39,36 @@ public partial class MainWindow : System.Windows.Window
     // ===== 設定ハンドラ =====
     private void SaveApiKey_Click(object sender, RoutedEventArgs e)
     {
-        if (SaveApiKeyButton.Content?.ToString() == "変更") { UpdateApiKeyState(false); ApiKeyBox.Text = ""; return; }
+        if (SaveApiKeyButton.Content?.ToString() == "変更")
+        {
+            AppLogger.Log(LogMsg.ApiKeyEditStarted);
+            UpdateApiKeyState(false);
+            ApiKeyBox.Text = "";
+            return;
+        }
 
         var key = ApiKeyBox.IsReadOnly ? _actualApiKey : ApiKeyBox.Text.Trim();
         if (string.IsNullOrEmpty(key))
         {
-            // 未入力のまま保存→元のマスク表示に戻す
-            ApiKeyBox.Text          = new string('●', Math.Min(_actualApiKey.Length, 32));
-            ApiKeyBox.IsReadOnly    = true;
-            ApiKeyBox.TextAlignment = System.Windows.TextAlignment.Center;
-            SetDynamicBrush(ApiKeyBox, TextBox.BackgroundProperty, "SurfaceAltBrush");
-            SetDynamicBrush(ApiKeyBox, TextBox.ForegroundProperty, "TextMutedBrush");
-            SaveApiKeyButton.Content = "変更";
-            SetDynamicBrush(SaveApiKeyButton, Button.BackgroundProperty, "SurfaceElevatedBrush");
-            SetDynamicBrush(SaveApiKeyButton, Button.ForegroundProperty, "TextPrimaryBrush");
+            // 未入力のまま保存 → APIキーを変更しないオペレーションとして扱う
+            if (!string.IsNullOrEmpty(_actualApiKey))
+            {
+                AppLogger.Log(LogMsg.ApiKeyUnchanged);
+                ApiKeyBox.Text          = new string('●', Math.Min(_actualApiKey.Length, 32));
+                ApiKeyBox.IsReadOnly    = true;
+                ApiKeyBox.TextAlignment = System.Windows.TextAlignment.Center;
+                SetDynamicBrush(ApiKeyBox, TextBox.BackgroundProperty, "SurfaceAltBrush");
+                SetDynamicBrush(ApiKeyBox, TextBox.ForegroundProperty, "TextMutedBrush");
+                SaveApiKeyButton.Content = "変更";
+                SetDynamicBrush(SaveApiKeyButton, Button.BackgroundProperty, "SurfaceElevatedBrush");
+                SetDynamicBrush(SaveApiKeyButton, Button.ForegroundProperty, "TextPrimaryBrush");
+            }
             return;
         }
         _actualApiKey                            = key;
         SettingsService.Instance.Settings.ApiKey = key;
         SettingsService.Instance.SaveSettings();
-        LoggerService.Instance.Success("APIキーを保存しました");
+        AppLogger.Log(LogMsg.ApiKeyChanged);
         UpdateApiKeyState(true);
     }
 
@@ -93,15 +104,28 @@ public partial class MainWindow : System.Windows.Window
         var isDark = DarkModeToggle.IsChecked == true;
         SettingsService.Instance.Settings.IsDarkMode = isDark;
         SettingsService.Instance.SaveSettings();
+        AppLogger.Log(LogMsg.SettingDarkMode, null, isDark ? "ON" : "OFF");
         App.ApplyTheme(isDark);
         RefreshChannelList(); InvalidateVisual(); UpdateLayout();
+    }
+
+    private void NoCategoryModeToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        var enabled = NoCategoryModeToggle.IsChecked == true;
+        SettingsService.Instance.Settings.NoCategoryMode = enabled;
+        SettingsService.Instance.SaveSettings();
+        AppLogger.Log(LogMsg.SettingNoCategoryMode, null, enabled ? "ON" : "OFF");
+        RefreshChannelList();
     }
 
     private void NotificationToggle_Changed(object sender, RoutedEventArgs e)
     {
         if (_loadingSettings) return;
-        SettingsService.Instance.Settings.ShowDesktopNotification = NotificationToggle.IsChecked == true;
+        var enabled = NotificationToggle.IsChecked == true;
+        SettingsService.Instance.Settings.ShowDesktopNotification = enabled;
         SettingsService.Instance.SaveSettings();
+        AppLogger.Log(LogMsg.SettingDesktopNotification, null, enabled ? "ON" : "OFF");
     }
 
     private void ToastStyleComboBox_Changed(object sender, SelectionChangedEventArgs e)
@@ -112,39 +136,54 @@ public partial class MainWindow : System.Windows.Window
         {
             SettingsService.Instance.Settings.ToastStyle = style;
             SettingsService.Instance.SaveSettings();
+            AppLogger.Log(LogMsg.SettingToastStyle, null, item.Content?.ToString() ?? style.ToString());
         }
     }
 
     private void GlobalNotifyUpcomingToggle_Changed(object sender, RoutedEventArgs e)
     {
         if (_loadingSettings) return;
-        var val = GlobalNotifyUpcomingToggle.IsChecked == true;
-        SettingsService.Instance.Settings.GlobalNotifyUpcoming = val;
-        SettingsService.Instance.SaveSettings();
+        var svc  = SettingsService.Instance;
+        var val  = GlobalNotifyUpcomingToggle.IsChecked == true;
+        svc.Settings.GlobalNotifyUpcoming = val;
+        svc.SaveSettings();
+        AppLogger.Log(LogMsg.SettingGlobalNotifyUpcoming, null, val ? "ON" : "OFF");
 
         // ON/OFFどちらも全チャンネルの NotifyUpcoming に一括適用
-        var channels = SettingsService.Instance.Channels;
         bool changed = false;
-        foreach (var ch in channels.Where(c => c.NotifyUpcoming != val))
+        foreach (var ch in svc.Channels.Where(c => c.NotifyUpcoming != val))
         {
             ch.NotifyUpcoming = val;
             changed = true;
         }
-        if (changed) SettingsService.Instance.SaveChannelsSilent();
+        if (changed) svc.SaveChannelsSilent();
     }
 
     private void NotificationSoundToggle_Changed(object sender, RoutedEventArgs e)
     {
         if (_loadingSettings) return;
-        SettingsService.Instance.Settings.NotificationSound = NotificationSoundToggle.IsChecked == true;
+        var enabled = NotificationSoundToggle.IsChecked == true;
+        SettingsService.Instance.Settings.NotificationSound = enabled;
         SettingsService.Instance.SaveSettings();
+        AppLogger.Log(LogMsg.SettingNotificationSound, null, enabled ? "ON" : "OFF");
+    }
+
+    private void FlashTaskbarToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        var enabled = FlashTaskbarToggle.IsChecked == true;
+        SettingsService.Instance.Settings.FlashTaskbar = enabled;
+        SettingsService.Instance.SaveSettings();
+        AppLogger.Log(LogMsg.SettingFlashTaskbar, null, enabled ? "ON" : "OFF");
     }
 
     private void TrayToggle_Changed(object sender, RoutedEventArgs e)
     {
         if (_loadingSettings) return;
-        SettingsService.Instance.Settings.MinimizeToTray = TrayToggle.IsChecked == true;
+        var enabled = TrayToggle.IsChecked == true;
+        SettingsService.Instance.Settings.MinimizeToTray = enabled;
         SettingsService.Instance.SaveSettings();
+        AppLogger.Log(LogMsg.SettingMinimizeToTray, null, enabled ? "ON" : "OFF");
     }
 
     // ===== ミュートボタン =====
@@ -157,22 +196,28 @@ public partial class MainWindow : System.Windows.Window
         {
             _preMuteDesktopNotification      = s.ShowDesktopNotification;
             _preMuteNotificationSound        = s.NotificationSound;
+            _preMuteFlashTaskbar             = s.FlashTaskbar;
             s.PreMuteDesktopNotification     = _preMuteDesktopNotification;
             s.PreMuteNotificationSound       = _preMuteNotificationSound;
+            s.PreMuteFlashTaskbar            = _preMuteFlashTaskbar;
             s.IsMuted                        = true;
             s.ShowDesktopNotification        = false;
             s.NotificationSound              = false;
+            s.FlashTaskbar                   = false;
         }
         else
         {
             s.ShowDesktopNotification = _preMuteDesktopNotification;
             s.NotificationSound       = _preMuteNotificationSound;
+            s.FlashTaskbar            = _preMuteFlashTaskbar;
             s.IsMuted                 = false;
         }
 
         SettingsService.Instance.SaveSettings();
+        AppLogger.Log(LogMsg.SettingMute, null, _isMuted ? "ON" : "OFF");
         NotificationToggle.IsChecked      = s.ShowDesktopNotification;
         NotificationSoundToggle.IsChecked = s.NotificationSound;
+        FlashTaskbarToggle.IsChecked      = s.FlashTaskbar;
         UpdateMuteButton(_isMuted);
     }
 
@@ -197,16 +242,22 @@ public partial class MainWindow : System.Windows.Window
     // ===== コンパクトモード =====
     private void CompactModeToggle_Changed(object sender, RoutedEventArgs e)
     {
-        if (_applyingCompactMode) return;
-        SettingsService.Instance.Settings.CompactMode = CompactModeToggle.IsChecked == true;
+        if (_loadingSettings || _applyingCompactMode) return;
+        var enabled = CompactModeToggle.IsChecked == true;
+        SettingsService.Instance.Settings.CompactMode = enabled;
         SettingsService.Instance.SaveSettings();
-        ApplyCompactMode(CompactModeToggle.IsChecked == true);
+        AppLogger.Log(LogMsg.SettingCompactMode, null, enabled ? "ON" : "OFF");
+        ApplyCompactMode(enabled);
     }
 
     private void CompactModeButton_Click(object sender, RoutedEventArgs e)
-        => ApplyCompactMode(!SettingsService.Instance.Settings.CompactMode);
+    {
+        var enabled = !SettingsService.Instance.Settings.CompactMode;
+        AppLogger.Log(LogMsg.SettingCompactMode, null, enabled ? "ON" : "OFF");
+        ApplyCompactMode(enabled);
+    }
 
-    private void ApplyCompactMode(bool enabled)
+    private void ApplyCompactMode(bool enabled, bool skipRefresh = false)
     {
         if (_applyingCompactMode) return;
         _applyingCompactMode = true;
@@ -253,7 +304,7 @@ public partial class MainWindow : System.Windows.Window
             }
 
             UpdateCompactModeButton(enabled);
-            RefreshChannelList();
+            if (!skipRefresh) RefreshChannelList();
         }
         finally { _applyingCompactMode = false; }
     }
@@ -375,8 +426,8 @@ public partial class MainWindow : System.Windows.Window
         var dlg = new Microsoft.Win32.SaveFileDialog
         {
             Title = "バックアップの保存先を選択",
-            Filter = "YTNotifierバックアップ (*.ytbk)|*.ytbk",
-            FileName = $"YTNotifier_{DateTime.Now:yyyyMMdd}.ytbk",
+            Filter = BackupFileFilterSingle,
+            FileName = $"{BackupFilePrefix}{DateTime.Now:yyyyMMdd}.ytbk",
             DefaultExt = ".ytbk",
             InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
         };
@@ -386,6 +437,7 @@ public partial class MainWindow : System.Windows.Window
             var path = SettingsService.Instance.ExportBackup(dlg.FileName);
             BackupStatusText.Text = $"✅ エクスポート完了: {System.IO.Path.GetFileName(path)}";
             SetDynamicBrush(BackupStatusText, TextBlock.ForegroundProperty, "SuccessBrush");
+            AppLogger.Log(LogMsg.SettingBackupExported, null, System.IO.Path.GetFileName(path));
         }
         catch (Exception ex)
         {
@@ -399,17 +451,23 @@ public partial class MainWindow : System.Windows.Window
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
             Title = "復元するバックアップファイルを選択",
-            Filter = "YTNotifierバックアップ (*.ytbk)|*.ytbk|ZIPファイル (*.zip)|*.zip",
+            Filter = AppConstants.BackupFileFilter,
             InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
         };
         if (dlg.ShowDialog() != true) return;
 
         if (ConfirmDialog.Show(this, "復元の確認", "現在の設定がバックアップで上書きされます。\n続行しますか？", "上書きする") != true) return;
 
+        var currentLogLevel = SettingsService.Instance.Settings.LogLevel;
         var (success, message) = SettingsService.Instance.ImportBackup(dlg.FileName);
         BackupStatusText.Text = success ? $"✅ {message}" : $"❌ {message}";
         SetDynamicBrush(BackupStatusText, TextBlock.ForegroundProperty, success ? "SuccessBrush" : "ErrorBrush");
-        if (success) { LoadSettings(); RefreshChannelList(); }
+        if (success)
+        {
+            SettingsService.Instance.Settings.LogLevel = currentLogLevel;
+            AppLogger.Log(LogMsg.SettingBackupImported, null, System.IO.Path.GetFileName(dlg.FileName));
+            LoadSettings(); RefreshChannelList();
+        }
     }
 
     // ===== ピンボタン / 常に前面 =====
@@ -420,6 +478,7 @@ public partial class MainWindow : System.Windows.Window
         Topmost = enabled;
         SettingsService.Instance.Settings.AlwaysOnTop = enabled;
         SettingsService.Instance.SaveSettings();
+        AppLogger.Log(LogMsg.SettingAlwaysOnTop, null, enabled ? "ON" : "OFF");
         UpdatePinButton(enabled);
     }
 
@@ -429,7 +488,10 @@ public partial class MainWindow : System.Windows.Window
         Topmost = enabled;
         SettingsService.Instance.Settings.AlwaysOnTop = enabled;
         SettingsService.Instance.SaveSettings();
+        AppLogger.Log(LogMsg.SettingAlwaysOnTop, null, enabled ? "ON" : "OFF");
+        _loadingSettings = true;
         AlwaysOnTopToggle.IsChecked = enabled;
+        _loadingSettings = false;
         UpdatePinButton(enabled);
     }
 
@@ -448,6 +510,7 @@ public partial class MainWindow : System.Windows.Window
         var enabled = StartupToggle.IsChecked == true;
         SettingsService.Instance.Settings.StartWithWindows = enabled;
         SettingsService.Instance.SaveSettings();
+        AppLogger.Log(LogMsg.SettingStartWithWindows, null, enabled ? "ON" : "OFF");
         SetStartup(enabled);
     }
 
@@ -458,8 +521,8 @@ public partial class MainWindow : System.Windows.Window
             using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
             if (key == null) return;
             var exe = Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
-            if (enable) key.SetValue("YTNotifier", $"\"{exe}\"");
-            else        key.DeleteValue("YTNotifier", false);
+            if (enable) key.SetValue(StartupRegistryKey, $"\"{exe}\"");
+            else        key.DeleteValue(StartupRegistryKey, false);
         }
         catch { }
     }
@@ -475,7 +538,7 @@ public partial class MainWindow : System.Windows.Window
         var (safe, recommended) = ApiQuotaHelper.ValidateInterval(minutes, channels);
         if (!safe)
         {
-            var recItem = IntervalComboBox.Items.Cast<ComboBoxItem>().FirstOrDefault(i => i.Tag?.ToString() == recommended.ToString());
+            var recItem = IntervalComboBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => i.Tag?.ToString() == recommended.ToString());
             if (recItem != null && recItem != item)
             {
                 IntervalComboBox.SelectedItem = recItem;
@@ -486,7 +549,8 @@ public partial class MainWindow : System.Windows.Window
 
         SettingsService.Instance.Settings.CheckIntervalMinutes = minutes;
         SettingsService.Instance.SaveSettings();
-        MonitorService.Instance.ResetNormalChannels();
+        AppLogger.Log(LogMsg.SettingCheckInterval, null, minutes);
+        MonitorService.Instance.ResetNormalChannels(minutes);
         MonitorService.Instance.RestartWithNewInterval();
         UpdateQuotaInfo();
     }
@@ -494,22 +558,27 @@ public partial class MainWindow : System.Windows.Window
     // ===== 通知テスト =====
     private void TestNotification_Click(object sender, RoutedEventArgs e)
     {
-        try   { MonitorService.Instance.SendTestNotification(); LoggerService.Instance.Info("テスト通知を送信しました"); }
-        catch (Exception ex) { LoggerService.Instance.Error($"テスト通知失敗: {ex.Message}"); }
+        try   { MonitorService.Instance.SendTestNotification(); }
+        catch (Exception ex) { AppLogger.Log(LogMsg.TestNotifyFailed, null, ex.Message); }
     }
 
     // ===== ログ =====
-    private void OpenLogFolder_Click(object sender, RoutedEventArgs e)
+    private void ShowActivityLog_Click(object sender, RoutedEventArgs e)
     {
-        var dir = System.IO.Path.Combine(SettingsService.Instance.AppDataDir, "logs");
-        Directory.CreateDirectory(dir);
-        Process.Start(new ProcessStartInfo("explorer.exe", dir) { UseShellExecute = true });
+        AppLogger.Log(LogMsg.ActivityLogWindowOpened);
+        var win = new ActivityLogWindow { Owner = this };
+        win.Show();
     }
+
+    private const string DebugDllName         = "YTNotifier.Debug.dll";
+    private const string BackupFileFilterSingle = "YTNotifierバックアップ (*.ytbk)|*.ytbk";
+    private const string BackupFilePrefix       = "YTNotifier_";
+    private const string StartupRegistryKey     = "YTNotifier";
 
     private static readonly string DebugDllPath = System.IO.Path.Combine(
         System.IO.Path.GetDirectoryName(Environment.ProcessPath
             ?? System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "",
-        "YTNotifier.Debug.dll");
+        DebugDllName);
 
     internal static bool IsDebugDllAvailable() => System.IO.File.Exists(DebugDllPath);
 
@@ -519,17 +588,15 @@ public partial class MainWindow : System.Windows.Window
         {
             var asm  = System.Reflection.Assembly.LoadFrom(DebugDllPath);
             var type = asm.GetType("YTNotifier.Debug.DebugWindow");
-            if (type == null) { LoggerService.Instance.Error("DebugWindow 型が見つかりません"); return; }
+            if (type == null) { AppLogger.Log(LogMsg.DebugWindowNotFound); return; }
             var win  = (Window?)Activator.CreateInstance(type, this);
             win?.Show();
         }
         catch (Exception ex)
         {
-            LoggerService.Instance.Error($"開発者ツール起動エラー: {ex.Message}");
+            AppLogger.Log(LogMsg.DevToolError, null, ex.Message);
         }
     }
-
-    private void ClearLog_Click(object sender, RoutedEventArgs e) => LoggerService.Instance.ClearUiLog();
 
     private void RefreshLogStats()
     {
@@ -540,22 +607,25 @@ public partial class MainWindow : System.Windows.Window
         LogStatsText.Text = $"ファイル数: {count} 件  合計サイズ: {sizeStr}\n最古: {oldest:yyyy/MM/dd}  最新: {newest:yyyy/MM/dd}";
     }
 
-    private void LogFilter_Changed(object sender, RoutedEventArgs e)
+    private void LogLevelComboBox_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (_loadingSettings) return;
-        var s = SettingsService.Instance.Settings;
-        s.LogShowNoNew      = LogShowNoNewToggle.IsChecked      == true;
-        s.LogShowNewFound   = LogShowNewFoundToggle.IsChecked   == true;
-        s.LogShowCheckError = LogShowCheckErrorToggle.IsChecked == true;
-        s.LogShowNotify     = LogShowNotifyToggle.IsChecked     == true;
-        SettingsService.Instance.SaveSettings();
+        if (LogLevelComboBox.SelectedItem is ComboBoxItem item)
+        {
+            var level = item.Tag?.ToString() ?? "Info";
+            SettingsService.Instance.Settings.LogLevel = level;
+            SettingsService.Instance.SaveSettings();
+            AppLogger.Log(LogMsg.SettingLogLevel, null, item.Content?.ToString() ?? level);
+        }
     }
 
     private void AutoCleanLogsToggle_Changed(object sender, RoutedEventArgs e)
     {
         if (_loadingSettings) return;
-        SettingsService.Instance.Settings.AutoCleanLogs = AutoCleanLogsToggle.IsChecked == true;
+        var enabled = AutoCleanLogsToggle.IsChecked == true;
+        SettingsService.Instance.Settings.AutoCleanLogs = enabled;
         SettingsService.Instance.SaveSettings();
+        AppLogger.Log(LogMsg.SettingAutoCleanLogs, null, enabled ? "ON" : "OFF");
     }
 
     private void LogRetentionComboBox_Changed(object sender, SelectionChangedEventArgs e)
@@ -565,6 +635,7 @@ public partial class MainWindow : System.Windows.Window
         {
             SettingsService.Instance.Settings.LogRetentionDays = days;
             SettingsService.Instance.SaveSettings();
+            AppLogger.Log(LogMsg.SettingLogRetention, null, days == -1 ? "無制限" : days.ToString());
         }
     }
 
@@ -576,7 +647,7 @@ public partial class MainWindow : System.Windows.Window
         var mb = freed / 1024.0 / 1024.0;
         var sizeStr = mb >= 1 ? $"{mb:F1} MB" : $"{freed / 1024.0:F0} KB";
         LogCleanResultText.Text = deleted > 0 ? $"✅ {deleted} 件削除（{sizeStr} 解放）" : "削除対象のログファイルはありませんでした";
-        LoggerService.Instance.Info($"ログ手動削除: {deleted}件 ({sizeStr})");
+        AppLogger.Log(LogMsg.LogManualDeleted, null, deleted, sizeStr);
         RefreshLogStats();
     }
 

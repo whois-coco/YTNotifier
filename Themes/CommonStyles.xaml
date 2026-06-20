@@ -303,7 +303,8 @@
                                           RelativeSource={RelativeSource TemplatedParent},
                                           Mode=TwoWay}"
                                       Background="Transparent" BorderThickness="0"
-                                      Focusable="False" ClickMode="Press">
+                                      Focusable="False" ClickMode="Press"
+                                      AutomationProperties.Name="ドロップダウンを開く">
                             <ToggleButton.Template>
                                 <ControlTemplate TargetType="ToggleButton">
                                     <Border Background="Transparent"/>
@@ -357,11 +358,9 @@
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PrimaryBrush}"/>
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
-                            <Setter Property="Foreground" Value="White"/>
-                        </Trigger>
+                        <!-- IsChecked=True の色はテンプレート側では設定しない。
+                             派生スタイルの Style.Triggers で Background/BorderBrush を設定し、
+                             TemplateBinding 経由で Bd に反映させる。 -->
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
                                 <Condition Property="IsMouseOver" Value="True"/>
@@ -449,7 +448,7 @@
             </Setter.Value>
         </Setter>
     </Style>
-    <!-- ===== SlimScrollViewer（チャンネル一覧と同じスクロール挙動） ===== -->
+    <!-- ===== SlimScrollViewer（各画面共通のスリムスクロールバー） ===== -->
     <Style x:Key="SlimScrollViewer" TargetType="ScrollViewer">
         <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
         <Setter Property="VerticalScrollBarVisibility"   Value="Auto"/>
@@ -461,7 +460,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="4"/>
                         </Grid.ColumnDefinitions>
-                        <ScrollContentPresenter Grid.Column="0"/>
+                        <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" Grid.Column="0"/>
                         <ScrollBar x:Name="PART_VerticalScrollBar"
                                    Grid.Column="1" Width="4" Opacity="0"
                                    Value="{TemplateBinding VerticalOffset}"
@@ -662,6 +661,8 @@
         </Setter>
     </Style>
 
+    <!-- コンテキストメニュー用 Separator（暗黙スタイル）。
+         設定画面などでは必ず Style="{StaticResource HorizontalSeparator}" を明示すること。 -->
     <Style TargetType="Separator">
         <Setter Property="Height"           Value="1"/>
         <Setter Property="Margin"           Value="8,3"/>

@@ -14,8 +14,6 @@
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
-    <!-- XAMLキャッシュを無効化 -->
-    <XamlDebuggingInformation>true</XamlDebuggingInformation>
   </PropertyGroup>
 
   <ItemGroup>

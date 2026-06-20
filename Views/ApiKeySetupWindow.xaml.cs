@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using KeyEventArgs  = System.Windows.Input.KeyEventArgs;
 using Application   = System.Windows.Application;
+using YTNotifier.Constants;
 using YTNotifier.Services;
 
 namespace YTNotifier.Views;
@@ -66,7 +67,7 @@ public partial class ApiKeySetupWindow : Window
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
             Title      = "バックアップファイルを選択",
-            Filter     = "YTNotifierバックアップ (*.ytbk)|*.ytbk|ZIPファイル (*.zip)|*.zip",
+            Filter     = AppConstants.BackupFileFilter,
             InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
         };
         if (dlg.ShowDialog() != true) return;

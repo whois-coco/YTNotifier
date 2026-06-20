@@ -22,6 +22,11 @@ public partial class ChannelDetailWindow : Window
     private readonly List<FocusTabPanel> _tabPanels = new();
     private int _selectedTab = 0;
     private bool _syncingKind = false;
+    private readonly bool _origNotifyVideo;
+    private readonly bool _origNotifyShort;
+    private readonly bool _origNotifyLive;
+    private readonly bool _origNotifyUpcoming;
+    private readonly List<FocusSlot> _origFocusSlots;
 
     public ChannelDetailWindow(ChannelInfo channel, Window owner)
     {
@@ -33,6 +38,24 @@ public partial class ChannelDetailWindow : Window
         var cat = SettingsService.Instance.Categories
             .FirstOrDefault(c => c.CategoryId == channel.CategoryId);
         CategoryText.Text = cat?.CategoryName ?? "未設定";
+
+        _origNotifyVideo    = channel.NotifyVideo;
+        _origNotifyShort    = channel.NotifyShort;
+        _origNotifyLive     = channel.NotifyLive;
+        _origNotifyUpcoming = channel.NotifyUpcoming;
+        _origFocusSlots     = channel.FocusSlots.Select(s => new FocusSlot
+        {
+            NotifyKind                 = s.NotifyKind,
+            Days                       = s.Days,
+            Hour                       = s.Hour,
+            Minute                     = s.Minute,
+            WindowMinutes              = s.WindowMinutes,
+            IntervalMinutes            = s.IntervalMinutes,
+            IsEnabled                  = s.IsEnabled,
+            SlotMode                   = s.SlotMode,
+            SlotNormalIntervalMinutes  = s.SlotNormalIntervalMinutes,
+            SlotLowFreqIntervalMinutes = s.SlotLowFreqIntervalMinutes,
+        }).ToList();
 
         // 通知種別トグル
         NotifyVideoToggle.IsChecked    = channel.NotifyVideo;
@@ -50,85 +73,80 @@ public partial class ChannelDetailWindow : Window
         NotifyUpcomingToggle.Checked   += (_, _) => SyncKindToChannel();
         NotifyUpcomingToggle.Unchecked += (_, _) => SyncKindToChannel();
 
-        // 通常モード間隔
-        var globalInterval = SettingsService.Instance.Settings.CheckIntervalMinutes;
-        foreach (var min in new[] { 3, 5, 10, 15, 20, 30, 60 })
-            NormalIntervalBox.Items.Add(new ComboBoxItem
-            {
-                Content = $"{min}分", Tag = min,
-                Style   = (Style)System.Windows.Application.Current.Resources["ModernComboBoxItem"]
-            });
-        var normalVal = channel.NormalIntervalMinutes == 0 ? globalInterval : channel.NormalIntervalMinutes;
-        SelectComboByTag(NormalIntervalBox, normalVal);
-        if (NormalIntervalBox.SelectedItem == null) NormalIntervalBox.SelectedIndex = 0;
-
-        // 低頻度
-        SelectComboByTag(LowFreqIntervalBox, channel.LowFreqIntervalMinutes);
-
-        // 監視モード
-        var modeTag = channel.MonitorMode switch
+        // 監視設定タブ初期化：既存モードをスロット形式に変換
+        List<FocusSlot> slots;
+        if (channel.FocusSlots.Count > 0)
         {
-            MonitorMode.LowFreq => "LowFreq",
-            MonitorMode.Focus   => "Focus",
-            _                   => "Normal"
-        };
-        foreach (ComboBoxItem item in MonitorModeCombo.Items)
-            if (item.Tag?.ToString() == modeTag) { MonitorModeCombo.SelectedItem = item; break; }
-        if (MonitorModeCombo.SelectedItem == null) MonitorModeCombo.SelectedIndex = 0;
-
-        // 時間指定タブ初期化（FocusSlotsから、なければ旧フィールドから移行）
-        var slots = channel.FocusSlots.Count > 0
-            ? channel.FocusSlots
-            : new List<FocusSlot>
+            slots = channel.FocusSlots;
+        }
+        else
+        {
+            slots = channel.MonitorMode switch
             {
-                new FocusSlot
+                MonitorMode.LowFreq => new List<FocusSlot>
                 {
-                    NotifyKind      = VideoKind.Video,
-                    Days            = channel.FocusDays,
-                    Hour            = channel.FocusHour,
-                    Minute          = channel.FocusMinute,
-                    WindowMinutes   = channel.FocusWindowMinutes,
-                    IntervalMinutes = channel.FocusIntervalMinutes,
-                    IsEnabled       = true
+                    new FocusSlot
+                    {
+                        SlotMode = MonitorMode.LowFreq,
+                        SlotLowFreqIntervalMinutes = channel.LowFreqIntervalMinutes,
+                        IsEnabled = true
+                    }
+                },
+                MonitorMode.Focus => new List<FocusSlot>
+                {
+                    new FocusSlot
+                    {
+                        SlotMode        = MonitorMode.Focus,
+                        NotifyKind      = VideoKind.Video,
+                        Days            = channel.FocusDays,
+                        Hour            = channel.FocusHour,
+                        Minute          = channel.FocusMinute,
+                        WindowMinutes   = channel.FocusWindowMinutes,
+                        IntervalMinutes = channel.FocusIntervalMinutes,
+                        IsEnabled       = true
+                    }
+                },
+                _ => new List<FocusSlot>
+                {
+                    new FocusSlot { SlotMode = MonitorMode.Normal, IsEnabled = true }
                 }
             };
+        }
 
-        // 4タブ分作成
-        for (int i = 0; i < 4; i++)
+        // 3タブ分作成（デフォルト種別: 動画/Short/ライブ配信）
+        VideoKind[] defaultKinds = { VideoKind.Video, VideoKind.Short, VideoKind.Live };
+        bool[] kindEnabled = { channel.NotifyVideo, channel.NotifyShort, channel.NotifyLive };
+        for (int i = 0; i < 3; i++)
         {
-            var slot = i < slots.Count ? slots[i] : new FocusSlot();
+            var slot = i < slots.Count ? slots[i] : new FocusSlot { NotifyKind = defaultKinds[i] };
+            slot.IsEnabled = kindEnabled[i]; // チャンネル一覧の種別ON/OFFを反映
             _tabPanels.Add(new FocusTabPanel(slot));
         }
 
         BuildTabUI();
         SelectTab(0);
-        UpdatePanels();
         UpdateEstimate();
-        UpdateKindToggleStyles();
-
-        // 時間指定モードで開いた場合: アイコンをスロット状態に合わせる
-        if (CurrentMode() == MonitorMode.Focus)
-        {
-            NotifyVideoToggle.IsChecked = false;
-            NotifyShortToggle.IsChecked = false;
-            NotifyLiveToggle.IsChecked  = false;
-            SyncSlotsToKindToggles();
-        }
+        SetToggleActiveBrush(NotifyVideoToggle, "PrimaryBrush");
+        SetToggleActiveBrush(NotifyShortToggle, "PrimaryBrush");
+        SetToggleActiveBrush(NotifyLiveToggle,  "PrimaryBrush");
     }
 
     // ===== タブUI構築 =====
+    private static readonly string[] TabKindLabels = { "動画", "Short", "ライブ配信" };
+    private static readonly VideoKind[] TabKinds = { VideoKind.Video, VideoKind.Short, VideoKind.Live };
+
     private void BuildTabUI()
     {
         FocusTabNav.Children.Clear();
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 3; i++)
         {
             int idx = i;
             var tab = _tabPanels[i];
+            tab.FixedKind = TabKinds[i];
 
-            // 設定タブと同じ形式: Border + 下線 + TextBlock
             var lbl = new TextBlock
             {
-                Text              = $"設定{i + 1}",
+                Text              = TabKindLabels[i],
                 FontSize          = 12,
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -150,9 +168,17 @@ public partial class ChannelDetailWindow : Window
             tab.OnEnabledChanged = () =>
             {
                 SetTabBorderStyle(tab, tab.NavBorder!.Tag is int t && t == _selectedTab);
-                UpdateKindToggleStyles();
                 UpdateEstimate();
-                SyncSlotsToKindToggles();
+                // タブの有効/無効を上部トグルに反映
+                _syncingKind = true;
+                try
+                {
+                    NotifyVideoToggle.IsChecked = _tabPanels[0].IsEnabled;
+                    NotifyShortToggle.IsChecked = _tabPanels[1].IsEnabled;
+                    NotifyLiveToggle.IsChecked  = _tabPanels[2].IsEnabled;
+                }
+                finally { _syncingKind = false; }
+                SyncKindToChannel();
             };
         }
     }
@@ -160,13 +186,13 @@ public partial class ChannelDetailWindow : Window
     private void SelectTab(int idx)
     {
         _selectedTab = idx;
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 3; i++)
             SetTabBorderStyle(_tabPanels[i], i == idx);
 
         FocusTabContent.Children.Clear();
-        // BuildContentは毎回再生成（データは_slotに保持）
         _tabPanels[idx].ResetContent();
         FocusTabContent.Children.Add(_tabPanels[idx].BuildContent());
+        AppLogger.Log(LogMsg.ChannelDetailTabSwitched, _channel.ChannelName, _channel.ChannelName, TabKindLabels[idx]);
     }
 
     private void SetTabBorderStyle(FocusTabPanel tab, bool selected)
@@ -187,60 +213,6 @@ public partial class ChannelDetailWindow : Window
             : System.Windows.FontWeights.Normal;
     }
 
-
-    // ===== 監視モード・通知種別 =====
-    private void UpdateKindToggleStyles()
-    {
-        var mode = CurrentMode();
-        if (mode != MonitorMode.Focus)
-        {
-            SetToggleActiveBrush(NotifyVideoToggle, "PrimaryBrush");
-            SetToggleActiveBrush(NotifyShortToggle, "PrimaryBrush");
-            SetToggleActiveBrush(NotifyLiveToggle,  "PrimaryBrush");
-        }
-    }
-
-    private static void SetToggleActiveBrush(System.Windows.Controls.Primitives.ToggleButton btn, string brushKey)
-    {
-        var brush = (Brush)System.Windows.Application.Current.Resources[brushKey];
-        var style = new Style(typeof(System.Windows.Controls.Primitives.ToggleButton),
-            (Style)System.Windows.Application.Current.Resources["KindToggleButtonLarge"]);
-        var trigger = new Trigger
-        {
-            Property = System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty,
-            Value    = true
-        };
-        trigger.Setters.Add(new Setter(System.Windows.Controls.Control.BackgroundProperty,   brush));
-        trigger.Setters.Add(new Setter(System.Windows.Controls.Control.BorderBrushProperty,  brush));
-        trigger.Setters.Add(new Setter(System.Windows.Controls.Control.ForegroundProperty,   Brushes.White));
-        style.Triggers.Add(trigger);
-        btn.Style = style;
-    }
-
-    private void SyncSlotsToKindToggles()
-    {
-        if (CurrentMode() != MonitorMode.Focus) return;
-        // UI未生成のタブはGetSlot()が正しく動作しないため、_currentSlotDataから取得
-        var kinds = new HashSet<VideoKind>();
-        for (int i = 0; i < _tabPanels.Count; i++)
-        {
-            var panel = _tabPanels[i];
-            if (!panel.IsEnabled) continue;
-            // コンテンツが生成済みならUIから、未生成ならキャッシュデータから
-            var kind = panel.HasContent ? panel.GetSlot().NotifyKind : panel.SlotData.NotifyKind;
-            kinds.Add(kind);
-        }
-        _syncingKind = true;
-        try
-        {
-            NotifyVideoToggle.IsChecked = kinds.Contains(VideoKind.Video);
-            NotifyShortToggle.IsChecked = kinds.Contains(VideoKind.Short);
-            NotifyLiveToggle.IsChecked  = kinds.Contains(VideoKind.Live);
-        }
-        finally { _syncingKind = false; }
-        SyncKindToChannel();
-    }
-
     // ===== イベントハンドラ =====
     private void SyncKindToChannel()
     {
@@ -249,76 +221,43 @@ public partial class ChannelDetailWindow : Window
         _channel.NotifyShort    = NotifyShortToggle.IsChecked    == true;
         _channel.NotifyLive     = NotifyLiveToggle.IsChecked     == true;
         _channel.NotifyUpcoming = NotifyUpcomingToggle.IsChecked == true;
+        // 上部トグルの変更をタブの有効/無効に反映
+        _tabPanels[0].SetEnabled(_channel.NotifyVideo);
+        _tabPanels[1].SetEnabled(_channel.NotifyShort);
+        _tabPanels[2].SetEnabled(_channel.NotifyLive);
+        if (Owner is MainWindow mw)
+            mw.Dispatcher.BeginInvoke(mw.RefreshChannelList);
+    }
+
+    private void RevertAndClose()
+    {
+        _channel.NotifyVideo    = _origNotifyVideo;
+        _channel.NotifyShort    = _origNotifyShort;
+        _channel.NotifyLive     = _origNotifyLive;
+        _channel.NotifyUpcoming = _origNotifyUpcoming;
+        _channel.FocusSlots     = _origFocusSlots;
         SettingsService.Instance.UpdateChannel(_channel);
         if (Owner is MainWindow mw)
             mw.Dispatcher.BeginInvoke(mw.RefreshChannelList);
+        Close();
     }
 
     private void TitleBar_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) DragMove();
     }
-    private void CloseButton_Click(object sender, RoutedEventArgs e)  => Close();
-    private void Cancel_Click(object sender, RoutedEventArgs e)        => Close();
-
-    private void MonitorModeCombo_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        UpdatePanels();
-        UpdateEstimate();
-        UpdateKindToggleStyles();
-
-        var mode = CurrentMode();
-        if (mode == MonitorMode.Focus)
-        {
-            // 時間指定: スロット状態からアイコンを再構築
-            NotifyVideoToggle.IsChecked = false;
-            NotifyShortToggle.IsChecked = false;
-            NotifyLiveToggle.IsChecked  = false;
-            SyncSlotsToKindToggles();
-        }
-        else
-        {
-            // 通常・低頻度: 元のチャンネル設定に戻す
-            NotifyVideoToggle.IsChecked = _channel.NotifyVideo;
-            NotifyShortToggle.IsChecked = _channel.NotifyShort;
-            NotifyLiveToggle.IsChecked  = _channel.NotifyLive;
-        }
-    }
-
-    private void ComboBox_Changed(object sender, SelectionChangedEventArgs e) => UpdateEstimate();
-
-    private MonitorMode CurrentMode()
-    {
-        var tag = (MonitorModeCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString();
-        return tag switch
-        {
-            "LowFreq" => MonitorMode.LowFreq,
-            "Focus"   => MonitorMode.Focus,
-            _         => MonitorMode.Normal
-        };
-    }
-
-    private void UpdatePanels()
-    {
-        if (FocusSlotsPanel == null || LowFreqPanel == null || NormalPanel == null) return;
-        var mode = CurrentMode();
-        NormalPanel.Visibility    = mode == MonitorMode.Normal  ? Visibility.Visible : Visibility.Collapsed;
-        LowFreqPanel.Visibility   = mode == MonitorMode.LowFreq ? Visibility.Visible : Visibility.Collapsed;
-        FocusSlotsPanel.Visibility = mode == MonitorMode.Focus  ? Visibility.Visible : Visibility.Collapsed;
-    }
+    private void CloseButton_Click(object sender, RoutedEventArgs e)  => RevertAndClose();
+    private void Cancel_Click(object sender, RoutedEventArgs e) => RevertAndClose();
 
     private void UpdateEstimate()
     {
         if (EstimateText == null || DetailQuotaBar == null || DetailQuotaBarBg == null) return;
-        var settings  = SettingsService.Instance.Settings;
-        var channels  = SettingsService.Instance.Channels;
-        var mode      = CurrentMode();
+        var settings = SettingsService.Instance.Settings;
+        var channels = SettingsService.Instance.Channels;
 
-        var thisUnits = mode == MonitorMode.Focus
-            ? ApiQuotaHelper.EstimateDailyUnitsForFocusSlots(_tabPanels.Select(p => p.GetSlot()))
-            : ApiQuotaHelper.EstimateDailyUnitsForMode(
-                mode, settings.CheckIntervalMinutes, 30, 5,
-                GetComboTag(LowFreqIntervalBox, 60));
+        var thisUnits = ApiQuotaHelper.EstimateDailyUnitsForFocusSlots(
+            _tabPanels.Select(p => p.GetSlot()),
+            settings.CheckIntervalMinutes);
 
         var otherUnits = ApiQuotaHelper.EstimateDailyUnitsForChannels(
             settings.CheckIntervalMinutes,
@@ -357,113 +296,203 @@ public partial class ChannelDetailWindow : Window
     // ===== 保存 =====
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        // クォータチェック
+        var settings   = SettingsService.Instance.Settings;
+        var channels   = SettingsService.Instance.Channels;
+        var thisUnits  = ApiQuotaHelper.EstimateDailyUnitsForFocusSlots(
+            _tabPanels.Select(p => p.GetSlot()), settings.CheckIntervalMinutes);
+        var otherUnits = ApiQuotaHelper.EstimateDailyUnitsForChannels(
+            settings.CheckIntervalMinutes,
+            channels.Where(c => c.IsEnabled && c.ChannelId != _channel.ChannelId));
+        var daily = otherUnits + thisUnits;
+        var pct   = daily * 100.0 / ApiQuotaHelper.DailyLimit;
+
+        if (daily > ApiQuotaHelper.DailyLimit)
+        {
+            var msg = $"この設定では1日のAPIクォータ（{ApiQuotaHelper.DailyLimit:N0}ユニット）を超過します。\n\n" +
+                      $"推定使用量: {daily:N0} ユニット/日（{pct:F0}%）\n\n" +
+                      "それでも保存しますか？（設定で間隔を調整してください）";
+            if (ConfirmDialog.Show(this, "クォータ超過の警告", msg, "保存する") != true)
+                return;
+            AppLogger.Log(LogMsg.QuotaExceededOnSave, _channel.ChannelName, _channel.ChannelName, (int)Math.Round(pct));
+        }
+        else if (pct >= 85)
+        {
+            var msg = $"この設定後のAPI使用量が {pct:F0}% になります。\nクォータの消費にご注意ください。";
+            if (ConfirmDialog.Show(this, "クォータ使用量の警告", msg, "保存する") != true)
+                return;
+            AppLogger.Log(LogMsg.QuotaWarningOnSave, _channel.ChannelName, _channel.ChannelName, (int)Math.Round(pct));
+        }
+
         _channel.NotifyVideo    = NotifyVideoToggle.IsChecked    == true;
         _channel.NotifyShort    = NotifyShortToggle.IsChecked    == true;
         _channel.NotifyLive     = NotifyLiveToggle.IsChecked     == true;
         _channel.NotifyUpcoming = NotifyUpcomingToggle.IsChecked == true;
 
-        _channel.MonitorMode = CurrentMode();
+        // 常にスロットベースで保存
+        _channel.MonitorMode = MonitorMode.Focus;
+        _channel.FocusSlots  = _tabPanels.Select(p => p.GetSlot()).ToList();
 
-        if (_channel.MonitorMode == MonitorMode.Normal)
+        // 後方互換: 先頭有効スロットのうちFocusモードのものを旧フィールドに反映
+        var first = _channel.FocusSlots
+            .FirstOrDefault(s => s.IsEnabled && s.SlotMode == MonitorMode.Focus)
+            ?? _channel.FocusSlots.FirstOrDefault(s => s.IsEnabled);
+        if (first != null && first.SlotMode == MonitorMode.Focus)
         {
-            var g = SettingsService.Instance.Settings.CheckIntervalMinutes;
-            var s = GetComboTag(NormalIntervalBox, g);
-            _channel.NormalIntervalMinutes = s == g ? 0 : s;
+            _channel.FocusHour            = first.Hour;
+            _channel.FocusMinute          = first.Minute;
+            _channel.FocusWindowMinutes   = first.WindowMinutes;
+            _channel.FocusIntervalMinutes = first.IntervalMinutes;
+            _channel.FocusDays            = first.Days;
         }
-        else if (_channel.MonitorMode == MonitorMode.LowFreq)
-        {
-            _channel.LowFreqIntervalMinutes = GetComboTag(LowFreqIntervalBox, 60);
-        }
-        else if (_channel.MonitorMode == MonitorMode.Focus)
-        {
-            _channel.FocusSlots = _tabPanels.Select(p => p.GetSlot()).ToList();
-            // 後方互換: 先頭有効スロットを旧フィールドに反映
-            var first = _channel.FocusSlots.FirstOrDefault(s => s.IsEnabled)
-                     ?? _channel.FocusSlots.FirstOrDefault();
-            if (first != null)
-            {
-                _channel.FocusHour           = first.Hour;
-                _channel.FocusMinute         = first.Minute;
-                _channel.FocusWindowMinutes  = first.WindowMinutes;
-                _channel.FocusIntervalMinutes = first.IntervalMinutes;
-                _channel.FocusDays           = first.Days;
-            }
-        }
+
+        var needsIntervalAdjust = daily > ApiQuotaHelper.DailyLimit;
 
         _channel.NextCheckAt = DateTime.MinValue;
-        // UpdateChannel 内で SaveChannels → MarkDirty まで実行される
         SettingsService.Instance.UpdateChannel(_channel);
+        AppLogger.Log(LogMsg.ChannelDetailSaved, null, _channel.ChannelName);
+
+        var globalInterval = settings.CheckIntervalMinutes;
+        bool[] origEnabled = { _origNotifyVideo, _origNotifyShort, _origNotifyLive };
+        for (int i = 0; i < _tabPanels.Count; i++)
+        {
+            var slot = _tabPanels[i].GetSlot();
+            if (slot.IsEnabled != origEnabled[i])
+            {
+                var statusLabel = slot.IsEnabled
+                    ? $"ON ({DescribeSlotInterval(slot, globalInterval)})"
+                    : "OFF";
+                AppLogger.Log(LogMsg.ChannelDetailEnabledChanged, _channel.ChannelName,
+                    _channel.ChannelName, TabKindLabels[i], statusLabel);
+            }
+            if (!slot.IsEnabled) continue;
+            var intervalDesc = DescribeSlotInterval(slot, globalInterval);
+            AppLogger.Log(LogMsg.ChannelDetailSlotInterval, _channel.ChannelName, TabKindLabels[i], intervalDesc);
+        }
+
+        if (needsIntervalAdjust && Owner is MainWindow mw)
+            mw.Dispatcher.BeginInvoke(mw.AutoAdjustIntervalForQuota);
 
         DialogResult = true;
         Close();
     }
 
     // ===== ユーティリティ =====
-    private static void SelectComboByTag(ComboBox box, int value)
+    private static string DescribeSlotInterval(FocusSlot slot, int globalIntervalMinutes)
     {
-        foreach (ComboBoxItem item in box.Items)
+        return slot.SlotMode switch
         {
-            if (item.Tag is int t && t == value) { box.SelectedItem = item; return; }
-            if (item.Tag is string s && int.TryParse(s, out var sv) && sv == value) { box.SelectedItem = item; return; }
-        }
-        if (box.Items.Count > 0) box.SelectedIndex = 0;
+            MonitorMode.LowFreq => $"低頻度 {slot.SlotLowFreqIntervalMinutes}分",
+            MonitorMode.Focus   => BuildFocusDesc(slot),
+            _ => slot.SlotNormalIntervalMinutes > 0
+                ? $"通常 {slot.SlotNormalIntervalMinutes}分"
+                : $"通常 {globalIntervalMinutes}分（グローバル）",
+        };
     }
 
-    private static int GetComboTag(ComboBox box, int fallback)
+    private static string BuildFocusDesc(FocusSlot slot)
     {
-        if (box.SelectedItem is ComboBoxItem item)
+        const string dayChars = "日月火水木金土";
+        var daysStr = slot.Days == 0b1111111
+            ? "全曜日"
+            : string.Concat(dayChars.Where((_, i) => (slot.Days & (1 << i)) != 0));
+        return $"時間指定 [{daysStr}] {slot.Hour:D2}:{slot.Minute:D2}〜{slot.WindowMinutes}分 / {slot.IntervalMinutes}分間隔";
+    }
+
+    private static void SetToggleActiveBrush(System.Windows.Controls.Primitives.ToggleButton btn, string brushKey)
+    {
+        var brush = (Brush)System.Windows.Application.Current.Resources[brushKey];
+        var style = new Style(typeof(System.Windows.Controls.Primitives.ToggleButton),
+            (Style)System.Windows.Application.Current.Resources["KindToggleButtonLarge"]);
+        var trigger = new Trigger
         {
-            if (item.Tag is int t) return t;
-            if (item.Tag is string s && int.TryParse(s, out var sv)) return sv;
-        }
-        return fallback;
+            Property = System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty,
+            Value    = true
+        };
+        trigger.Setters.Add(new Setter(System.Windows.Controls.Control.BackgroundProperty,   brush));
+        trigger.Setters.Add(new Setter(System.Windows.Controls.Control.BorderBrushProperty,  brush));
+        trigger.Setters.Add(new Setter(System.Windows.Controls.Control.ForegroundProperty,   Brushes.White));
+        style.Triggers.Add(trigger);
+        btn.Style = style;
     }
 }
 
-// ===== 時間指定タブパネル =====
+// ===== 監視設定タブパネル =====
 internal class FocusTabPanel
 {
     public Border? NavBorder { get; set; }
     public TextBlock? NavLabel { get; set; }
     public Action? OnEnabledChanged { get; set; }
+    public VideoKind FixedKind { get; set; } = VideoKind.Video;
     public bool IsEnabled => _enabledCheck?.IsChecked == true || (!HasContent && _slot.IsEnabled);
     public bool HasContent { get; private set; } = false;
-    /// <summary>UIが未生成の間はこのデータを参照する</summary>
     public FocusSlot SlotData => HasContent ? GetSlot() : _slot;
 
     private readonly FocusSlot _slot;
+    private bool _suppressEnabledEvent = false;
     private System.Windows.Controls.CheckBox? _enabledCheck;
     private System.Windows.Controls.Primitives.ToggleButton[] _dayBtns = Array.Empty<System.Windows.Controls.Primitives.ToggleButton>();
-    private ComboBox? _kindBox, _windowBox, _intervalBox;
+    private ComboBox? _modeBox;
+    private ComboBox? _windowBox, _intervalBox;
     private ComboBox? _hourBox, _minuteBox;
+    private ComboBox? _normalIntervalBox, _lowFreqBox;
     private StackPanel? _settingsPanel;
+    private StackPanel? _normalPanel, _lowFreqPanel, _focusPanel;
 
-    private static readonly (VideoKind kind, string label)[] KindOptions =
-    {
-        (VideoKind.Video, "動画"),
-        (VideoKind.Short, "Short"),
-        (VideoKind.Live,  "ライブ配信")
-    };
     private static readonly string[] DayLabels = { "Sun","Mon","Tue","Wed","Thu","Fri","Sat" };
 
     public FocusTabPanel(FocusSlot slot) => _slot = slot;
 
+    public void SetEnabled(bool enabled)
+    {
+        _slot.IsEnabled = enabled;
+        if (_enabledCheck != null)
+        {
+            _suppressEnabledEvent = true;
+            _enabledCheck.IsChecked = enabled;
+            _suppressEnabledEvent = false;
+        }
+        if (_settingsPanel != null)
+        {
+            _settingsPanel.IsEnabled = enabled;
+            _settingsPanel.Opacity   = enabled ? 1.0 : 0.4;
+        }
+    }
+
     public void ResetContent()
     {
         if (HasContent) SaveToSlot();
-        HasContent     = false;
-        _enabledCheck  = null;
-        _dayBtns       = Array.Empty<System.Windows.Controls.Primitives.ToggleButton>();
-        _kindBox = _windowBox = _intervalBox = null;
-        _hourBox = _minuteBox = null;
-        _settingsPanel = null;
+        HasContent    = false;
+        _enabledCheck = null;
+        _dayBtns      = Array.Empty<System.Windows.Controls.Primitives.ToggleButton>();
+        _modeBox = _windowBox = _intervalBox = null;
+        _hourBox = _minuteBox = _normalIntervalBox = _lowFreqBox = null;
+        _settingsPanel = _normalPanel = _lowFreqPanel = _focusPanel = null;
     }
 
     private void SaveToSlot()
     {
         if (_enabledCheck != null) _slot.IsEnabled = _enabledCheck.IsChecked == true;
-        if (_kindBox?.SelectedItem is ComboBoxItem ki && ki.Tag is int kt)
-            _slot.NotifyKind = (VideoKind)kt;
+
+        // スロットモード
+        if (_modeBox?.SelectedItem is ComboBoxItem mi && mi.Tag is string mt)
+            _slot.SlotMode = mt switch
+            {
+                "LowFreq" => MonitorMode.LowFreq,
+                "Focus"   => MonitorMode.Focus,
+                _         => MonitorMode.Normal
+            };
+
+        // 通常間隔（0=グローバル）
+        if (_normalIntervalBox?.SelectedItem is ComboBoxItem ni && ni.Tag is string ns && int.TryParse(ns, out var nv))
+            _slot.SlotNormalIntervalMinutes = nv;
+
+        // 低頻度間隔
+        if (_lowFreqBox?.SelectedItem is ComboBoxItem li && li.Tag is string ls && int.TryParse(ls, out var lv))
+            _slot.SlotLowFreqIntervalMinutes = lv;
+
+        // 通知種別はタブ固定
+        _slot.NotifyKind = FixedKind;
         int days = 0;
         for (int i = 0; i < 7; i++)
             if (_dayBtns.Length > i && _dayBtns[i].IsChecked == true) days |= (1 << i);
@@ -498,8 +527,25 @@ internal class FocusTabPanel
             Foreground = (Brush)res["TextPrimaryBrush"],
             Margin     = new Thickness(0, 0, 0, 10)
         };
-        _enabledCheck.Checked   += (_, _) => { _settingsPanel!.IsEnabled = true;  _settingsPanel!.Opacity = 1.0; OnEnabledChanged?.Invoke(); };
-        _enabledCheck.Unchecked += (_, _) => { _settingsPanel!.IsEnabled = false; _settingsPanel!.Opacity = 0.4; OnEnabledChanged?.Invoke(); };
+        _enabledCheck.Checked   += (_, _) =>
+        {
+            if (_suppressEnabledEvent) return;
+            _settingsPanel!.IsEnabled = true;
+            _settingsPanel!.Opacity   = 1.0;
+            // 有効化時は監視モードをデフォルト「通常」に設定（SelectionChanged の連鎖を抑制）
+            if (_modeBox != null)
+            {
+                _suppressEnabledEvent = true;
+                try
+                {
+                    foreach (ComboBoxItem item in _modeBox.Items)
+                        if (item.Tag?.ToString() == "Normal") { _modeBox.SelectedItem = item; break; }
+                }
+                finally { _suppressEnabledEvent = false; }
+            }
+            OnEnabledChanged?.Invoke();
+        };
+        _enabledCheck.Unchecked += (_, _) => { if (_suppressEnabledEvent) return; _settingsPanel!.IsEnabled = false; _settingsPanel!.Opacity = 0.4; OnEnabledChanged?.Invoke(); };
         stack.Children.Add(_enabledCheck);
 
         // 設定パネル
@@ -510,16 +556,47 @@ internal class FocusTabPanel
         };
         stack.Children.Add(_settingsPanel);
 
-        // 1. 通知種別
-        _kindBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = 130 };
-        foreach (var (kind, lbl) in KindOptions)
-            _kindBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = (int)kind, Style = (Style)res["ModernComboBoxItem"] });
-        _kindBox.SelectedIndex = (int)_slot.NotifyKind;
-        _kindBox.SelectionChanged += (_, _) => { SaveToSlot(); OnEnabledChanged?.Invoke(); };
-        _settingsPanel.Children.Add(MakeRow("通知種別", _kindBox, res));
+        // 1. 監視モード
+        _modeBox = new ComboBox { Style = (Style)res["ModernComboBox"] };
+        foreach (var (tag, lbl) in new[] { ("Normal","通常"), ("LowFreq","低頻度"), ("Focus","時間指定") })
+            _modeBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
+        var modeTag = _slot.SlotMode switch
+        {
+            MonitorMode.LowFreq => "LowFreq",
+            MonitorMode.Focus   => "Focus",
+            _                   => "Normal"
+        };
+        foreach (ComboBoxItem item in _modeBox.Items)
+            if (item.Tag?.ToString() == modeTag) { _modeBox.SelectedItem = item; break; }
+        if (_modeBox.SelectedItem == null) _modeBox.SelectedIndex = 0;
+        _settingsPanel.Children.Add(MakeRow("監視モード", _modeBox, res));
 
-        // 2. 曜日指定
-        _settingsPanel.Children.Add(new TextBlock
+        // 2. 通常モード（個別間隔、0=グローバル）
+        _normalPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        _normalIntervalBox = new ComboBox { Style = (Style)res["ModernComboBox"] };
+        _normalIntervalBox.Items.Add(new ComboBoxItem { Content = "一括で設定に従う", Tag = "0", Style = (Style)res["ModernComboBoxItem"] });
+        foreach (var (lbl, tag) in new[] { ("3分","3"),("5分","5"),("10分","10"),("15分","15"),("20分","20"),("30分","30"),("60分","60") })
+            _normalIntervalBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
+        SelectComboByTagStr(_normalIntervalBox, _slot.SlotNormalIntervalMinutes.ToString());
+        _normalIntervalBox.SelectionChanged += (_, _) => { SaveToSlot(); OnEnabledChanged?.Invoke(); };
+        _normalPanel.Children.Add(MakeRow("監視間隔", _normalIntervalBox, res));
+        _settingsPanel.Children.Add(_normalPanel);
+
+        // 3. 低頻度間隔
+        _lowFreqPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        _lowFreqBox = new ComboBox { Style = (Style)res["ModernComboBox"] };
+        foreach (var (lbl, tag) in new[] { ("1時間","60"),("3時間","180"),("6時間","360"),("12時間","720"),("24時間","1440") })
+            _lowFreqBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
+        SelectComboByTagStr(_lowFreqBox, _slot.SlotLowFreqIntervalMinutes.ToString());
+        _lowFreqBox.SelectionChanged += (_, _) => { SaveToSlot(); OnEnabledChanged?.Invoke(); };
+        _lowFreqPanel.Children.Add(MakeRow("監視間隔", _lowFreqBox, res));
+        _settingsPanel.Children.Add(_lowFreqPanel);
+
+        // 4. 時間指定設定
+        _focusPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+
+        // 曜日指定
+        _focusPanel.Children.Add(new TextBlock
         {
             Text       = "曜日指定",
             FontSize   = 11,
@@ -534,14 +611,19 @@ internal class FocusTabPanel
             {
                 Content   = DayLabels[i],
                 Style     = (Style)res["DayToggleButton"],
-                IsChecked = _slot.Days != 0 && (_slot.Days & (1 << i)) != 0
+                IsChecked = _slot.Days == 0 || (_slot.Days & (1 << i)) != 0
+            };
+            btn.Unchecked += (_, _) =>
+            {
+                if (_dayBtns.All(b => b.IsChecked != true))
+                    btn.IsChecked = true;
             };
             _dayBtns[i] = btn;
             dayRow.Children.Add(btn);
         }
-        _settingsPanel.Children.Add(dayRow);
+        _focusPanel.Children.Add(dayRow);
 
-        // 3. 投稿時刻（時ドロップダウン + 分ドロップダウン）
+        // 投稿時刻
         _hourBox   = new ComboBox { Style = (Style)res["ModernComboBox"], Width = 76 };
         _minuteBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = 76 };
         for (int h = 0; h < 24; h++)
@@ -563,22 +645,24 @@ internal class FocusTabPanel
         System.Windows.Controls.Grid.SetColumn(timeCtrl, 1);
         timeGrid.Children.Add(timeLbl);
         timeGrid.Children.Add(timeCtrl);
-        _settingsPanel.Children.Add(timeGrid);
+        _focusPanel.Children.Add(timeGrid);
 
-        // 4. 前後の幅 / 監視間隔（1行）
+        // 投稿監視時間 / 監視間隔
         _windowBox   = new ComboBox { Style = (Style)res["ModernComboBox"], Width = 80 };
         _intervalBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = 70 };
-        foreach (var (lbl, tag) in new[] { ("±1分","1"),("±3分","3"),("±5分","5"),("±10分","10"),("±15分","15"),("±30分","30"),("±60分","60"),("±120分","120") })
+        foreach (var (lbl, tag) in new[] { ("1分","1"),("3分","3"),("5分","5"),("10分","10"),("15分","15"),("30分","30"),("60分","60"),("120分","120") })
             _windowBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
         foreach (var (lbl, tag) in new[] { ("1分","1"),("3分","3"),("5分","5"),("10分","10"),("15分","15") })
             _intervalBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
         SelectComboByTagStr(_windowBox,   _slot.WindowMinutes.ToString());
         SelectComboByTagStr(_intervalBox, _slot.IntervalMinutes.ToString());
+        _windowBox.SelectionChanged   += (_, _) => OnEnabledChanged?.Invoke();
+        _intervalBox.SelectionChanged += (_, _) => OnEnabledChanged?.Invoke();
 
         var wiGrid = new Grid { Margin = new Thickness(0, 0, 0, 0) };
         wiGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         wiGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var wiLbl  = new TextBlock { Text = "前後の幅 / 間隔", FontSize = 11, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center };
+        var wiLbl  = new TextBlock { Text = "投稿監視時間 / 間隔", FontSize = 11, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center };
         var wiCtrl = new StackPanel { Orientation = Orientation.Horizontal };
         wiCtrl.Children.Add(_windowBox);
         wiCtrl.Children.Add(new TextBlock { Text = "/", FontSize = 11, Foreground = (Brush)res["TextMutedBrush"], VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 6, 0) });
@@ -586,9 +670,29 @@ internal class FocusTabPanel
         System.Windows.Controls.Grid.SetColumn(wiCtrl, 1);
         wiGrid.Children.Add(wiLbl);
         wiGrid.Children.Add(wiCtrl);
-        _settingsPanel.Children.Add(wiGrid);
+        _focusPanel.Children.Add(wiGrid);
+
+        _settingsPanel.Children.Add(_focusPanel);
+
+        // モード切替でパネル表示を切り替え
+        UpdateModePanels();
+        _modeBox.SelectionChanged += (_, _) =>
+        {
+            UpdateModePanels();
+            SaveToSlot();
+            if (!_suppressEnabledEvent) OnEnabledChanged?.Invoke();
+        };
 
         return stack;
+    }
+
+    private void UpdateModePanels()
+    {
+        if (_normalPanel == null || _lowFreqPanel == null || _focusPanel == null || _modeBox == null) return;
+        var tag = (_modeBox.SelectedItem as ComboBoxItem)?.Tag?.ToString();
+        _normalPanel.Visibility  = tag == "Normal"  ? Visibility.Visible : Visibility.Collapsed;
+        _lowFreqPanel.Visibility = tag == "LowFreq" ? Visibility.Visible : Visibility.Collapsed;
+        _focusPanel.Visibility   = tag == "Focus"   ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static Grid MakeRow(string label, FrameworkElement ctrl, ResourceDictionary res)

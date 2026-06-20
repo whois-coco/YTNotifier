@@ -1,10 +1,16 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using Brush   = System.Windows.Media.Brush;
+using Brushes = System.Windows.Media.Brushes;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using YTNotifier.Constants;
 using YTNotifier.Models;
 using YTNotifier.Services;
 
@@ -15,6 +21,9 @@ public partial class AddChannelWindow : Window
     private readonly YouTubeApiClient _youtubeClient = new();
     private ChannelInfo? _previewChannel;
     private readonly Action? _onChannelAdded;
+
+    private readonly List<FocusTabPanel> _detailTabPanels = new();
+    private int _selectedDetailTab = 0;
 
     public bool ChannelAdded { get; private set; } = false;
 
@@ -39,12 +48,15 @@ public partial class AddChannelWindow : Window
 
     private void PopulateCategoryComboBox()
     {
+        var svc          = SettingsService.Instance;
+        var noCategoryMode = svc.Settings.NoCategoryMode;
+
         CategoryComboBox.Items.Clear();
         CategoryComboBox.Items.Add(new System.Windows.Controls.ComboBoxItem
         {
             Content = "（未設定）", Tag = null
         });
-        foreach (var cat in SettingsService.Instance.Categories.OrderBy(c => c.SortOrder))
+        foreach (var cat in svc.Categories.OrderBy(c => c.SortOrder))
         {
             CategoryComboBox.Items.Add(new System.Windows.Controls.ComboBoxItem
             {
@@ -52,6 +64,11 @@ public partial class AddChannelWindow : Window
             });
         }
         CategoryComboBox.SelectedIndex = 0;
+
+        // カテゴリなし表示モードでは選択を無効化
+        CategoryComboBox.IsEnabled = !noCategoryMode;
+        CategoryComboBox.Opacity   = noCategoryMode ? 0.4 : 1.0;
+        CategoryComboBox.ToolTip   = noCategoryMode ? "カテゴリなし表示モードが有効なため選択できません" : null;
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -87,14 +104,17 @@ public partial class AddChannelWindow : Window
 
     private void ContinuousAddCheckBox_Changed(object sender, RoutedEventArgs e)
     {
-        SettingsService.Instance.Settings.ContinuousAddMode = ContinuousAddCheckBox.IsChecked == true;
+        var enabled = ContinuousAddCheckBox.IsChecked == true;
+        SettingsService.Instance.Settings.ContinuousAddMode = enabled;
         SettingsService.Instance.SaveSettings();
+        AppLogger.Log(LogMsg.ContinuousAddModeChanged, null, enabled ? "ON" : "OFF");
     }
 
     private async void PreviewChannel_Click(object sender, RoutedEventArgs e)
     {
         var input = ChannelInputBox.Text.Trim();
         if (string.IsNullOrEmpty(input)) return;
+        AppLogger.Log(LogMsg.AddChannelPreviewClicked, null, input);
 
         PreviewButton.IsEnabled      = false;
         PreviewStatusText.Text       = "🔍 チャンネル情報を取得中...";
@@ -136,9 +156,11 @@ public partial class AddChannelWindow : Window
             }
 
             bool exists = SettingsService.Instance.Channels.Any(c => c.ChannelId == _previewChannel.ChannelId);
-            PreviewStatusText.Text     = exists
+            PreviewStatusText.Text = exists
                 ? "⚠ このチャンネルは既に追加されています。"
                 : $"✅ 「{_previewChannel.ChannelName}」が見つかりました。";
+            var brushKey = exists ? "WarningBrush" : "SuccessBrush";
+            PreviewStatusText.SetResourceReference(TextBlock.ForegroundProperty, brushKey);
             AddChannelButton.IsEnabled = !exists;
 
             // チャンネル発見時に拡張エリアを表示
@@ -148,6 +170,8 @@ public partial class AddChannelWindow : Window
                 CheckVideo.IsChecked = true;
                 CheckShort.IsChecked = true;
                 CheckLive.IsChecked  = true;
+                BuildDetailTabUI();
+                SelectDetailTab(0);
                 ExpandedArea.Visibility = Visibility.Visible;
             }
         }
@@ -171,6 +195,17 @@ public partial class AddChannelWindow : Window
         _previewChannel.NotifyVideo = CheckVideo.IsChecked != false;
         _previewChannel.NotifyShort = CheckShort.IsChecked != false;
         _previewChannel.NotifyLive  = CheckLive.IsChecked  != false;
+
+        // スロット設定を適用（Expander 開閉にかかわらず常に設定）
+        if (_detailTabPanels.Count == 3)
+        {
+            _previewChannel.MonitorMode = MonitorMode.Focus;
+            _previewChannel.FocusSlots  = _detailTabPanels.Select(p => p.GetSlot()).ToList();
+            // タブの IsEnabled をチェック対象フラグと同期
+            _previewChannel.FocusSlots[0].IsEnabled = _previewChannel.NotifyVideo;
+            _previewChannel.FocusSlots[1].IsEnabled = _previewChannel.NotifyShort;
+            _previewChannel.FocusSlots[2].IsEnabled = _previewChannel.NotifyLive;
+        }
 
         // クォータ事前シミュレーション
         var settings    = SettingsService.Instance.Settings;
@@ -206,7 +241,7 @@ public partial class AddChannelWindow : Window
         catch { /* 取得失敗時はUC→UU変換でフォールバック */ }
 
         SettingsService.Instance.AddChannel(_previewChannel);
-        LoggerService.Instance.Success("チャンネルを追加しました", _previewChannel.ChannelName);
+        AppLogger.Log(LogMsg.ChannelAdded, _previewChannel.ChannelName);
         ChannelAdded = true;
         _onChannelAdded?.Invoke();
 
@@ -220,11 +255,107 @@ public partial class AddChannelWindow : Window
             PreviewEmptyState.Visibility = Visibility.Visible;
             AddChannelButton.IsEnabled   = false;
             ExpandedArea.Visibility      = Visibility.Collapsed;
+            DetailExpander.IsExpanded    = false;
+            _detailTabPanels.Clear();
+            DetailFocusTabNav.Children.Clear();
+            DetailFocusTabContent.Children.Clear();
             ChannelInputBox.Focus();
         }
         else
         {
             Close();
         }
+    }
+
+    // ===== 詳細設定タブ =====
+    private static readonly string[] DetailTabKindLabels = { "動画", "Short", "ライブ配信" };
+    private static readonly VideoKind[] DetailTabKinds   = { VideoKind.Video, VideoKind.Short, VideoKind.Live };
+
+    private void CheckKind_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_detailTabPanels.Count != 3) return;
+        _detailTabPanels[0].SetEnabled(CheckVideo.IsChecked != false);
+        _detailTabPanels[1].SetEnabled(CheckShort.IsChecked != false);
+        _detailTabPanels[2].SetEnabled(CheckLive.IsChecked  != false);
+        for (int i = 0; i < _detailTabPanels.Count; i++)
+            SetDetailTabBorderStyle(_detailTabPanels[i], i == _selectedDetailTab);
+    }
+
+    private void BuildDetailTabUI()
+    {
+        _detailTabPanels.Clear();
+        DetailFocusTabNav.Children.Clear();
+        DetailFocusTabContent.Children.Clear();
+        _selectedDetailTab = 0;
+
+        var res = System.Windows.Application.Current.Resources;
+        bool[] kindEnabled = { CheckVideo.IsChecked != false, CheckShort.IsChecked != false, CheckLive.IsChecked != false };
+        System.Windows.Controls.CheckBox[] kindChecks = { CheckVideo, CheckShort, CheckLive };
+
+        for (int i = 0; i < 3; i++)
+        {
+            var slot = new FocusSlot
+            {
+                NotifyKind = DetailTabKinds[i],
+                SlotMode   = MonitorMode.Normal,
+                IsEnabled  = kindEnabled[i]
+            };
+            var panel = new FocusTabPanel(slot);
+            panel.FixedKind = DetailTabKinds[i];
+            _detailTabPanels.Add(panel);
+
+            // 「この設定を有効にする」→ CheckVideo/Short/Live を同期
+            int capturedIdx = i;
+            panel.OnEnabledChanged = () =>
+            {
+                kindChecks[capturedIdx].IsChecked = _detailTabPanels[capturedIdx].IsEnabled;
+                SetDetailTabBorderStyle(_detailTabPanels[capturedIdx], capturedIdx == _selectedDetailTab);
+            };
+
+            int idx    = i;
+            var lbl    = new TextBlock { Text = DetailTabKindLabels[i], FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+            var border = new Border
+            {
+                Padding         = new Thickness(14, 0, 14, 0),
+                Cursor          = System.Windows.Input.Cursors.Hand,
+                Background      = Brushes.Transparent,
+                BorderThickness = new Thickness(0, 0, 0, 2),
+                Tag             = i,
+                Child           = lbl
+            };
+            border.MouseLeftButtonUp += (_, _) => SelectDetailTab(idx);
+            panel.NavBorder = border;
+            panel.NavLabel  = lbl;
+            SetDetailTabBorderStyle(panel, false);
+            DetailFocusTabNav.Children.Add(border);
+        }
+    }
+
+    private void SelectDetailTab(int idx)
+    {
+        _selectedDetailTab = idx;
+        for (int i = 0; i < _detailTabPanels.Count; i++)
+            SetDetailTabBorderStyle(_detailTabPanels[i], i == idx);
+
+        DetailFocusTabContent.Children.Clear();
+        _detailTabPanels[idx].ResetContent();
+        DetailFocusTabContent.Children.Add(_detailTabPanels[idx].BuildContent());
+    }
+
+    private static void SetDetailTabBorderStyle(FocusTabPanel tab, bool selected)
+    {
+        var res = System.Windows.Application.Current.Resources;
+        if (tab.NavBorder == null || tab.NavLabel == null) return;
+        tab.NavBorder.BorderBrush = selected
+            ? (Brush)res["PrimaryBrush"]
+            : Brushes.Transparent;
+        tab.NavLabel.Foreground = selected
+            ? (Brush)res["PrimaryBrush"]
+            : tab.IsEnabled
+                ? (Brush)res["TextSecondaryBrush"]
+                : (Brush)res["TextMutedBrush"];
+        tab.NavLabel.FontWeight = selected
+            ? FontWeights.SemiBold
+            : FontWeights.Normal;
     }
 }

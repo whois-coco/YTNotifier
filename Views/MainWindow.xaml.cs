@@ -14,6 +14,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using YTNotifier.Constants;
 using YTNotifier.Models;
 using YTNotifier.Services;
 using Application      = System.Windows.Application;
@@ -64,6 +65,7 @@ public partial class MainWindow : System.Windows.Window
     private bool _uncategorizedCollapsed = false;
 
     // アイコンキャッシュ（URL → BitmapImage）。コレクション操作は全て UI スレッドに集約しスレッド安全を担保
+    private const int IconCacheMaxEntries = 300;
     private static readonly Dictionary<string, BitmapImage> _iconCache      = new();
     private static readonly HashSet<string>                  _iconDownloading = new();
     // HttpClient はソケット枯渇を避けるため使い回す
@@ -84,6 +86,7 @@ public partial class MainWindow : System.Windows.Window
     private bool _isMuted                    = false;
     private bool _preMuteDesktopNotification = false;
     private bool _preMuteNotificationSound   = false;
+    private bool _preMuteFlashTaskbar        = false;
 
     // コンパクトモード
     private bool   _preCompactSidebarCollapsed = false;
@@ -94,6 +97,12 @@ public partial class MainWindow : System.Windows.Window
     // 検索
     private string _searchQuery = "";
 
+    // MonitorService イベントハンドラ（解除用に保持）
+    private Action<bool>? _onStatusChanged;
+    private Action?       _onChannelUpdated;
+    private Action?       _onQuotaUpdated;
+
+
     // Win32
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -102,7 +111,7 @@ public partial class MainWindow : System.Windows.Window
 
     // ===== アイコンキャッシュ =====
     private static string GetIconCacheDir() =>
-        System.IO.Path.Combine(SettingsService.Instance.AppDataDir, "icons");
+        System.IO.Path.Combine(SettingsService.Instance.AppDataDir, AppConstants.DirIcons);
 
     private static string GetDiskPath(string url)
     {
@@ -129,6 +138,13 @@ public partial class MainWindow : System.Windows.Window
         catch { return null; }
     }
 
+    private static void AddToIconCache(string url, BitmapImage bmp)
+    {
+        if (_iconCache.Count >= IconCacheMaxEntries)
+            _iconCache.Remove(_iconCache.Keys.First());
+        _iconCache[url] = bmp;
+    }
+
     private static BitmapImage? GetCachedIcon(string url)
     {
         if (string.IsNullOrEmpty(url)) return null;
@@ -142,7 +158,7 @@ public partial class MainWindow : System.Windows.Window
         if (System.IO.File.Exists(diskPath))
         {
             var bmp = LoadBitmapFromFile(diskPath);
-            if (bmp != null) { _iconCache[url] = bmp; return bmp; }
+            if (bmp != null) { AddToIconCache(url, bmp); return bmp; }
         }
 
         if (_iconDownloading.Contains(url)) return null;
@@ -158,20 +174,20 @@ public partial class MainWindow : System.Windows.Window
                 var bmp = LoadBitmapFromFile(diskPath);
                 if (bmp == null)
                 {
-                    LoggerService.Instance.Warning($"アイコン読込失敗: {diskPath}");
+                    AppLogger.Log(LogMsg.IconLoadFailed, null, diskPath);
                     await Application.Current.Dispatcher.InvokeAsync(() => _iconDownloading.Remove(url));
                     return;
                 }
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    _iconCache[url] = bmp;
+                    AddToIconCache(url, bmp);
                     _iconDownloading.Remove(url);
                     UpdateIconsInList(url);
                 });
             }
             catch (Exception ex)
             {
-                LoggerService.Instance.Warning($"アイコンDL失敗: {ex.Message}");
+                AppLogger.Log(LogMsg.IconDownloadFailed, null, ex.Message);
                 await Application.Current.Dispatcher.InvokeAsync(() => _iconDownloading.Remove(url));
             }
         });
@@ -202,18 +218,18 @@ public partial class MainWindow : System.Windows.Window
         Loaded       += MainWindow_Loaded;
         Closing      += MainWindow_Closing;
         StateChanged += MainWindow_StateChanged;
-        MonitorService.Instance.StatusChanged  += isRunning => Dispatcher.Invoke(() => UpdateMonitorStatus(isRunning));
-        MonitorService.Instance.ChannelUpdated += ()        => Dispatcher.Invoke(RefreshChannelList);
-        MonitorService.Instance.QuotaUpdated   += ()        => Dispatcher.Invoke(UpdateQuotaInfo);
+        _onStatusChanged  = isRunning => Dispatcher.Invoke(() => UpdateMonitorStatus(isRunning));
+        _onChannelUpdated = ()        => Dispatcher.Invoke(RefreshChannelList);
+        _onQuotaUpdated   = ()        => Dispatcher.Invoke(UpdateQuotaInfo);
+        MonitorService.Instance.StatusChanged  += _onStatusChanged;
+        MonitorService.Instance.ChannelUpdated += _onChannelUpdated;
+        MonitorService.Instance.QuotaUpdated   += _onQuotaUpdated;
     }
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         try { LoadSettings(); }
-        catch (Exception ex) { LoggerService.Instance.Error($"設定読込エラー: {ex.Message}"); }
-
-        try { RefreshChannelList(); }
-        catch (Exception ex) { LoggerService.Instance.Error($"チャンネル一覧エラー: {ex.Message}"); }
+        catch (Exception ex) { AppLogger.Log(LogMsg.SettingsLoadError, null, ex.Message); }
 
         UpdateMinWidth();
         RestoreWindowBounds();
@@ -239,13 +255,32 @@ public partial class MainWindow : System.Windows.Window
             _isMuted                    = true;
             _preMuteDesktopNotification = s.PreMuteDesktopNotification;
             _preMuteNotificationSound   = s.PreMuteNotificationSound;
+            _preMuteFlashTaskbar        = s.PreMuteFlashTaskbar;
         }
         UpdateMuteButton(_isMuted);
 
-        if (s.CompactMode) ApplyCompactMode(true);
-        else { UpdateCompactModeButton(false); SyncWindowWidth(); }
+        if (s.CompactMode) ApplyCompactMode(true, skipRefresh: true);
+        else               UpdateCompactModeButton(false);
 
-        InitLogBindings();
+        // コンパクト・非コンパクト共通：SyncWindowWidth で幅を確定しレイアウトを完走させてから
+        // RefreshChannelList を呼ぶことで、SCP が再測定され起動直後からスクロールが機能する
+        Dispatcher.Invoke(SyncWindowWidth, System.Windows.Threading.DispatcherPriority.Render);
+        try { RefreshChannelList(); }
+        catch (Exception ex) { AppLogger.Log(LogMsg.ChannelListError, null, ex.Message); }
+
+        // Grid は最初に 0 件の状態で計算され DesiredSize=0 としてキャッシュされる。
+        // チャンネル追加後も Grid 自体は dirty にならないため SCP 経由で再計算しても
+        // キャッシュヒットで 0 を返し続ける。Grid を明示的に dirty にすることで
+        // SCP.MeasureOverride → Grid.MeasureOverride → 正しい高さ の経路を確保する。
+        if (ChannelScrollViewer.Content is System.Windows.Controls.Grid contentGrid &&
+            ChannelScrollViewer.Template?.FindName("PART_ScrollContentPresenter", ChannelScrollViewer)
+                is System.Windows.Controls.ScrollContentPresenter scp)
+        {
+            contentGrid.InvalidateMeasure();
+            scp.InvalidateMeasure();
+            ChannelScrollViewer.InvalidateMeasure();
+            ChannelScrollViewer.UpdateLayout();
+        }
 
         // 初期ナビセレクターバー（チャンネルがデフォルト選択）
         SetNavSelectorBar(NavWatch,    true);
@@ -261,17 +296,6 @@ public partial class MainWindow : System.Windows.Window
         ChannelList.Drop      += ChannelList_Drop;
     }
 
-    private void InitLogBindings()
-    {
-        LoggerService.Instance.ClearUiLog();
-        LogList.ItemsSource = LoggerService.Instance.Entries;
-        LoggerService.Instance.Entries.CollectionChanged += (_, _) =>
-        {
-            Dispatcher.BeginInvoke(() => LogScrollViewer?.ScrollToBottom(),
-                System.Windows.Threading.DispatcherPriority.Background);
-        };
-    }
-
     private void InitMonitor()
     {
         try
@@ -280,11 +304,11 @@ public partial class MainWindow : System.Windows.Window
                 MonitorService.Instance.Start();
             else
             {
-                LoggerService.Instance.Warning("APIキーが未設定です。設定タブからAPIキーを入力してください。");
+                AppLogger.Log(LogMsg.ApiKeyNotSet);
                 UpdateMonitorStatus(false);
             }
         }
-        catch (Exception ex) { LoggerService.Instance.Error($"監視開始エラー: {ex.Message}"); }
+        catch (Exception ex) { AppLogger.Log(LogMsg.MonitorStartError, null, ex.Message); }
     }
 
     // ===== ウィンドウ管理 =====
@@ -303,10 +327,13 @@ public partial class MainWindow : System.Windows.Window
         {
             e.Cancel = true;
             Hide();
-            LoggerService.Instance.Info("ウィンドウをトレイに格納しました");
+            AppLogger.Log(LogMsg.WindowToTray);
         }
         else
         {
+            MonitorService.Instance.StatusChanged  -= _onStatusChanged;
+            MonitorService.Instance.ChannelUpdated -= _onChannelUpdated;
+            MonitorService.Instance.QuotaUpdated   -= _onQuotaUpdated;
             MonitorService.Instance.Stop();
             Application.Current.Shutdown();
         }
@@ -352,6 +379,7 @@ public partial class MainWindow : System.Windows.Window
         UpdateApiKeyState(!string.IsNullOrEmpty(s.ApiKey));
         _loadingSettings = true;
         DarkModeToggle.IsChecked               = s.IsDarkMode;
+        NoCategoryModeToggle.IsChecked         = s.NoCategoryMode;
         NotificationToggle.IsChecked           = s.ShowDesktopNotification;
         GlobalNotifyUpcomingToggle.IsChecked   = s.GlobalNotifyUpcoming;
         TrayToggle.IsChecked                   = s.MinimizeToTray;
@@ -359,6 +387,7 @@ public partial class MainWindow : System.Windows.Window
         AlwaysOnTopToggle.IsChecked            = s.AlwaysOnTop;
         Topmost                                = s.AlwaysOnTop;
         NotificationSoundToggle.IsChecked      = s.NotificationSound;
+        FlashTaskbarToggle.IsChecked           = s.FlashTaskbar;
         CompactModeToggle.IsChecked            = s.CompactMode;
         // 通知スタイル（_loadingSettings内で設定しないとSelectionChangedで上書きされる）
         foreach (ComboBoxItem item in ToastStyleComboBox.Items)
@@ -390,10 +419,9 @@ public partial class MainWindow : System.Windows.Window
 
         AutoCleanLogsToggle.IsChecked = s.AutoCleanLogs;
         _loadingSettings = true;
-        LogShowNoNewToggle.IsChecked      = s.LogShowNoNew;
-        LogShowNewFoundToggle.IsChecked   = s.LogShowNewFound;
-        LogShowCheckErrorToggle.IsChecked = s.LogShowCheckError;
-        LogShowNotifyToggle.IsChecked     = s.LogShowNotify;
+        var lvlItems = LogLevelComboBox.Items.Cast<ComboBoxItem>().ToList();
+        LogLevelComboBox.SelectedItem =
+            lvlItems.FirstOrDefault(i => i.Tag?.ToString() == s.LogLevel) ?? lvlItems[0];
         _loadingSettings = false;
         _loadingSettings = true;
         var retItems = LogRetentionComboBox.Items.Cast<ComboBoxItem>().ToList();
@@ -406,7 +434,7 @@ public partial class MainWindow : System.Windows.Window
         if (s.AutoCleanLogs && s.LogRetentionDays != -1)
         {
             var (deleted, _) = LoggerService.Instance.CleanOldLogs(s.LogRetentionDays);
-            if (deleted > 0) LoggerService.Instance.Info($"起動時ログ自動削除: {deleted}件");
+            if (deleted > 0) AppLogger.Log(LogMsg.AutoLogDeleted, null, deleted);
         }
     }
 

@@ -1,14 +1,23 @@
 using System.IO;
 using System.IO.Compression;
 using Newtonsoft.Json;
+using YTNotifier.Constants;
 using YTNotifier.Models;
 
 namespace YTNotifier.Services;
 
 public class SettingsService
 {
-    private static SettingsService? _instance;
-    public static SettingsService Instance => _instance ??= new SettingsService();
+    private const string DirConf        = "conf";
+    private const string DirBackup      = "bkup";
+    private const string FileConfig     = "config.json";
+    private const string FileChannels   = "channels.json";
+    private const string FileCategories = "categories.json";
+    private const string FileAutoBackup = "auto_backup.ytbk";
+    private const string SoundsZipPrefix = "Sounds/";
+
+    private static readonly Lazy<SettingsService> _lazy = new(() => new SettingsService());
+    public static SettingsService Instance => _lazy.Value;
 
     private readonly string _appDataDir;
     private readonly string _configPath;
@@ -23,26 +32,52 @@ public class SettingsService
 
     // Channels/Categories への並行アクセスを直列化するロック
     private readonly object _persistLock = new();
+    // AddApiUnits の並行呼び出しを直列化するロック
+    private readonly object _apiUnitsLock = new();
+
+    /// <summary>保存系エラーをクラッシュログへ直接書き込む（LoggerService に依存しない）</summary>
+    private void WriteSaveError(string context, string message)
+    {
+        try
+        {
+            var logDir = Path.Combine(_appDataDir, AppConstants.DirLogs);
+            File.AppendAllText(
+                Path.Combine(logDir, $"{DateTime.Now:yyyy-MM-dd}_crash.log"),
+                $"[{DateTime.Now:HH:mm:ss}] [SaveError:{context}] {message}{Environment.NewLine}");
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// 一時ファイルに書き込んでからリネームするアトミック書き込み。
+    /// WriteAllText の途中でプロセスが終了しても元ファイルが破損しない。
+    /// </summary>
+    private static void WriteAtomic(string path, string content)
+    {
+        var tmp = path + ".tmp";
+        File.WriteAllText(tmp, content, System.Text.Encoding.UTF8);
+        File.Move(tmp, path, overwrite: true);
+    }
 
     private SettingsService()
     {
         _appDataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "YTNotifier");
-        var confDir  = Path.Combine(_appDataDir, "conf");
-        var bkupDir  = Path.Combine(_appDataDir, "bkup");
+            AppConstants.AppName);
+        var confDir  = Path.Combine(_appDataDir, DirConf);
+        var bkupDir  = Path.Combine(_appDataDir, DirBackup);
         Directory.CreateDirectory(confDir);
         Directory.CreateDirectory(bkupDir);
-        Directory.CreateDirectory(Path.Combine(_appDataDir, "logs"));
-        Directory.CreateDirectory(Path.Combine(_appDataDir, "icons"));
-        _configPath      = Path.Combine(confDir, "config.json");
-        _channelsPath    = Path.Combine(confDir, "channels.json");
-        _categoriesPath  = Path.Combine(confDir, "categories.json");
-        _apiKeyPath      = Path.Combine(confDir, "api_key.dat");
+        Directory.CreateDirectory(Path.Combine(_appDataDir, AppConstants.DirLogs));
+        Directory.CreateDirectory(Path.Combine(_appDataDir, AppConstants.DirIcons));
+        _configPath      = Path.Combine(confDir, FileConfig);
+        _channelsPath    = Path.Combine(confDir, FileChannels);
+        _categoriesPath  = Path.Combine(confDir, FileCategories);
+        _apiKeyPath      = Path.Combine(confDir, AppConstants.FileApiKey);
         _confDir         = confDir;
 
         // 旧パス（フラット構造）からの移行
-        foreach (var fname in new[] { "config.json", "channels.json", "categories.json", "api_key.dat" })
+        foreach (var fname in new[] { FileConfig, FileChannels, FileCategories, AppConstants.FileApiKey })
         {
             var oldPath = Path.Combine(_appDataDir, fname);
             var newPath = Path.Combine(confDir, fname);
@@ -56,11 +91,11 @@ public class SettingsService
     // ===== バックアップ / インポート =====
 
     /// <summary>Sounds フォルダのパス（exe と同じディレクトリ）</summary>
-    private static string SoundsDir =>
+    private static readonly string SoundsDir =
         Path.Combine(
             Path.GetDirectoryName(Environment.ProcessPath
                 ?? System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "",
-            "Sounds");
+            AppConstants.DirSounds);
 
     public string ExportBackup(string destPath)
     {
@@ -68,7 +103,7 @@ public class SettingsService
 
         // 拡張子を .ytbk に強制
         var ytbkPath = string.IsNullOrEmpty(destPath)
-            ? Path.Combine(_appDataDir, "bkup", $"backup_{timestamp}{BackupCryptoService.Extension}")
+            ? Path.Combine(_appDataDir, DirBackup, $"backup_{timestamp}{BackupCryptoService.Extension}")
             : Path.ChangeExtension(destPath, BackupCryptoService.Extension);
 
         // まずメモリ上にZIPを作成
@@ -87,7 +122,7 @@ public class SettingsService
                 {
                     // Sounds\ からの相対パスで ZIPエントリ名を構築
                     var relativePath = file.Substring(soundsDir.Length).TrimStart(Path.DirectorySeparatorChar);
-                    var entryName    = "Sounds/" + relativePath.Replace(Path.DirectorySeparatorChar, '/');
+                    var entryName    = SoundsZipPrefix + relativePath.Replace(Path.DirectorySeparatorChar, '/');
                     zip.CreateEntryFromFile(file, entryName);
                 }
         }
@@ -126,7 +161,7 @@ public class SettingsService
             using var zip   = new System.IO.Compression.ZipArchive(zipMs,
                 System.IO.Compression.ZipArchiveMode.Read);
 
-            var allowedFiles = new[] { "config.json", "channels.json", "categories.json", "api_key.dat" };
+            var allowedFiles = new[] { FileConfig, FileChannels, FileCategories, AppConstants.FileApiKey };
 
             foreach (var entry in zip.Entries)
             {
@@ -136,13 +171,13 @@ public class SettingsService
                 if (allowedFiles.Contains(entry.Name) &&
                     string.IsNullOrEmpty(entryDir))
                 {
-                    entry.ExtractToFile(Path.Combine(_appDataDir, "conf", entry.Name), overwrite: true);
+                    entry.ExtractToFile(Path.Combine(_appDataDir, DirConf, entry.Name), overwrite: true);
                     continue;
                 }
 
                 // Sounds フォルダ（フォルダ構造ごと exe ディレクトリに復元）
                 var fullNameFwd = entry.FullName.Replace('\\', '/');
-                if (fullNameFwd.StartsWith("Sounds/", StringComparison.OrdinalIgnoreCase)
+                if (fullNameFwd.StartsWith(SoundsZipPrefix, StringComparison.OrdinalIgnoreCase)
                     && !string.IsNullOrEmpty(entry.Name))
                 {
                     var exeDir = Path.GetDirectoryName(
@@ -155,6 +190,13 @@ public class SettingsService
 
                     var destPath = Path.Combine(exeDir,
                         fullNameFwd.Replace('/', Path.DirectorySeparatorChar));
+
+                    // Zip Slip 防止：展開先が想定ディレクトリ配下であることを確認
+                    var fullDest    = Path.GetFullPath(destPath);
+                    var allowedRoot = Path.GetFullPath(exeDir) + Path.DirectorySeparatorChar;
+                    if (!fullDest.StartsWith(allowedRoot, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
                     Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
                     entry.ExtractToFile(destPath, overwrite: true);
                 }
@@ -184,7 +226,7 @@ public class SettingsService
 
     // ===== 自動バックアップ用ダーティフラグ =====
     private bool _dirty = false;
-    private string BkupPath => Path.Combine(_appDataDir, "bkup", "auto_backup.ytbk");
+    private string BkupPath => Path.Combine(_appDataDir, DirBackup, FileAutoBackup);
     public  string AutoBackupPath => BkupPath;
 
     /// <summary>チャンネル/カテゴリ/設定の変更時に呼ぶ（VideoIDなど監視系は除く）</summary>
@@ -199,11 +241,11 @@ public class SettingsService
             Directory.CreateDirectory(Path.GetDirectoryName(BkupPath)!);
             ExportBackup(BkupPath);
             _dirty = false;
-            LoggerService.Instance.Success("自動バックアップを保存しました", null, YTNotifier.Models.LogCategory.System);
+            AppLogger.Log(LogMsg.BackupSaved);
         }
         catch (Exception ex)
         {
-            LoggerService.Instance.Error($"自動バックアップに失敗しました: {ex.Message}", null, YTNotifier.Models.LogCategory.System);
+            AppLogger.Log(LogMsg.BackupFailed, null, ex.Message);
         }
     }
 
@@ -253,7 +295,9 @@ public class SettingsService
                 if (channels == null || channels.Count == 0)
                 {
                     var bkupChannels = PeekChannelCountFromBackup(BkupPath);
-                    if (bkupChannels > 0)
+                    // bkupChannels > 0: バックアップにチャンネルあり
+                    // bkupChannels == -1: バックアップ読み取り不能（念のため復元試行）
+                    if (bkupChannels != 0)
                     { needRestore = true; restoreReason = "チャンネルが0件でした"; }
                 }
             }
@@ -265,10 +309,19 @@ public class SettingsService
         // サイレント復元実行
         try
         {
-            var (success, _) = ImportBackup(BkupPath);
-            return success ? restoreReason : null;
+            var (success, message) = ImportBackup(BkupPath);
+            if (!success)
+            {
+                AppLogger.Log(LogMsg.AutoRestoreFailed, null, message);
+                return null;
+            }
+            return restoreReason;
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            AppLogger.Log(LogMsg.AutoRestoreFailed, null, ex.Message);
+            return null;
+        }
     }
 
     /// <summary>バックアップ内のチャンネル数を取得（復元せず確認）</summary>
@@ -285,32 +338,35 @@ public class SettingsService
             if (zipBytes == null) return 0;
             using var zipMs  = new MemoryStream(zipBytes);
             using var zip    = new System.IO.Compression.ZipArchive(zipMs, System.IO.Compression.ZipArchiveMode.Read);
-            var entry        = zip.GetEntry("channels.json");
+            var entry        = zip.GetEntry(FileChannels);
             if (entry == null) return 0;
             using var reader = new System.IO.StreamReader(entry.Open());
             var channels     = Newtonsoft.Json.JsonConvert.DeserializeObject<List<Models.ChannelInfo>>(reader.ReadToEnd());
             return channels?.Count ?? 0;
         }
-        catch { return 0; }
+        catch { return -1; }  // -1 = 読み取り不能（0チャンネルとは区別する）
     }
 
     /// <summary>API使用ユニットを加算（日付をまたいだらリセット）</summary>
     public void AddApiUnits(int units)
     {
-        // YouTube APIクォータは太平洋時間0:00リセット = 日本時間16:00リセット
-        // 当日16:00以降なら「今日のクォータ期間」、16:00前なら「前日のクォータ期間」
-        var now         = DateTime.Now;
-        var quotaDate   = now.Hour >= 16 ? now.Date : now.Date.AddDays(-1);
-        var quotaKey    = quotaDate.ToString("yyyy-MM-dd");
-
-        if (Settings.TodayApiDate != quotaKey)
+        try
         {
-            Settings.TodayApiUnits = 0;
-            Settings.TodayApiDate  = quotaKey;
+            lock (_apiUnitsLock)
+            {
+                var quotaKey = AppConstants.GetQuotaDayKey();
+                if (Settings.TodayApiDate != quotaKey)
+                {
+                    Settings.TodayApiUnits = 0;
+                    Settings.TodayApiDate  = quotaKey;
+                }
+                Settings.TodayApiUnits += units;
+                var json = JsonConvert.SerializeObject(Settings, Formatting.Indented);
+                ApiKeyService.Save(_confDir, Settings.ApiKey);
+                WriteAtomic(_configPath, json);
+            }
         }
-        Settings.TodayApiUnits += units;
-        SaveSettingsSilent();
-        // クォータ更新をUIに通知
+        catch (Exception ex) { WriteSaveError("AddApiUnits", ex.Message); }
         MonitorService.Instance.NotifyQuotaUpdated();
     }
 
@@ -321,31 +377,43 @@ public class SettingsService
             string json;
             lock (_persistLock)
                 json = JsonConvert.SerializeObject(Categories, Formatting.Indented);
-            File.WriteAllText(_categoriesPath, json);
+            WriteAtomic(_categoriesPath, json);
         }
-        catch { }
+        catch (Exception ex) { WriteSaveError("SaveCategories", ex.Message); }
     }
 
     public CategoryInfo AddCategory(string name)
     {
-        var cat = new CategoryInfo
+        CategoryInfo cat;
+        lock (_persistLock)
         {
-            CategoryId = Guid.NewGuid().ToString(),
-            CategoryName = name,
-            SortOrder = Categories.Count
-        };
-        Categories.Add(cat);
+            cat = new CategoryInfo
+            {
+                CategoryId   = Guid.NewGuid().ToString(),
+                CategoryName = name,
+                SortOrder    = Categories.Count
+            };
+            Categories.Add(cat);
+        }
         MarkDirty();
         SaveCategories();
         return cat;
     }
 
+    public List<ChannelInfo> GetEnabledChannelsSnapshot()
+    {
+        lock (_persistLock) return Channels.Where(c => c.IsEnabled).ToList();
+    }
+
     public void RemoveCategory(string categoryId)
     {
-        // カテゴリ削除時は所属チャンネルを未分類に
-        foreach (var ch in Channels.Where(c => c.CategoryId == categoryId))
-            ch.CategoryId = null;
-        Categories.RemoveAll(c => c.CategoryId == categoryId);
+        lock (_persistLock)
+        {
+            // カテゴリ削除時は所属チャンネルを未分類に
+            foreach (var ch in Channels.Where(c => c.CategoryId == categoryId))
+                ch.CategoryId = null;
+            Categories.RemoveAll(c => c.CategoryId == categoryId);
+        }
         MarkDirty();
         SaveCategories();
         SaveChannels();
@@ -415,8 +483,8 @@ public class SettingsService
                     ApiKeyService.Save(_confDir, legacyKey);
                     // config.json から ApiKey キーを除去して上書き
                     legacy!.Remove("ApiKey");
-                    File.WriteAllText(_configPath, legacy.ToString(Newtonsoft.Json.Formatting.Indented));
-                    LoggerService.Instance.Info("APIキーを api_key.dat へ移行しました");
+                    WriteAtomic(_configPath, legacy.ToString(Newtonsoft.Json.Formatting.Indented));
+                    AppLogger.Log(LogMsg.ApiKeyMigrated);
                 }
             }
         }
@@ -434,6 +502,80 @@ public class SettingsService
             }
         }
         catch { Channels = new List<ChannelInfo>(); }
+
+        if (MigrateChannelsToFocusSlots()) { SaveChannelsSilent(); MarkDirty(); }
+    }
+
+    /// <summary>
+    /// 旧来の単一 MonitorMode（Normal/LowFreq/Focus 単一スロット）を
+    /// 動画/Short/ライブ別の3スロット形式（FocusSlots）に一括移行する（初回のみ）。
+    /// ChannelDetailWindow コンストラクタの変換ロジックと同じ規則を使用。
+    /// </summary>
+    private bool MigrateChannelsToFocusSlots()
+    {
+        bool migrated = false;
+        VideoKind[] defaultKinds = { VideoKind.Video, VideoKind.Short, VideoKind.Live };
+
+        // Days == 0（旧・全曜日）を 127（全ビット）に変換
+        foreach (var ch in Channels)
+        {
+            foreach (var slot in ch.FocusSlots.Where(s => s.SlotMode == MonitorMode.Focus && s.Days == 0))
+            {
+                slot.Days = 0b1111111;
+                migrated = true;
+            }
+        }
+
+        foreach (var ch in Channels)
+        {
+            if (ch.FocusSlots.Count > 0) continue;
+
+            List<FocusSlot> baseSlots = ch.MonitorMode switch
+            {
+                MonitorMode.LowFreq => new List<FocusSlot>
+                {
+                    new FocusSlot
+                    {
+                        SlotMode = MonitorMode.LowFreq,
+                        SlotLowFreqIntervalMinutes = ch.LowFreqIntervalMinutes,
+                        IsEnabled = true
+                    }
+                },
+                MonitorMode.Focus => new List<FocusSlot>
+                {
+                    new FocusSlot
+                    {
+                        SlotMode        = MonitorMode.Focus,
+                        NotifyKind      = VideoKind.Video,
+                        Days            = ch.FocusDays,
+                        Hour            = ch.FocusHour,
+                        Minute          = ch.FocusMinute,
+                        WindowMinutes   = ch.FocusWindowMinutes,
+                        IntervalMinutes = ch.FocusIntervalMinutes,
+                        IsEnabled       = true
+                    }
+                },
+                _ => new List<FocusSlot>
+                {
+                    new FocusSlot { SlotMode = MonitorMode.Normal, IsEnabled = true }
+                }
+            };
+
+            bool[] kindEnabled = { ch.NotifyVideo, ch.NotifyShort, ch.NotifyLive };
+            var slots = new List<FocusSlot>();
+            for (int i = 0; i < 3; i++)
+            {
+                var slot = i < baseSlots.Count ? baseSlots[i] : new FocusSlot { NotifyKind = defaultKinds[i] };
+                slot.IsEnabled = kindEnabled[i];
+                slots.Add(slot);
+            }
+
+            ch.FocusSlots  = slots;
+            ch.MonitorMode = MonitorMode.Focus;
+            migrated = true;
+        }
+
+        return migrated;
     }
 
     /// <summary>通常の設定保存（ダーティフラグを立てる）</summary>
@@ -452,9 +594,9 @@ public class SettingsService
         {
             ApiKeyService.Save(_confDir, Settings.ApiKey);
             var json = JsonConvert.SerializeObject(Settings, Formatting.Indented);
-            File.WriteAllText(_configPath, json);
+            WriteAtomic(_configPath, json);
         }
-        catch { }
+        catch (Exception ex) { WriteSaveError("SaveSettings", ex.Message); }
     }
 
     /// <summary>通常の保存（ダーティフラグを立てる）</summary>
@@ -474,9 +616,9 @@ public class SettingsService
             string json;
             lock (_persistLock)
                 json = JsonConvert.SerializeObject(Channels, Formatting.Indented);
-            File.WriteAllText(_channelsPath, json);
+            WriteAtomic(_channelsPath, json);
         }
-        catch { }
+        catch (Exception ex) { WriteSaveError("SaveChannels", ex.Message); }
     }
 
     public void AddChannel(ChannelInfo channel)
@@ -509,8 +651,18 @@ public class SettingsService
     /// <summary>監視系の状態更新（LastCheckedAt/VideoId/NextCheckAt等）。ダーティフラグを立てない</summary>
     public void UpdateChannelSilent(ChannelInfo channel)
     {
-        ReplaceChannel(channel);
-        SaveChannelsSilent();
+        try
+        {
+            lock (_persistLock)
+            {
+                var idx = Channels.FindIndex(c => c.ChannelId == channel.ChannelId);
+                if (idx < 0) return;
+                Channels[idx] = channel;
+                var json = JsonConvert.SerializeObject(Channels, Formatting.Indented);
+                WriteAtomic(_channelsPath, json);
+            }
+        }
+        catch (Exception ex) { WriteSaveError("UpdateChannelSilent", ex.Message); }
     }
 
     private void ReplaceChannel(ChannelInfo channel)

@@ -7,8 +7,7 @@
         MinHeight="230" MaxHeight="230"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
-        WindowStyle="None"
-        Background="Transparent">
+        WindowStyle="None">
 
     <Border Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
@@ -24,7 +23,8 @@
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Width="40" Height="40"
                             Background="Transparent" BorderThickness="0"
-                            Cursor="Hand" Click="CloseButton_Click">
+                            Cursor="Hand" Click="CloseButton_Click"
+                            ToolTip="閉じる" AutomationProperties.Name="閉じる">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
                                 <Border x:Name="Bd" Background="Transparent">

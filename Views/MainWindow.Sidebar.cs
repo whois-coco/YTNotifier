@@ -38,43 +38,58 @@ public partial class MainWindow : System.Windows.Window
     // ===== 監視ステータス =====
     private void UpdateMonitorStatus(bool isRunning)
     {
+        var quotaUntil   = MonitorService.Instance.QuotaSuspendedUntil;
+        var quotaSuspend = quotaUntil.HasValue;
+
+        // クォータ停止中は強制的に停止扱い
+        var effectiveRunning = !quotaSuspend && isRunning;
+
         if (StatusBadge.Template?.FindName("IconRunning", StatusBadge) is Viewbox iconOn)
-            iconOn.Visibility  = (!_isOffline && isRunning) ? Visibility.Visible : Visibility.Collapsed;
+            iconOn.Visibility  = (!_isOffline && effectiveRunning) ? Visibility.Visible : Visibility.Collapsed;
         if (StatusBadge.Template?.FindName("IconStopped", StatusBadge) is Viewbox iconOff)
-            iconOff.Visibility = (!_isOffline && !isRunning) ? Visibility.Visible : Visibility.Collapsed;
+            iconOff.Visibility = (!_isOffline && !effectiveRunning) ? Visibility.Visible : Visibility.Collapsed;
         if (StatusBadge.Template?.FindName("IconOffline", StatusBadge) is Viewbox iconOffline)
             iconOffline.Visibility = _isOffline ? Visibility.Visible : Visibility.Collapsed;
 
         if (StatusBadge.Template?.FindName("StatusText", StatusBadge) is System.Windows.Controls.TextBlock txt)
         {
-            txt.Text       = _isOffline ? "オフライン" : isRunning ? "監視中" : "停止中";
+            txt.Text = _isOffline ? "オフライン"
+                : quotaSuspend ? "クォータ超過"
+                : effectiveRunning ? "監視中" : "停止中";
             txt.Foreground = _isOffline
                 ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xEF, 0x44, 0x44))
-                : isRunning
-                    ? (System.Windows.Media.Brush)Application.Current.Resources["SuccessBrush"]
-                    : (System.Windows.Media.Brush)Application.Current.Resources["SidebarTextBrush"];
+                : quotaSuspend
+                    ? (System.Windows.Media.Brush)Application.Current.Resources["WarningBrush"]
+                    : effectiveRunning
+                        ? (System.Windows.Media.Brush)Application.Current.Resources["SuccessBrush"]
+                        : (System.Windows.Media.Brush)Application.Current.Resources["SidebarTextBrush"];
             txt.Visibility = _sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
         }
 
         SetDynamicBrush(StatusBadge, Button.BackgroundProperty, "SidebarStatusBgBrush");
-        StatusBadge.ToolTip = _isOffline ? "オフライン" : isRunning ? "クリックして監視を停止" : "クリックして監視を開始";
-        if (_sidebarCollapsed) UpdateToggleIconColor(isRunning);
+
+        // クォータ停止中はボタンを無効化してトグル操作を封じる
+        StatusBadge.IsEnabled = !quotaSuspend && !_isOffline;
+        StatusBadge.ToolTip   = _isOffline   ? "オフライン"
+            : quotaSuspend ? $"クォータ超過のため停止中（{quotaUntil!.Value:HH:mm} に再開）"
+            : effectiveRunning ? "クリックして監視を停止" : "クリックして監視を開始";
+
+        if (_sidebarCollapsed) UpdateToggleIconColor(effectiveRunning);
     }
 
     /// <summary>実際にDNS解決を試みてネットワーク疎通を確認する</summary>
-    internal void CheckNetworkState()
+    internal async void CheckNetworkState()
     {
         var isAvailable = false;
         try
         {
-            // DNS解決で実際の疎通確認（単純なGetIsNetworkAvailableより確実）
             using var ping = new System.Net.NetworkInformation.Ping();
-            var reply = ping.Send("8.8.8.8", 1000); // Google DNS、1秒タイムアウト
+            var reply = await ping.SendPingAsync("8.8.8.8", 1000);
             isAvailable = reply.Status == System.Net.NetworkInformation.IPStatus.Success;
         }
         catch { isAvailable = false; }
 
-        if (isAvailable == _isOffline) // 状態が変化した時のみ更新
+        if (isAvailable == _isOffline)
             UpdateNetworkState(isAvailable);
     }
 
@@ -92,28 +107,34 @@ public partial class MainWindow : System.Windows.Window
         if (_isOffline)
         {
             if (MonitorService.Instance.IsRunning) MonitorService.Instance.Stop();
-            LoggerService.Instance.Warning("インターネット接続が切断されました。監視を停止します。");
+            AppLogger.Log(LogMsg.NetworkDisconnected);
         }
         else
         {
             MonitorService.Instance.Start();
             UpdateMonitorStatus(true);
-            LoggerService.Instance.Info("インターネット接続が回復しました。監視を再開します。");
+            AppLogger.Log(LogMsg.NetworkRestored);
         }
     }
 
     // ===== サイドバー =====
     private void SidebarToggle_Click(object sender, RoutedEventArgs e)
     {
-        if (_sidebarCollapsed) ExpandSidebar();
-        else                   CollapseSidebar();
+        if (_sidebarCollapsed) { AppLogger.Log(LogMsg.SidebarToggled, null, "展開"); ExpandSidebar(); }
+        else                   { AppLogger.Log(LogMsg.SidebarToggled, null, "折り畳み"); CollapseSidebar(); }
     }
 
     private void UpdateMinWidth() { MinHeight = WindowMinHeight; }
 
     private void SyncWindowWidth()
     {
-        if (SettingsService.Instance.Settings.CompactMode) return;
+        if (SettingsService.Instance.Settings.CompactMode)
+        {
+            ContentColumn.Width    = new GridLength(ContentWidthCompact);
+            ContentColumn.MinWidth = ContentWidthCompact;
+            MaxWidth = MinWidth = Width = CompactTotalWidth;
+            return;
+        }
         var target = _sidebarCollapsed ? CollapsedTotalWidth : ExpandedTotalWidth;
         MaxWidth = MinWidth = target;
         if ((int)Width != target) Width = target;
@@ -147,12 +168,21 @@ public partial class MainWindow : System.Windows.Window
     {
         var pages = new Dictionary<object, UIElement>
         {
-            [SettingsNavApp]         = SettingsPageApp,
-            [SettingsNavMonitor]     = SettingsPageMonitor,
-            [SettingsNavLog]         = SettingsPageLog,
-            [SettingsNavActivityLog] = SettingsPageActivityLog,
-            [SettingsNavAbout]       = SettingsPageAbout,
+            [SettingsNavApp]     = SettingsPageApp,
+            [SettingsNavDisplay] = SettingsPageDisplay,
+            [SettingsNavMonitor] = SettingsPageMonitor,
+            [SettingsNavAbout]   = SettingsPageAbout,
         };
+
+        var pageNames = new Dictionary<object, string>
+        {
+            [SettingsNavApp]     = "動作",
+            [SettingsNavDisplay] = "表示",
+            [SettingsNavMonitor] = "通知",
+            [SettingsNavAbout]   = "ABOUT",
+        };
+        if (pageNames.TryGetValue(sender, out var pageName))
+            AppLogger.Log(LogMsg.SettingsSubNavSwitched, null, pageName);
 
         foreach (var (nav, page) in pages)
         {
@@ -182,11 +212,17 @@ public partial class MainWindow : System.Windows.Window
             [NavSettings] = PageSettings,
         };
 
+        if (sender == NavWatch)         AppLogger.Log(LogMsg.NavPageSwitched, null, "チャンネル");
+        else if (sender == NavSettings) AppLogger.Log(LogMsg.NavPageSwitched, null, "設定");
+
         foreach (var (_, page) in pageMap)
             page.Visibility = Visibility.Collapsed;
 
         if (pageMap.TryGetValue(sender, out var targetPage))
             targetPage.Visibility = Visibility.Visible;
+
+        if (sender == NavSettings)
+            SettingsNavBorder_Click(SettingsNavDisplay, null!);
 
         // セレクターバー切り替え
         SetNavSelectorBar(NavWatch,    sender == NavWatch);
@@ -237,6 +273,7 @@ public partial class MainWindow : System.Windows.Window
     // ===== アクションボタン =====
     private async void ManualCheckButton_Click(object sender, RoutedEventArgs e)
     {
+        AppLogger.Log(LogMsg.ManualCheckTriggered);
         InlineCheckButton.IsEnabled = false;
         Nav_Click(NavWatch, e);
         await MonitorService.Instance.ManualCheckAsync();
@@ -246,12 +283,16 @@ public partial class MainWindow : System.Windows.Window
 
     private void MonitorToggleButton_Click(object sender, RoutedEventArgs e)
     {
+        if (MonitorService.Instance.QuotaSuspendedUntil.HasValue) return;
+
         if (MonitorService.Instance.IsRunning)
         {
+            AppLogger.Log(LogMsg.MonitorToggleClicked, null, "停止");
             MonitorService.Instance.Stop();
         }
         else
         {
+            AppLogger.Log(LogMsg.MonitorToggleClicked, null, "開始");
             LoggerService.Instance.ClearUiLog();
             MonitorService.Instance.Start();
         }

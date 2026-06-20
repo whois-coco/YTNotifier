@@ -68,9 +68,6 @@
     <SolidColorBrush x:Key="SidebarActiveTextBrush" Color="{StaticResource SidebarActiveTextColor}"/>
     <SolidColorBrush x:Key="SidebarTitleBrush"      Color="{StaticResource SidebarTitleColor}"/>
 
-    <SolidColorBrush x:Key="HeaderGradientBrush"  Color="{StaticResource SidebarColor}"/>
-    <SolidColorBrush x:Key="SidebarGradientBrush" Color="{StaticResource SidebarColor}"/>
-    <SolidColorBrush x:Key="CardGradientBrush"    Color="{StaticResource SurfaceColor}"/>
-    <SolidColorBrush x:Key="TitleBarAccentBrush"  Color="{StaticResource AccentColor}"/>
+
 
 </ResourceDictionary>

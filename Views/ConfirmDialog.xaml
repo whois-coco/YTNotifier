@@ -34,7 +34,7 @@
                         Style="{StaticResource SecondaryButton}"
                         Padding="14,7" Margin="0,0,8,0"
                         Click="Cancel_Click"/>
-                <Button x:Name="OkButton"
+                <Button x:Name="OkButton" Content="OK"
                         Style="{StaticResource PrimaryButton}"
                         Padding="14,7" Click="Ok_Click"/>
             </StackPanel>

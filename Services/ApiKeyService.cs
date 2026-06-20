@@ -1,6 +1,7 @@
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using YTNotifier.Constants;
 
 namespace YTNotifier.Services;
 
@@ -16,13 +17,12 @@ public static class ApiKeyService
         0x59, 0x54, 0x4E, 0x6F, 0x74, 0x69, 0x66, 0x69,
         0x65, 0x72, 0x41, 0x70, 0x70, 0x4B, 0x65, 0x79
     };
-    private const int Iterations   = 10000;
-    private const int KeySize      = 32; // AES-256
-    private const int IvSize       = 16;
-    private const string FileName  = "api_key.dat";
+    private const int Iterations = 10000;
+    private const int KeySize    = 32; // AES-256
+    private const int IvSize     = 16;
 
     private static string GetPath(string appDataDir)
-        => Path.Combine(appDataDir, FileName);
+        => Path.Combine(appDataDir, AppConstants.FileApiKey);
 
     private static byte[] DeriveKey()
     {
@@ -92,5 +92,4 @@ public static class ApiKeyService
         }
     }
 
-    public static string FileName_ => FileName;
 }

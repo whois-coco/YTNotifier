@@ -5,6 +5,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Forms;
 using System.Windows.Threading;
+using YTNotifier.Constants;
 using YTNotifier.Services;
 using YTNotifier.Views;
 
@@ -42,15 +43,12 @@ public partial class App : System.Windows.Application
         try
         {
             // 起動前にデータ破損・消失を検知して自動復元（ユーザー意識不要）
+            // TryAutoRestore が成功した場合、ImportBackup 内で Load() を呼ぶため二重呼び出し不要
             var restoreReason = SettingsService.Instance.TryAutoRestore();
-            SettingsService.Instance.Load();
-            // 復元後にログ出力（LoggerServiceはLoad後に使用可能）
-            if (restoreReason != null)
-            {
-                LoggerService.Instance.Warning(
-                    $"自動復元を実行しました（理由: {restoreReason}）",
-                    null, YTNotifier.Models.LogCategory.System);
-            }
+            if (restoreReason == null)
+                SettingsService.Instance.Load();
+            else
+                AppLogger.Log(LogMsg.AutoRestored, null, restoreReason);
         }
         catch (Exception ex) { ShowFatalError("設定ファイルの読み込みに失敗しました", ex); Shutdown(); return; }
 
@@ -199,7 +197,7 @@ public partial class App : System.Windows.Application
 
     private static string GetLogDir() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "YTNotifier", "logs");  // logs フォルダ
+        AppConstants.AppName, AppConstants.DirLogs);
 
     protected override void OnExit(ExitEventArgs e)
     {

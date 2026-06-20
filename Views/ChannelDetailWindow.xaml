@@ -143,74 +143,16 @@
                         </Grid>
                     </Border>
 
-                    <!-- 監視モード -->
+                    <!-- 監視設定 -->
                     <Separator Style="{StaticResource HorizontalSeparator}" Margin="0,0,0,12"/>
-                    <Grid Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="監視モード" FontSize="11"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   VerticalAlignment="Center" Margin="0,0,12,0"/>
-                        <ComboBox x:Name="MonitorModeCombo" Grid.Column="1"
-                                  Style="{StaticResource ModernComboBox}"
-                                  SelectionChanged="MonitorModeCombo_Changed">
-                            <ComboBoxItem Content="通常" Tag="Normal" Style="{StaticResource ModernComboBoxItem}"/>
-                            <ComboBoxItem Content="低頻度" Tag="LowFreq" Style="{StaticResource ModernComboBoxItem}"/>
-                            <ComboBoxItem Content="時間指定" Tag="Focus" Style="{StaticResource ModernComboBoxItem}"/>
-                        </ComboBox>
-                    </Grid>
-
-                    <!-- 通常モード設定 -->
-                    <Border x:Name="NormalPanel" Visibility="Collapsed"
-                            Background="{DynamicResource SurfaceAltBrush}"
-                            CornerRadius="6" Padding="14,12" Margin="0,0,0,8">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="監視間隔" FontSize="11"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       VerticalAlignment="Center"/>
-                            <ComboBox x:Name="NormalIntervalBox" Width="130" Grid.Column="1"
-                                      Style="{StaticResource ModernComboBox}"
-                                      SelectionChanged="ComboBox_Changed"/>
-                        </Grid>
-                    </Border>
-
-                    <!-- 低頻度設定 -->
-                    <Border x:Name="LowFreqPanel" Visibility="Collapsed"
-                            Background="{DynamicResource SurfaceAltBrush}"
-                            CornerRadius="6" Padding="14,12" Margin="0,0,0,8">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="監視間隔" FontSize="11"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       VerticalAlignment="Center"/>
-                            <ComboBox x:Name="LowFreqIntervalBox" Width="130" Grid.Column="1"
-                                      Style="{StaticResource ModernComboBox}"
-                                      SelectionChanged="ComboBox_Changed">
-                                <ComboBoxItem Content="1時間" Tag="60" Style="{StaticResource ModernComboBoxItem}"/>
-                                <ComboBoxItem Content="3時間" Tag="180" Style="{StaticResource ModernComboBoxItem}"/>
-                                <ComboBoxItem Content="6時間" Tag="360" Style="{StaticResource ModernComboBoxItem}"/>
-                                <ComboBoxItem Content="12時間" Tag="720" Style="{StaticResource ModernComboBoxItem}"/>
-                                <ComboBoxItem Content="24時間" Tag="1440" Style="{StaticResource ModernComboBoxItem}"/>
-                            </ComboBox>
-                        </Grid>
-                    </Border>
-
-                    <!-- 時間指定: タブUI -->
-                    <Border x:Name="FocusSlotsPanel" Visibility="Collapsed"
-                            BorderBrush="{DynamicResource BorderBrush}"
+                    <TextBlock Text="監視設定" FontSize="10" FontWeight="Bold"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               Margin="0,0,0,8"/>
+                    <Border BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1" CornerRadius="6"
                             Margin="0,0,0,8">
                         <StackPanel>
-                            <!-- 横ナビ（設定タブと同形式） -->
+                            <!-- タブナビ -->
                             <Border Background="{DynamicResource SurfaceAltBrush}"
                                     BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="0,0,0,1"
@@ -219,7 +161,7 @@
                                             Orientation="Horizontal"
                                             Height="36"/>
                             </Border>
-                            <!-- コンテンツ -->
+                            <!-- タブコンテンツ -->
                             <StackPanel x:Name="FocusTabContent"
                                         Margin="14,12,14,12"/>
                         </StackPanel>

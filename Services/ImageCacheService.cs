@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using YTNotifier.Constants;
 
 namespace YTNotifier.Services;
 
@@ -10,11 +11,16 @@ namespace YTNotifier.Services;
 /// </summary>
 public static class ImageCacheService
 {
-    private static string IconCacheDir =>
-        Path.Combine(SettingsService.Instance.AppDataDir, "icons");
+    private static readonly System.Net.Http.HttpClient _http =
+        new() { Timeout = TimeSpan.FromSeconds(5) };
+    private static readonly System.Threading.SemaphoreSlim _thumbWriteLock = new(1, 1);
 
+    private static string IconCacheDir =>
+        Path.Combine(SettingsService.Instance.AppDataDir, AppConstants.DirIcons);
+
+    private const string DirThumbCache = "thumbcache";
     private static string ThumbCacheDir =>
-        Path.Combine(SettingsService.Instance.AppDataDir, "thumbcache");
+        Path.Combine(SettingsService.Instance.AppDataDir, DirThumbCache);
 
     /// <summary>URLのSHA1ハッシュでキャッシュファイル名を生成する</summary>
     private static string GetHashFileName(string url, string extension)
@@ -38,7 +44,7 @@ public static class ImageCacheService
     /// 動画サムネイルをダウンロードしてキャッシュパスを返す（ヒーロー画像用）
     /// 1週間以上古いキャッシュを自動削除する
     /// </summary>
-    public static string? GetOrDownloadThumbnail(string url)
+    public static async Task<string?> GetOrDownloadThumbnailAsync(string url)
     {
         try
         {
@@ -46,16 +52,23 @@ public static class ImageCacheService
 
             // 1週間以上古いキャッシュを削除
             foreach (var old in Directory.GetFiles(ThumbCacheDir, "*.jpg"))
-                if (File.GetLastWriteTime(old) < DateTime.Now.AddDays(-7))
+                if (File.GetLastWriteTime(old) < DateTime.Now.AddDays(-AppConstants.ThumbnailCacheDays))
                     try { File.Delete(old); } catch { }
 
             var filePath = Path.Combine(ThumbCacheDir, GetHashFileName(url, ".jpg"));
             if (File.Exists(filePath)) return filePath;
 
-            using var http = new System.Net.Http.HttpClient();
-            http.Timeout   = TimeSpan.FromSeconds(5);
-            var bytes      = http.GetByteArrayAsync(url).GetAwaiter().GetResult();
-            File.WriteAllBytes(filePath, bytes);
+            using var response = await _http.GetAsync(url).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+
+            await _thumbWriteLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (!File.Exists(filePath))
+                    File.WriteAllBytes(filePath, bytes);
+            }
+            finally { _thumbWriteLock.Release(); }
             return filePath;
         }
         catch { return null; }

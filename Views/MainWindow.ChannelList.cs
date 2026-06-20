@@ -14,6 +14,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using YTNotifier.Constants;
 using YTNotifier.Models;
 using YTNotifier.Services;
 using Application      = System.Windows.Application;
@@ -49,9 +50,7 @@ public partial class MainWindow : System.Windows.Window
             SetDeleteButtonVisibility(child, _editMode);
         }
 
-        LoggerService.Instance.Info(_editMode
-            ? "編集モード開始：ドラッグでチャンネルを並び替えられます"
-            : "編集モード終了");
+        AppLogger.Log(_editMode ? LogMsg.EditModeOn : LogMsg.EditModeOff);
     }
 
     private static void SetDeleteButtonVisibility(Border row, bool visible)
@@ -208,11 +207,15 @@ public partial class MainWindow : System.Windows.Window
         }
     }
 
+    // カテゴリなし表示モードでドラッグ対象を全チャンネルに広げるためのセンチネル値
+    private const string AllChannelsCatSentinel = "\x00all";
+
     // ===== チャンネル一覧 =====
     internal void RefreshChannelList()
     {
+        var settings   = SettingsService.Instance.Settings;
         var channels   = SettingsService.Instance.Channels;
-        var categories = SettingsService.Instance.Categories.OrderBy(c => c.SortOrder).ToList();
+        var categories = SettingsService.Instance.Categories.OrderBy(c => c.SortOrder);
 
         ChannelList.Children.Clear();
         ChannelCountText.Text = $"{channels.Count} チャンネル";
@@ -229,20 +232,28 @@ public partial class MainWindow : System.Windows.Window
             return;
         }
 
-        foreach (var cat in categories)
+        if (settings.NoCategoryMode)
         {
-            var catChannels = channels.Where(c => c.CategoryId == cat.CategoryId).ToList();
-            ChannelList.Children.Add(CreateCategoryRow(cat, catChannels.Count(c => c.HasUnread)));
-            if (!cat.IsCollapsed)
-                foreach (var ch in catChannels) ChannelList.Children.Add(CreateChannelRow(ch));
+            // カテゴリなし表示: ヘッダーを省略して全チャンネルをフラットに並べる
+            foreach (var ch in channels) ChannelList.Children.Add(CreateChannelRow(ch));
         }
-
-        var uncategorized = channels.Where(c => string.IsNullOrEmpty(c.CategoryId)).ToList();
-        if (uncategorized.Count > 0)
+        else
         {
-            ChannelList.Children.Add(CreateUncategorizedRow(uncategorized.Count(c => c.HasUnread), _uncategorizedCollapsed));
-            if (!_uncategorizedCollapsed)
-                foreach (var ch in uncategorized) ChannelList.Children.Add(CreateChannelRow(ch));
+            foreach (var cat in categories)
+            {
+                var catChannels = channels.Where(c => c.CategoryId == cat.CategoryId).ToList();
+                ChannelList.Children.Add(CreateCategoryRow(cat, catChannels.Count(c => c.HasUnread)));
+                if (!cat.IsCollapsed)
+                    foreach (var ch in catChannels) ChannelList.Children.Add(CreateChannelRow(ch));
+            }
+
+            var uncategorized = channels.Where(c => string.IsNullOrEmpty(c.CategoryId)).ToList();
+            if (uncategorized.Count > 0)
+            {
+                ChannelList.Children.Add(CreateUncategorizedRow(uncategorized.Count(c => c.HasUnread), _uncategorizedCollapsed));
+                if (!_uncategorizedCollapsed)
+                    foreach (var ch in uncategorized) ChannelList.Children.Add(CreateChannelRow(ch));
+            }
         }
 
         if (_editMode)
@@ -251,9 +262,19 @@ public partial class MainWindow : System.Windows.Window
                 SetRowInteractive(child, false);
                 SetDeleteButtonVisibility(child, true);
             }
-
-        AutoAdjustIntervalForQuota();
     }
+
+    // カテゴリなし表示モードかどうか
+    private static bool IsNoCategoryMode
+        => SettingsService.Instance.Settings.NoCategoryMode;
+
+    // ドラッグ時のカテゴリIDを返す（カテゴリなし表示モードでは全チャンネル対象のセンチネルを返す）
+    private static string? GetDragCatId(ChannelInfo ch)
+        => IsNoCategoryMode ? AllChannelsCatSentinel : ch.CategoryId;
+
+    // catId がセンチネルの場合は全チャンネル行にマッチする
+    private static bool MatchesCatId(ChannelInfo ch, string? catId)
+        => catId == AllChannelsCatSentinel || ch.CategoryId == catId;
 
     // ===== カテゴリ行の共通ヘッダー生成 =====
     private Border CreateGroupHeaderRow(string label, int unreadCount, bool isCollapsed, object tag)
@@ -313,7 +334,7 @@ public partial class MainWindow : System.Windows.Window
     private Border CreateUncategorizedRow(int unreadCount, bool isCollapsed)
     {
         var row = CreateGroupHeaderRow("未分類", unreadCount, isCollapsed, "uncategorized");
-        row.MouseLeftButtonUp += (_, _) => { _uncategorizedCollapsed = !_uncategorizedCollapsed; RefreshChannelList(); };
+        row.MouseLeftButtonUp += (_, _) => { _uncategorizedCollapsed = !_uncategorizedCollapsed; AppLogger.Log(LogMsg.CategoryCollapsed, null, "未分類", _uncategorizedCollapsed ? "折り畳み" : "展開"); RefreshChannelList(); };
         return row;
     }
 
@@ -325,6 +346,7 @@ public partial class MainWindow : System.Windows.Window
         row.MouseLeftButtonUp += (_, _) =>
         {
             cat.IsCollapsed = !cat.IsCollapsed;
+            AppLogger.Log(LogMsg.CategoryCollapsed, null, cat.CategoryName, cat.IsCollapsed ? "折り畳み" : "展開");
             SettingsService.Instance.SaveCategories();
             RefreshChannelList();
         };
@@ -443,6 +465,7 @@ public partial class MainWindow : System.Windows.Window
                 SettingsService.Instance.SaveChannels();
                 RefreshChannelList();
             }
+            AppLogger.Log(LogMsg.CategoryContextClearNew, null, cat.CategoryName);
         };
 
         var expandAllItem = new MenuItem { Header = "▼ 全てのカテゴリを展開" };
@@ -451,6 +474,7 @@ public partial class MainWindow : System.Windows.Window
             foreach (var c in SettingsService.Instance.Categories) c.IsCollapsed = false;
             _uncategorizedCollapsed = false;
             SettingsService.Instance.SaveCategories();
+            AppLogger.Log(LogMsg.CategoryContextExpandAll);
             RefreshChannelList();
         };
 
@@ -460,6 +484,7 @@ public partial class MainWindow : System.Windows.Window
             foreach (var c in SettingsService.Instance.Categories) c.IsCollapsed = true;
             _uncategorizedCollapsed = true;
             SettingsService.Instance.SaveCategories();
+            AppLogger.Log(LogMsg.CategoryContextCollapseAll);
             RefreshChannelList();
         };
 
@@ -467,7 +492,7 @@ public partial class MainWindow : System.Windows.Window
         renameItem.Click += (_, _) =>
         {
             var newName = ShowCategoryNameDialog("カテゴリ名を変更", cat.CategoryName);
-            if (newName != null) { SettingsService.Instance.RenameCategory(cat.CategoryId, newName); RefreshChannelList(); }
+            if (newName != null) { AppLogger.Log(LogMsg.CategoryRenamed, null, cat.CategoryName, newName); SettingsService.Instance.RenameCategory(cat.CategoryId, newName); RefreshChannelList(); }
         };
 
         var deleteItem = new MenuItem { Header = "🗑 カテゴリを削除" };
@@ -475,6 +500,7 @@ public partial class MainWindow : System.Windows.Window
         {
             if (ConfirmDialog.Show(Application.Current.MainWindow as Window ?? this, "カテゴリ削除", $"「{cat.CategoryName}」を削除しますか？\nチャンネルは未分類に移動されます。", "削除") == true)
             {
+                AppLogger.Log(LogMsg.CategoryDeleted, null, cat.CategoryName);
                 SettingsService.Instance.RemoveCategory(cat.CategoryId);
                 RefreshChannelList();
             }
@@ -507,20 +533,21 @@ public partial class MainWindow : System.Windows.Window
     }
 
     // ===== クォータ =====
-    private void AutoAdjustIntervalForQuota()
+    internal void AutoAdjustIntervalForQuota()
     {
-        var s        = SettingsService.Instance.Settings;
-        var channels = SettingsService.Instance.Channels;
+        var svc      = SettingsService.Instance;
+        var s        = svc.Settings;
+        var channels = svc.Channels;
         if (channels.Count == 0) return;
 
         var (safe, recommended) = ApiQuotaHelper.ValidateInterval(s.CheckIntervalMinutes, channels);
-        if (!safe)
+        if (!safe && s.CheckIntervalMinutes != recommended)
         {
-            var recItem = IntervalComboBox?.Items.Cast<ComboBoxItem>()
+            var recItem = IntervalComboBox?.Items.OfType<ComboBoxItem>()
                 .FirstOrDefault(i => i.Tag?.ToString() == recommended.ToString());
             if (recItem != null && IntervalComboBox != null)
                 IntervalComboBox.SelectedItem = recItem;
-            LoggerService.Instance.Warning($"チャンネル数増加によりAPI超過リスク → 監視間隔を{recommended}分に自動調整");
+            AppLogger.Log(LogMsg.QuotaRiskAdjusted, null, recommended);
         }
         UpdateQuotaInfo();
     }
@@ -530,8 +557,10 @@ public partial class MainWindow : System.Windows.Window
         try
         {
             if (QuotaInfoText == null) return;
-            var channels = SettingsService.Instance.Channels;
-            var interval = SettingsService.Instance.Settings.CheckIntervalMinutes;
+            var svc      = SettingsService.Instance;
+            var settings = svc.Settings;
+            var channels = svc.Channels;
+            var interval = settings.CheckIntervalMinutes;
             var daily    = ApiQuotaHelper.EstimateDailyUnitsForChannels(interval, channels);
             var pct      = Math.Min(daily * 100.0 / ApiQuotaHelper.DailyLimit, 100.0);
 
@@ -539,12 +568,11 @@ public partial class MainWindow : System.Windows.Window
             QuotaPercentText.Text = $"{pct:F0}%";
 
             ApplyQuotaBar(QuotaBar, QuotaBarBg, QuotaInfoText, QuotaPercentText, pct);
-            UpdateIntervalComboBoxItems(channels.Count);
+            UpdateIntervalComboBoxItems(channels, channels.Count);
 
-            // 当日実使用量バー
-            var s          = SettingsService.Instance.Settings;
-            var today      = DateTime.Today.ToString("yyyy-MM-dd");
-            var actualUnits = s.TodayApiDate == today ? s.TodayApiUnits : 0;
+            // 当日実使用量バー（クォータ期間 = 太平洋時間0:00リセット）
+            var quotaKey    = AppConstants.GetQuotaDayKey();
+            var actualUnits = settings.TodayApiDate == quotaKey ? settings.TodayApiUnits : 0;
             var actualPct   = Math.Min(actualUnits * 100.0 / ApiQuotaHelper.DailyLimit, 100.0);
             ActualQuotaInfoText.Text = $"{actualUnits:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日";
             ActualQuotaPercentText.Text = $"{(int)Math.Round(actualPct)}%";
@@ -593,10 +621,9 @@ public partial class MainWindow : System.Windows.Window
     // barBg ごとの SizeChanged ハンドラを記録（多重登録防止用）
     private readonly Dictionary<Border, SizeChangedEventHandler> _quotaBarHandlers = new();
 
-    private void UpdateIntervalComboBoxItems(int channelCount)
+    private void UpdateIntervalComboBoxItems(List<ChannelInfo> channels, int channelCount)
     {
         if (IntervalComboBox == null) return;
-        var channels = SettingsService.Instance.Channels;
         foreach (System.Windows.Controls.ComboBoxItem item in IntervalComboBox.Items)
         {
             if (item.Tag is string tagStr && int.TryParse(tagStr, out int mins))
@@ -646,7 +673,7 @@ public partial class MainWindow : System.Windows.Window
         {
             row.MouseLeftButtonUp += async (s, e) =>
             {
-                if (!_editMode && s is Border b && b.Tag is ChannelInfo c) { e.Handled = true; await OpenChannelLatestVideoAsync(c); }
+                if (!_editMode && s is Border b && b.Tag is ChannelInfo c) { e.Handled = true; AppLogger.Log(LogMsg.ChannelRowClicked, null, c.ChannelName); await OpenChannelLatestVideoAsync(c); }
             };
 
             var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 0) };
@@ -782,7 +809,7 @@ public partial class MainWindow : System.Windows.Window
             if (_dragSourceRow?.RenderTransform is TranslateTransform srcTt)
                 srcTt.Y = pos.Y - dragStartPos.Y;
 
-            var catId  = _dragSource?.CategoryId;
+            var catId  = GetDragCatId(_dragSource!);
             var relIdx = CalcSwapIndex(pos.Y, catId);
             UpdateSwapAnimation(relIdx);
         };
@@ -798,7 +825,7 @@ public partial class MainWindow : System.Windows.Window
 
             if (wasDragging && _dragSourceRow != null)
             {
-                var catId      = _dragSource?.CategoryId;
+                var catId      = GetDragCatId(ch);
                 var currentPos = e.GetPosition(ChannelList);
                 var relIdx     = CalcSwapIndex(currentPos.Y, catId);
                 CommitSwap(ch, catId, relIdx);
@@ -823,23 +850,23 @@ public partial class MainWindow : System.Windows.Window
     }
     // ===== 入れ替えアニメーション =====
 
-    // ドラッグ開始時に同カテゴリ全行へ TranslateTransform を付与
+    // ドラッグ開始時に対象チャンネル全行へ TranslateTransform を付与
     private void InitRowTransforms()
     {
-        var catId = _dragSource?.CategoryId;
+        var catId = GetDragCatId(_dragSource!);
         foreach (var b in ChannelList.Children.OfType<Border>()
-            .Where(b => b.Tag is ChannelInfo ch && ch.CategoryId == catId))
+            .Where(b => b.Tag is ChannelInfo ch && MatchesCatId(ch, catId)))
         {
             if (b.RenderTransform is TranslateTransform tt) tt.Y = 0;
             else b.RenderTransform = new TranslateTransform(0, 0);
         }
     }
 
-    // マウスY座標から「ドラッグ元が落ち着くべき同カテゴリ内インデックス」を返す
+    // マウスY座標から「ドラッグ元が落ち着くべきインデックス」を返す
     private int CalcSwapIndex(double mouseY, string? catId)
     {
         var rows = ChannelList.Children.OfType<Border>()
-            .Where(b => b.Tag is ChannelInfo ch && ch.CategoryId == catId)
+            .Where(b => b.Tag is ChannelInfo ch && MatchesCatId(ch, catId))
             .ToList();
         if (rows.Count == 0) return -1;
 
@@ -871,9 +898,9 @@ public partial class MainWindow : System.Windows.Window
         _animDropIndex = best;
 
         if (_dragSourceRow == null) return;
-        var catId = (_dragSourceRow.Tag as ChannelInfo)?.CategoryId;
+        var catId = GetDragCatId((_dragSourceRow.Tag as ChannelInfo)!);
         var rows  = ChannelList.Children.OfType<Border>()
-            .Where(b => b.Tag is ChannelInfo ch && ch.CategoryId == catId)
+            .Where(b => b.Tag is ChannelInfo ch && MatchesCatId(ch, catId))
             .ToList();
 
         var srcIdx = rows.IndexOf(_dragSourceRow);
@@ -906,9 +933,10 @@ public partial class MainWindow : System.Windows.Window
     // ドロップ確定または キャンセル時に全行リセット
     private void ResetRowTransforms(bool commit)
     {
-        var catId = (_dragSourceRow?.Tag as ChannelInfo)?.CategoryId;
+        var src   = _dragSourceRow?.Tag as ChannelInfo;
+        var catId = src != null ? GetDragCatId(src) : null;
         foreach (var b in ChannelList.Children.OfType<Border>()
-            .Where(b => b.Tag is ChannelInfo ch && ch.CategoryId == catId))
+            .Where(b => b.Tag is ChannelInfo ch && MatchesCatId(ch, catId)))
         {
             if (b.RenderTransform is not TranslateTransform tt) continue;
             // 確定時は即時リセット（アニメーション中の状態でRefreshが走るのを防ぐ）
@@ -923,7 +951,7 @@ public partial class MainWindow : System.Windows.Window
         var channels = SettingsService.Instance.Channels;
         var sameCat  = channels
             .Select((c, i) => (c, i))
-            .Where(t => t.c.CategoryId == catId)
+            .Where(t => MatchesCatId(t.c, catId))
             .ToList();
 
         var srcCatIdx = sameCat.FindIndex(t => t.c.ChannelId == srcCh.ChannelId);
@@ -936,12 +964,11 @@ public partial class MainWindow : System.Windows.Window
             return;
         }
 
-        // 同カテゴリ内で移動
         var (moving, movingGlobal) = sameCat[srcCatIdx];
         channels.RemoveAt(movingGlobal);
 
-        // RemoveAt後に同カテゴリのインデックスを再取得
-        var updated = channels.Select((c, i) => (c, i)).Where(t => t.c.CategoryId == catId).ToList();
+        // RemoveAt後にインデックスを再取得
+        var updated = channels.Select((c, i) => (c, i)).Where(t => MatchesCatId(t.c, catId)).ToList();
 
         // destRelIdx は「移動先の行インデックス」（CalcSwapIndex が返す最近傍行）
         // srcより下に移動する場合: destの後ろに挿入（Remove後インデックスは1つずれる）
@@ -967,6 +994,7 @@ public partial class MainWindow : System.Windows.Window
 
         // 確定後にデバッグログを削除してリフレッシュ
         SettingsService.Instance.SaveChannels();
+        AppLogger.Log(LogMsg.ChannelReordered, null, srcCh.ChannelName);
         Dispatcher.Invoke(RefreshChannelList, System.Windows.Threading.DispatcherPriority.Render);
     }
 
@@ -995,7 +1023,7 @@ public partial class MainWindow : System.Windows.Window
             Cursor = Cursors.Hand, ToolTip = "クリックして最新動画を開く", Tag = "IconBorder"
         };
         b.PreviewMouseLeftButtonDown += (_, e) => e.Handled = true;
-        b.MouseLeftButtonUp += async (_, _) => await OpenChannelLatestVideoAsync(ch);
+        b.MouseLeftButtonUp += async (_, _) => { AppLogger.Log(LogMsg.ChannelRowClicked, null, ch.ChannelName); await OpenChannelLatestVideoAsync(ch); };
         var img = GetCachedIcon(ch.ThumbnailUrl);
         if (img != null) b.Child = new System.Windows.Controls.Image { Source = img, Stretch = Stretch.UniformToFill };
         return b;
@@ -1015,9 +1043,9 @@ public partial class MainWindow : System.Windows.Window
         info.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { nameText } });
 
         var kindRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
-        kindRow.Children.Add(MakeKindToggle("動画",  ch.NotifyVideo, ch.MonitorMode, YTNotifier.Services.VideoKind.Video,  v => { ch.NotifyVideo = v; SettingsService.Instance.UpdateChannel(ch); }));
-        kindRow.Children.Add(MakeKindToggle("Short", ch.NotifyShort, ch.MonitorMode, YTNotifier.Services.VideoKind.Short,  v => { ch.NotifyShort = v; SettingsService.Instance.UpdateChannel(ch); }));
-        kindRow.Children.Add(MakeKindToggle("ライブ", ch.NotifyLive,  ch.MonitorMode, YTNotifier.Services.VideoKind.Live,   v => { ch.NotifyLive  = v; SettingsService.Instance.UpdateChannel(ch); }));
+        kindRow.Children.Add(MakeKindToggle("動画",  ch.NotifyVideo, ch.GetEffectiveModeForKind(YTNotifier.Services.VideoKind.Video),  YTNotifier.Services.VideoKind.Video,  v => { ch.NotifyVideo = v; SettingsService.Instance.UpdateChannel(ch); AppLogger.Log(LogMsg.KindToggleChanged, ch.ChannelName, "動画",  v ? "ON" : "OFF"); }));
+        kindRow.Children.Add(MakeKindToggle("Short", ch.NotifyShort, ch.GetEffectiveModeForKind(YTNotifier.Services.VideoKind.Short),  YTNotifier.Services.VideoKind.Short,  v => { ch.NotifyShort = v; SettingsService.Instance.UpdateChannel(ch); AppLogger.Log(LogMsg.KindToggleChanged, ch.ChannelName, "Short", v ? "ON" : "OFF"); }));
+        kindRow.Children.Add(MakeKindToggle("ライブ", ch.NotifyLive,  ch.GetEffectiveModeForKind(YTNotifier.Services.VideoKind.Live),   YTNotifier.Services.VideoKind.Live,   v => { ch.NotifyLive  = v; SettingsService.Instance.UpdateChannel(ch); AppLogger.Log(LogMsg.KindToggleChanged, ch.ChannelName, "ライブ", v ? "ON" : "OFF"); }));
         info.Children.Add(kindRow);
 
         return info;
@@ -1055,7 +1083,7 @@ public partial class MainWindow : System.Windows.Window
         var menu = new ContextMenu();
 
         var clearItem = new MenuItem { Header = "🔔 NEWバッジを消す" };
-        clearItem.Click += (_, _) => { ch.HasUnread = false; SettingsService.Instance.UpdateChannel(ch); RefreshChannelList(); };
+        clearItem.Click += (_, _) => { AppLogger.Log(LogMsg.ChannelContextClearNew, null, ch.ChannelName); ch.HasUnread = false; SettingsService.Instance.UpdateChannel(ch); RefreshChannelList(); };
 
         var renameItem = new MenuItem { Header = "✏ 名称を変更" };
         renameItem.Click += (_, _) => ShowRenameDialog(ch);
@@ -1066,7 +1094,7 @@ public partial class MainWindow : System.Windows.Window
         newCatItem.Click += (_, _) =>
         {
             var catName = ShowCategoryNameDialog("新規カテゴリを作成");
-            if (catName != null) { var cat = SettingsService.Instance.AddCategory(catName); SettingsService.Instance.SetChannelCategory(ch.ChannelId, cat.CategoryId); RefreshChannelList(); }
+            if (catName != null) { var cat = SettingsService.Instance.AddCategory(catName); SettingsService.Instance.SetChannelCategory(ch.ChannelId, cat.CategoryId); AppLogger.Log(LogMsg.ChannelMovedToCategory, null, ch.ChannelName, catName); RefreshChannelList(); }
         };
 
         var moveToCatItem = new MenuItem { Header = "📂 カテゴリを移動" };
@@ -1075,6 +1103,7 @@ public partial class MainWindow : System.Windows.Window
         var detailItem = new MenuItem { Header = "⚙ 詳細設定" };
         detailItem.Click += (_, _) =>
         {
+            AppLogger.Log(LogMsg.ChannelContextOpenDetail, null, ch.ChannelName);
             var win = new ChannelDetailWindow(ch, this);
             if (win.ShowDialog() == true) { RefreshChannelList(); UpdateQuotaInfo(); }
         };
@@ -1091,6 +1120,8 @@ public partial class MainWindow : System.Windows.Window
         {
             var vis = _editMode ? Visibility.Visible : Visibility.Collapsed;
             clearItem.Visibility     = _editMode ? Visibility.Collapsed : Visibility.Visible;
+            clearItem.IsEnabled      = ch.HasUnread;
+            clearItem.Opacity        = ch.HasUnread ? 1.0 : 0.4;
             renameItem.Visibility    = vis; sepRename.Visibility    = vis;
             newCatItem.Visibility    = vis; moveToCatItem.Visibility = vis;
             sep.Visibility           = vis; detailItem.Visibility   = vis;
@@ -1103,12 +1134,12 @@ public partial class MainWindow : System.Windows.Window
                 item.Click += (s, _) =>
                 {
                     if (s is MenuItem mi && mi.Tag is (ChannelInfo c, CategoryInfo ca))
-                    { SettingsService.Instance.SetChannelCategory(c.ChannelId, ca.CategoryId); RefreshChannelList(); }
+                    { AppLogger.Log(LogMsg.ChannelMovedToCategory, null, c.ChannelName, ca.CategoryName); SettingsService.Instance.SetChannelCategory(c.ChannelId, ca.CategoryId); RefreshChannelList(); }
                 };
                 moveToCatItem.Items.Add(item);
             }
             var uncatItem = new MenuItem { Header = "（未分類）" };
-            uncatItem.Click += (_, _) => { SettingsService.Instance.SetChannelCategory(ch.ChannelId, null); RefreshChannelList(); };
+            uncatItem.Click += (_, _) => { AppLogger.Log(LogMsg.ChannelMovedToCategory, null, ch.ChannelName, "未分類"); SettingsService.Instance.SetChannelCategory(ch.ChannelId, null); RefreshChannelList(); };
             if (categories.Count > 0) moveToCatItem.Items.Add(new Separator());
             moveToCatItem.Items.Add(uncatItem);
         };
@@ -1127,7 +1158,7 @@ public partial class MainWindow : System.Windows.Window
             if (!on) return "SurfaceElevatedBrush";
             return mode switch
             {
-                YTNotifier.Models.MonitorMode.LowFreq => "PrimaryBrush",
+                YTNotifier.Models.MonitorMode.LowFreq => "WarningBrush",
                 YTNotifier.Models.MonitorMode.Focus   => "SuccessBrush",
                 _                                     => "PrimaryBrush"
             };
@@ -1182,10 +1213,10 @@ public partial class MainWindow : System.Windows.Window
     }
 
     // ===== チャンネル操作 =====
-    public static async Task OpenChannelLatestVideoFromToastAsync(ChannelInfo ch)
-        => await OpenChannelLatestVideoAsync(ch);
+    public static async Task OpenChannelLatestVideoFromToastAsync(ChannelInfo ch, string? toastUrl = null)
+        => await OpenChannelLatestVideoAsync(ch, toastUrl);
 
-    private static async Task OpenChannelLatestVideoAsync(ChannelInfo ch)
+    private static async Task OpenChannelLatestVideoAsync(ChannelInfo ch, string? toastUrl = null)
     {
         if (ch.HasUnread)
         {
@@ -1197,16 +1228,25 @@ public partial class MainWindow : System.Windows.Window
         if (!ch.NotifyVideo && !ch.NotifyShort && !ch.NotifyLive)
         {
             OpenUrl(ch.ChannelUrl);
-            LoggerService.Instance.Info("チャンネルページを開きます（全種別オフ）", ch.ChannelName);
+            AppLogger.Log(LogMsg.OpenChannelPage, ch.ChannelName);
             return;
         }
 
+        // toast に埋め込まれた URL（通知対象の動画）を直接開く
+        if (!string.IsNullOrEmpty(toastUrl))
+        {
+            OpenUrl(toastUrl);
+            AppLogger.Log(LogMsg.OpenLatestVideo, ch.ChannelName, "通知動画");
+            return;
+        }
+
+        // toastUrl がない場合（チャンネル行クリック等）は API で最新動画を取得
         string url = ch.ChannelUrl;
         var apiKey = SettingsService.Instance.Settings.ApiKey;
 
         if (!string.IsNullOrEmpty(apiKey))
         {
-            LoggerService.Instance.Info("最新動画を検索中...", ch.ChannelName);
+            AppLogger.Log(LogMsg.SearchingVideo, ch.ChannelName);
             try
             {
                 var result = await new YouTubeApiClient().FetchLatestAllowedVideoAsync(
@@ -1217,25 +1257,30 @@ public partial class MainWindow : System.Windows.Window
                 {
                     var (videoId, kind) = result.Value;
                     if (kind == VideoKind.Video && videoId != null) { ch.LastVideoId = videoId; SettingsService.Instance.UpdateChannel(ch); }
-                    url = $"https://www.youtube.com/watch?v={videoId ?? string.Empty}";
-                    LoggerService.Instance.Info($"最新{KindLabel(kind)}を開きます", ch.ChannelName);
+                    url = YouTubeConstants.WatchUrlBase + (videoId ?? string.Empty);
+                    AppLogger.Log(LogMsg.OpenLatestVideo, ch.ChannelName, KindLabel(kind));
                 }
                 else
                 {
-                    url = !string.IsNullOrEmpty(ch.LastVideoId) ? $"https://www.youtube.com/watch?v={ch.LastVideoId}" : ch.ChannelUrl;
-                    LoggerService.Instance.Info("対象動画が見つかりませんでした", ch.ChannelName);
+                    url = !string.IsNullOrEmpty(ch.LastVideoId) ? YouTubeConstants.WatchUrlBase + ch.LastVideoId : ch.ChannelUrl;
+                    AppLogger.Log(LogMsg.VideoNotFound, ch.ChannelName);
                 }
             }
             catch
             {
                 url = !string.IsNullOrEmpty(ch.LastVideoId) ? $"https://www.youtube.com/watch?v={ch.LastVideoId}" : ch.ChannelUrl;
-                LoggerService.Instance.Warning("API失敗、フォールバック", ch.ChannelName);
+                AppLogger.Log(LogMsg.ApiFallback, ch.ChannelName);
             }
         }
-        else if (!string.IsNullOrEmpty(ch.LastVideoId))
+        else
         {
-            url = $"https://www.youtube.com/watch?v={ch.LastVideoId}";
-            LoggerService.Instance.Info("最新動画を開きます（APIキー未設定）", ch.ChannelName);
+            AppLogger.Log(LogMsg.ApiKeyNotSetChannel, ch.ChannelName);
+            System.Windows.MessageBox.Show(
+                "APIキーが設定されていないため、最新動画を取得できません。\n設定タブからAPIキーを入力してください。",
+                "APIキー未設定",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Warning);
+            return;
         }
 
         OpenUrl(url);
@@ -1250,7 +1295,7 @@ public partial class MainWindow : System.Windows.Window
         if (name == null) return;
         ch.ChannelName = name;
         SettingsService.Instance.UpdateChannel(ch);
-        LoggerService.Instance.Info($"名称を変更しました → {name}", ch.ChannelName);
+        AppLogger.Log(LogMsg.ChannelRenamed, null, name);
         RefreshChannelList();
     }
 
@@ -1260,7 +1305,7 @@ public partial class MainWindow : System.Windows.Window
         if (sender is not Button btn || btn.Tag is not ChannelInfo ch) return;
         if (ConfirmDialog.Show(Application.Current.MainWindow as Window, "チャンネルを削除", $"「{ch.ChannelName}」を削除しますか？", "削除") != true) return;
         SettingsService.Instance.RemoveChannel(ch.ChannelId);
-        LoggerService.Instance.Info("チャンネルを削除しました", ch.ChannelName);
+        AppLogger.Log(LogMsg.ChannelRemoved, ch.ChannelName);
         (Application.Current.MainWindow as MainWindow)?.RefreshChannelList();
     }
 
@@ -1354,6 +1399,7 @@ public partial class MainWindow : System.Windows.Window
         for (int i = 0; i < categories.Count; i++) categories[i].SortOrder = i;
 
         SettingsService.Instance.SaveCategories();
+        AppLogger.Log(LogMsg.CategoryReordered, null, movingCat.CategoryName);
         RefreshChannelList();
         e.Handled = true;
     }

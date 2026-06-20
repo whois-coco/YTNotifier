@@ -5,12 +5,15 @@ namespace YTNotifier.Models;
 
 public class AppSettings
 {
-    [JsonProperty("apiKey")]
     [Newtonsoft.Json.JsonIgnore]
     public string ApiKey { get; set; } = string.Empty;
 
     [JsonProperty("isDarkMode")]
     public bool IsDarkMode { get; set; } = false;
+
+    /// <summary>ONにするとカテゴリヘッダーを非表示にして全チャンネルをフラット表示する</summary>
+    [JsonProperty("noCategoryMode")]
+    public bool NoCategoryMode { get; set; } = false;
 
     [JsonProperty("checkIntervalMinutes")]
     public int CheckIntervalMinutes { get; set; } = 5;
@@ -61,11 +64,17 @@ public class AppSettings
     [JsonProperty("isMuted")]
     public bool IsMuted { get; set; } = false;
 
+    [JsonProperty("flashTaskbar")]
+    public bool FlashTaskbar { get; set; } = false;
+
     [JsonProperty("preMuteDesktopNotification")]
     public bool PreMuteDesktopNotification { get; set; } = false;
 
     [JsonProperty("preMuteNotificationSound")]
     public bool PreMuteNotificationSound { get; set; } = false;
+
+    [JsonProperty("preMuteFlashTaskbar")]
+    public bool PreMuteFlashTaskbar { get; set; } = false;
 
     [JsonProperty("compactMode")]
     public bool CompactMode { get; set; } = false;
@@ -80,15 +89,8 @@ public class AppSettings
     public bool AutoCleanLogs { get; set; } = false;
 
     // ===== ログ表示フィルター =====
-    // システムメッセージ（監視開始/停止・チェック開始/完了）は常に表示
-    [JsonProperty("logShowNoNew")]
-    public bool LogShowNoNew     { get; set; } = false; // 新着なし
-    [JsonProperty("logShowNewFound")]
-    public bool LogShowNewFound  { get; set; } = true;  // 新着あり
-    [JsonProperty("logShowCheckError")]
-    public bool LogShowCheckError{ get; set; } = true;  // チェックエラー
-    [JsonProperty("logShowNotify")]
-    public bool LogShowNotify    { get; set; } = false; // 通知送信
+    // INFO / WARNING / ERROR / DEBUG のいずれかを設定する
+    // デフォルトは INFO（SYSTEM + INFO + ERROR を表示）
     [JsonProperty("continuousAddMode")]
     public bool ContinuousAddMode { get; set; } = true;  // 連続追加モード（デフォルトON）
 
@@ -116,23 +118,61 @@ public class ChannelInfo
     [JsonProperty("subscriberCount")]
     public string SubscriberCount { get; set; } = string.Empty;
 
+    /// <summary>プレイリスト走査カーソル（全種別共通）。このIDより新しい動画だけを新着として扱う</summary>
     [JsonProperty("lastCheckedVideoId")]
     public string LastCheckedVideoId { get; set; } = string.Empty;
 
-    // 通常動画のみの最新ID（クリック時に開く用）
+    /// <summary>UI のクリック機能で「最新動画を開く」ために使用（動画のみ）</summary>
     [JsonProperty("lastVideoId")]
     public string LastVideoId { get; set; } = string.Empty;
 
-    // 最新ライブID
-    [JsonProperty("lastLiveId")]
-    public string LastLiveId { get; set; } = string.Empty;
 
-    // 最新ShortID
-    [JsonProperty("lastShortId")]
-    public string LastShortId { get; set; } = string.Empty;
+    // ===== upcoming 待ちリスト（複数の同時 upcoming ライブ/プレミアに対応）=====
+    private List<PendingVideoEntry> _pendingLives = new();
+    [JsonProperty("pendingLives")]
+    public List<PendingVideoEntry> PendingLives
+    {
+        get => _pendingLives;
+        set => _pendingLives = value ?? new();
+    }
+
+    private List<PendingVideoEntry> _pendingPremieres = new();
+    [JsonProperty("pendingPremieres")]
+    public List<PendingVideoEntry> PendingPremieres
+    {
+        get => _pendingPremieres;
+        set => _pendingPremieres = value ?? new();
+    }
+
+    /// <summary>ライブ通知済みVideoId（upcoming 通知ON時の再通知防止用）</summary>
+    [JsonProperty("lastLiveNotifiedId")]
+    public string LastLiveNotifiedId { get; set; } = string.Empty;
+
+    /// <summary>プレミア通知済みVideoId（upcoming 通知ON時の再通知防止用）</summary>
+    [JsonProperty("lastPremiereNotifiedId")]
+    public string LastPremiereNotifiedId { get; set; } = string.Empty;
 
     [JsonProperty("lastCheckedAt")]
     public DateTime LastCheckedAt { get; set; } = DateTime.MinValue;
+
+    // ===== v1→v2 マイグレーション専用フィールド =====
+    // 初回チェック時に PendingLives / PendingPremieres へ移行後クリアされる。
+    // 新規コードからは参照しないこと。
+    [JsonProperty("lastLiveId")]
+    public string LastLiveId { get; set; } = string.Empty;
+
+    [JsonProperty("lastPremiereId")]
+    public string LastPremiereId { get; set; } = string.Empty;
+
+    [JsonProperty("nextLiveCheckAt")]
+    public DateTime? NextLiveCheckAt { get; set; } = null;
+
+    [JsonProperty("liveGraceRemaining")]
+    public int LiveGraceRemaining { get; set; } = 0;
+
+    [JsonProperty("nextPremiereCheckAt")]
+    public DateTime? NextPremiereCheckAt { get; set; } = null;
+    // ===== /v1→v2 マイグレーション専用フィールド =====
 
     [JsonProperty("isEnabled")]
     public bool IsEnabled { get; set; } = true;
@@ -161,9 +201,12 @@ public class ChannelInfo
     [JsonProperty("notifyUpcoming")]
     public bool NotifyUpcoming { get; set; } = false;
 
-    /// <summary>upcoming待ちの動画ID（NotifyUpcoming=OFFでliveになるまで監視継続するため）</summary>
-    [JsonProperty("pendingUpcomingVideoId")]
-    public string PendingUpcomingVideoId { get; set; } = string.Empty;
+    [JsonProperty("testDataPath")]
+    public string TestDataPath { get; set; } = string.Empty;
+
+    /// <summary>テストチャンネル用: 現在のテスト状態インデックス</summary>
+    [JsonProperty("testStateIndex")]
+    public int TestStateIndex { get; set; } = 0;
 
     // UI専用プロパティ（シリアライズ不要）
     [JsonIgnore]
@@ -189,11 +232,12 @@ public class ChannelInfo
     public int FocusMinute { get; set; } = 0;
 
     [JsonProperty("focusWindowMinutes")]
-    public int FocusWindowMinutes { get; set; } = 30;
+    public int FocusWindowMinutes { get; set; } = 15;
 
     [JsonProperty("focusIntervalMinutes")]
     public int FocusIntervalMinutes { get; set; } = 5;
     /// <summary>曜日ビットマスク: bit0=Sun, bit1=Mon, ..., bit6=Sat。0=全曜日</summary>
+    [JsonProperty("focusDays")]
     public int FocusDays { get; set; } = 0;
 
     /// <summary>時間指定スロットリスト（複数スロット対応）</summary>
@@ -215,7 +259,23 @@ public class ChannelInfo
     public DateTime NextCheckAt { get; set; } = DateTime.MinValue;
 
     [JsonIgnore]
-    public string ChannelUrl => $"https://www.youtube.com/channel/{ChannelId}";
+    public string ChannelUrl => "https://www.youtube.com/channel/" + ChannelId;
+
+    /// <summary>
+    /// 種別ごとの実効監視モードを返す。
+    /// スロットベース（MonitorMode.Focus + FocusSlots）の場合はタブ固定順（動画=0/Short=1/ライブ=2）のSlotModeを返す。
+    /// </summary>
+    public MonitorMode GetEffectiveModeForKind(YTNotifier.Services.VideoKind kind)
+    {
+        if (MonitorMode != MonitorMode.Focus || FocusSlots.Count == 0) return MonitorMode;
+        int idx = kind switch
+        {
+            YTNotifier.Services.VideoKind.Short => 1,
+            YTNotifier.Services.VideoKind.Live  => 2,
+            _                                   => 0
+        };
+        return idx < FocusSlots.Count ? FocusSlots[idx].SlotMode : MonitorMode.Normal;
+    }
 }
 
 public enum MonitorMode
@@ -254,28 +314,44 @@ public class LogEntry
 
     public string LevelColor => Level switch
     {
-        LogLevel.Error => "#EF4444",
+        LogLevel.System  => "#60A5FA",
         LogLevel.Warning => "#F59E0B",
-        LogLevel.Success => "#22C55E",
-        _ => "#94A3B8"
+        LogLevel.Error   => "#EF4444",
+        LogLevel.Debug   => "#6B7280",
+        _                => "#94A3B8"
     };
 }
 
 public enum LogLevel
 {
+    System,
     Info,
-    Success,
     Warning,
-    Error
+    Error,
+    Debug
 }
 
 public enum LogCategory
 {
-    System,      // 監視開始/停止・チェック開始/完了など（常に表示）
-    NoNew,       // 新着なし
-    NewFound,    // 新着あり
-    CheckError,  // チェックエラー
-    Notify       // 通知送信
+    System,
+    Info,
+    Warning,
+    Error,
+    Debug
+}
+
+/// <summary>upcoming 待ち中のライブ/プレミア1件分の情報</summary>
+public class PendingVideoEntry
+{
+    [JsonProperty("videoId")]
+    public string VideoId { get; set; } = string.Empty;
+
+    [JsonProperty("scheduledAt")]
+    public DateTime? ScheduledAt { get; set; }
+
+    /// <summary>開始時刻到達後の猶予チェック残回数</summary>
+    [JsonProperty("graceRemaining")]
+    public int GraceRemaining { get; set; } = 0;
 }
 
 /// <summary>時間指定の1スロット設定</summary>
@@ -291,11 +367,17 @@ public class FocusSlot
     [JsonProperty("minute")]
     public int Minute { get; set; } = 0;
     [JsonProperty("windowMinutes")]
-    public int WindowMinutes { get; set; } = 30;
+    public int WindowMinutes { get; set; } = 15;
     [JsonProperty("intervalMinutes")]
     public int IntervalMinutes { get; set; } = 5;
     [JsonProperty("isEnabled")]
     public bool IsEnabled { get; set; } = false;
+    [JsonProperty("slotMode")]
+    public MonitorMode SlotMode { get; set; } = MonitorMode.Focus;
+    [JsonProperty("slotNormalIntervalMinutes")]
+    public int SlotNormalIntervalMinutes { get; set; } = 0; // 0 = グローバル設定に従う
+    [JsonProperty("slotLowFreqIntervalMinutes")]
+    public int SlotLowFreqIntervalMinutes { get; set; } = 60;
 }
 
 public enum ToastStyle

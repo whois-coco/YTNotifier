@@ -4,7 +4,7 @@
         Title="チャンネルを追加"
         Width="520" Height="215"
         MinWidth="520" MinHeight="215"
-        MaxWidth="520" MaxHeight="520"
+        MaxWidth="520" MaxHeight="720"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         WindowStyle="None"
@@ -25,7 +25,8 @@
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Width="40" Height="40"
                             Background="Transparent" BorderThickness="0"
-                            Cursor="Hand" Click="CloseButton_Click">
+                            Cursor="Hand" Click="CloseButton_Click"
+                            ToolTip="閉じる" AutomationProperties.Name="閉じる">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
                                 <Border x:Name="Bd" Background="Transparent">
@@ -79,8 +80,7 @@
                                 <TextBlock Text="🔍" FontSize="16" HorizontalAlignment="Center"/>
                             </StackPanel>
                             <Image x:Name="PreviewThumbnail"
-                                   Visibility="Collapsed" Stretch="UniformToFill"
-                                   Width="68" Height="68"/>
+                                   Visibility="Collapsed" Stretch="UniformToFill"/>
                         </Grid>
                     </Border>
 
@@ -182,45 +182,81 @@
                         Margin="0,12,0,0"
                         BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="0,1,0,0" Padding="0,12,0,0">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="16"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
-                        <!-- カテゴリ選択 -->
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="カテゴリ" FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Margin="0,0,0,6"/>
-                            <ComboBox x:Name="CategoryComboBox"
-                                      Style="{StaticResource ModernComboBox}"/>
-                        </StackPanel>
-
-                        <!-- チェック対象 -->
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="チェック対象" FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Margin="0,0,0,6"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                <CheckBox x:Name="CheckVideo" Content="動画"
-                                          IsChecked="True" FontSize="11"
-                                          Foreground="{DynamicResource TextPrimaryBrush}"
-                                          Style="{StaticResource ModernCheckBox}"
-                                          Margin="0,0,12,0"/>
-                                <CheckBox x:Name="CheckShort" Content="Short"
-                                          IsChecked="True" FontSize="11"
-                                          Foreground="{DynamicResource TextPrimaryBrush}"
-                                          Style="{StaticResource ModernCheckBox}"
-                                          Margin="0,0,12,0"/>
-                                <CheckBox x:Name="CheckLive" Content="ライブ"
-                                          IsChecked="True" FontSize="11"
-                                          Foreground="{DynamicResource TextPrimaryBrush}"
-                                          Style="{StaticResource ModernCheckBox}"/>
+                            <!-- カテゴリ選択 -->
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="カテゴリ" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,0,0,6"/>
+                                <ComboBox x:Name="CategoryComboBox"
+                                          Style="{StaticResource ModernComboBox}"/>
                             </StackPanel>
-                        </StackPanel>
-                    </Grid>
+
+                            <!-- チェック対象 -->
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="チェック対象" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,0,0,6"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                    <CheckBox x:Name="CheckVideo" Content="動画"
+                                              IsChecked="True" FontSize="11"
+                                              Foreground="{DynamicResource TextPrimaryBrush}"
+                                              Style="{StaticResource ModernCheckBox}"
+                                              Margin="0,0,12,0"
+                                              Checked="CheckKind_Changed" Unchecked="CheckKind_Changed"/>
+                                    <CheckBox x:Name="CheckShort" Content="Short"
+                                              IsChecked="True" FontSize="11"
+                                              Foreground="{DynamicResource TextPrimaryBrush}"
+                                              Style="{StaticResource ModernCheckBox}"
+                                              Margin="0,0,12,0"
+                                              Checked="CheckKind_Changed" Unchecked="CheckKind_Changed"/>
+                                    <CheckBox x:Name="CheckLive" Content="ライブ"
+                                              IsChecked="True" FontSize="11"
+                                              Foreground="{DynamicResource TextPrimaryBrush}"
+                                              Style="{StaticResource ModernCheckBox}"
+                                              Checked="CheckKind_Changed" Unchecked="CheckKind_Changed"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 詳細設定 Expander -->
+                        <Expander x:Name="DetailExpander"
+                                  Margin="0,12,0,0"
+                                  IsExpanded="False">
+                            <Expander.Header>
+                                <TextBlock Text="詳細設定" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                            </Expander.Header>
+                            <Border BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="4"
+                                    Margin="0,8,0,0">
+                                <DockPanel>
+                                    <!-- タブナビゲーション（固定） -->
+                                    <Border DockPanel.Dock="Top"
+                                            BorderBrush="{DynamicResource BorderBrush}"
+                                            BorderThickness="0,0,0,1"
+                                            Padding="12,10,12,0">
+                                        <StackPanel x:Name="DetailFocusTabNav"
+                                                    Orientation="Horizontal" Height="30"/>
+                                    </Border>
+                                    <!-- タブコンテンツ（スクロール可能） -->
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  MaxHeight="340"
+                                                  Padding="12,10,12,12">
+                                        <StackPanel x:Name="DetailFocusTabContent"/>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </Expander>
+                    </StackPanel>
                 </Border>
 
             </StackPanel>
