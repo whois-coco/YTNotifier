@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.8.1
+
+### ログレベル・分類の見直し
+
+- `CheckStarted` / `CheckCompleted`（チェック開始/完了）を SYSTEM → INFO に変更
+- `NetworkRestored`（接続回復）を INFO → SYSTEM に変更
+- `NetworkDisconnected`（接続切断）を WARNING → ERROR に変更
+- `QuotaExceeded`（クォータ上限到達）を WARNING → ERROR に変更
+- `ApiKeyChanged`（APIキー変更）を DEBUG → INFO に変更
+- `SettingBackupExported` / `SettingBackupImported`（バックアップ）を INFO → SYSTEM に変更
+- `QuotaAutoIntervalAdjusted`（クォータ超過による間隔自動調整）を DEBUG → WARNING に変更
+- `ApiKeyMigrated` / `BackupSaved` を INFO → DEBUG に変更
+- `QuotaExceededOnSave` を ERROR → WARNING に変更
+- `QuotaRiskOverLimit`（未使用）を削除
+
+### ログフィルターの動作変更
+
+- ログレベル「INFO」設定時に WARNING も表示されるよう修正（従来は INFO と ERROR のみ）
+
+### トレイアイコン操作のログ追加
+
+- システムトレイメニューの「ウィンドウを開く」「今すぐチェック」「監視開始」「監視停止」の操作を DEBUG ログに記録するよう追加
+
+### クォータ85%警告の修正
+
+- チャンネル追加時のクォータ85%警告を、画面内テキスト表示（ユーザーが目にする前に消える不具合あり）から確認ダイアログに変更
+
+### クォータ超過ダイアログのメッセージ変更
+
+- チャンネル追加時のクォータ超過ダイアログに「追加すると監視間隔が {X}分 に変更されます」を表示するよう変更
+
+---
+
 ## v1.8.1
 
 ### 監視モードの全面再設計（種別別スロット化）
