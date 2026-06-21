@@ -25,7 +25,7 @@ public partial class ChannelDetailWindow : Window
     private readonly bool _origNotifyVideo;
     private readonly bool _origNotifyShort;
     private readonly bool _origNotifyLive;
-    private readonly bool _origNotifyUpcoming;
+    private readonly bool? _origNotifyUpcoming;
     private readonly List<FocusSlot> _origFocusSlots;
 
     public ChannelDetailWindow(ChannelInfo channel, Window owner)
@@ -61,7 +61,7 @@ public partial class ChannelDetailWindow : Window
         NotifyVideoToggle.IsChecked    = channel.NotifyVideo;
         NotifyShortToggle.IsChecked    = channel.NotifyShort;
         NotifyLiveToggle.IsChecked     = channel.NotifyLive;
-        NotifyUpcomingToggle.IsChecked = channel.NotifyUpcoming;
+        NotifyUpcomingToggle.IsChecked = channel.NotifyUpcoming ?? SettingsService.Instance.Settings.GlobalNotifyUpcoming;
 
         // リアルタイム連動：トグル変更 → チャンネルデータ更新 → 一覧反映
         NotifyVideoToggle.Checked      += (_, _) => SyncKindToChannel();
@@ -192,7 +192,7 @@ public partial class ChannelDetailWindow : Window
         FocusTabContent.Children.Clear();
         _tabPanels[idx].ResetContent();
         FocusTabContent.Children.Add(_tabPanels[idx].BuildContent());
-        AppLogger.Log(LogMsg.ChannelDetailTabSwitched, _channel.ChannelName, _channel.ChannelName, TabKindLabels[idx]);
+        AppLogger.Log(LogMsg.ChannelDetailTabSwitched, _channel.ChannelName, TabKindLabels[idx]);
     }
 
     private void SetTabBorderStyle(FocusTabPanel tab, bool selected)
@@ -213,6 +213,20 @@ public partial class ChannelDetailWindow : Window
             : System.Windows.FontWeights.Normal;
     }
 
+    // null（グローバルに従う）を維持するか、明示的な値を返す
+    // 元が null でトグルがグローバル値と同じまま → null を維持
+    // それ以外 → 明示的な true/false
+    private bool? ResolveNotifyUpcoming()
+    {
+        var current = NotifyUpcomingToggle.IsChecked == true;
+        if (_origNotifyUpcoming == null)
+        {
+            var globalVal = SettingsService.Instance.Settings.GlobalNotifyUpcoming;
+            return current == globalVal ? null : current;
+        }
+        return current;
+    }
+
     // ===== イベントハンドラ =====
     private void SyncKindToChannel()
     {
@@ -220,7 +234,7 @@ public partial class ChannelDetailWindow : Window
         _channel.NotifyVideo    = NotifyVideoToggle.IsChecked    == true;
         _channel.NotifyShort    = NotifyShortToggle.IsChecked    == true;
         _channel.NotifyLive     = NotifyLiveToggle.IsChecked     == true;
-        _channel.NotifyUpcoming = NotifyUpcomingToggle.IsChecked == true;
+        _channel.NotifyUpcoming = ResolveNotifyUpcoming();
         // 上部トグルの変更をタブの有効/無効に反映
         _tabPanels[0].SetEnabled(_channel.NotifyVideo);
         _tabPanels[1].SetEnabled(_channel.NotifyShort);
@@ -268,12 +282,13 @@ public partial class ChannelDetailWindow : Window
         var pctRounded = (int)Math.Round(pct);
 
         EstimateText.Text = $"{pctRounded}%";
-        var barColor = pctRounded >= 86 ? Color.FromRgb(0xEF, 0x44, 0x44)
-                     : pctRounded >= 76 ? Color.FromRgb(0xEA, 0xB3, 0x08)
-                     : pctRounded >= 61 ? Color.FromRgb(0xFF, 0xD7, 0x00)
-                                        : Color.FromRgb(0x22, 0xC5, 0x5E);
-        DetailQuotaBar.Background = new SolidColorBrush(barColor);
-        EstimateText.Foreground   = new SolidColorBrush(barColor);
+        var res = System.Windows.Application.Current.Resources;
+        var barBrush = pctRounded >= 86 ? (Brush)res["ErrorBrush"]
+                     : pctRounded >= 76 ? (Brush)res["QuotaWarnHighBrush"]
+                     : pctRounded >= 61 ? (Brush)res["QuotaWarnLowBrush"]
+                                        : (Brush)res["QuotaOkBrush"];
+        DetailQuotaBar.Background = barBrush;
+        EstimateText.Foreground   = barBrush;
         DetailQuotaBarBg.Tag = pct;
 
         DetailQuotaBarBg.SizeChanged -= DetailQuotaBarBg_SizeChanged;
@@ -327,7 +342,7 @@ public partial class ChannelDetailWindow : Window
         _channel.NotifyVideo    = NotifyVideoToggle.IsChecked    == true;
         _channel.NotifyShort    = NotifyShortToggle.IsChecked    == true;
         _channel.NotifyLive     = NotifyLiveToggle.IsChecked     == true;
-        _channel.NotifyUpcoming = NotifyUpcomingToggle.IsChecked == true;
+        _channel.NotifyUpcoming = ResolveNotifyUpcoming();
 
         // 常にスロットベースで保存
         _channel.MonitorMode = MonitorMode.Focus;
@@ -575,9 +590,24 @@ internal class FocusTabPanel
         _normalPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
         _normalIntervalBox = new ComboBox { Style = (Style)res["ModernComboBox"] };
         _normalIntervalBox.Items.Add(new ComboBoxItem { Content = "一括で設定に従う", Tag = "0", Style = (Style)res["ModernComboBoxItem"] });
+        var globalInterval = SettingsService.Instance.Settings.CheckIntervalMinutes;
         foreach (var (lbl, tag) in new[] { ("3分","3"),("5分","5"),("10分","10"),("15分","15"),("20分","20"),("30分","30"),("60分","60") })
-            _normalIntervalBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
-        SelectComboByTagStr(_normalIntervalBox, _slot.SlotNormalIntervalMinutes.ToString());
+        {
+            var tooShort = int.TryParse(tag, out var tagMins) && tagMins < globalInterval;
+            _normalIntervalBox.Items.Add(new ComboBoxItem
+            {
+                Content    = lbl,
+                Tag        = tag,
+                Style      = (Style)res["ModernComboBoxItem"],
+                IsEnabled  = !tooShort,
+                Opacity    = tooShort ? 0.4 : 1.0,
+                ToolTip    = tooShort ? $"グローバル設定（{globalInterval}分）より短い間隔は設定できません" : null,
+            });
+        }
+        // 保存済み値がグローバルより短い場合は「一括で設定に従う」へフォールバック
+        var savedInterval = _slot.SlotNormalIntervalMinutes;
+        var selectTag = (savedInterval > 0 && savedInterval < globalInterval) ? "0" : savedInterval.ToString();
+        SelectComboByTagStr(_normalIntervalBox, selectTag);
         _normalIntervalBox.SelectionChanged += (_, _) => { SaveToSlot(); OnEnabledChanged?.Invoke(); };
         _normalPanel.Children.Add(MakeRow("監視間隔", _normalIntervalBox, res));
         _settingsPanel.Children.Add(_normalPanel);

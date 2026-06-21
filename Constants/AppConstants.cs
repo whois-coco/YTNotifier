@@ -7,7 +7,11 @@ internal static class AppConstants
     public const string DirIcons         = "icons";
     public const string DirSounds        = "Sounds";
     public const string FileApiKey       = "api_key.dat";
-    public const string BackupFileFilter = "YTNotifierバックアップ (*.ytbk)|*.ytbk|ZIPファイル (*.zip)|*.zip";
+    public const string BackupFileFilter     = "YTNotifierバックアップ (*.ytbk)|*.ytbk|ZIPファイル (*.zip)|*.zip";
+    public const string BackupFileFilterSave = "YTNotifierバックアップ (*.ytbk)|*.ytbk";
+
+    /// <summary>YouTube チャンネル ID の固定長（UC + 22文字）</summary>
+    public const int ChannelIdLength = 24;
 
     /// <summary>ライブ/プレミア配信開始後に継続チェックする猶予回数</summary>
     public const int GracePeriodAttempts = 10;

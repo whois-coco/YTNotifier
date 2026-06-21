@@ -68,6 +68,15 @@
     <SolidColorBrush x:Key="SidebarActiveTextBrush" Color="{StaticResource SidebarActiveTextColor}"/>
     <SolidColorBrush x:Key="SidebarTitleBrush"      Color="{StaticResource SidebarTitleColor}"/>
 
+    <!-- 種別トグル -->
+    <SolidColorBrush x:Key="ShortBrush"        Color="#F97316"/>
 
+    <!-- ウィンドウ閉じるボタンホバー -->
+    <SolidColorBrush x:Key="CloseHoverBrush"   Color="#C42B1C"/>
+
+    <!-- クォータバー -->
+    <SolidColorBrush x:Key="QuotaWarnHighBrush" Color="#EAB308"/>
+    <SolidColorBrush x:Key="QuotaWarnLowBrush"  Color="#FFD700"/>
+    <SolidColorBrush x:Key="QuotaOkBrush"       Color="#22C55E"/>
 
 </ResourceDictionary>

@@ -221,14 +221,15 @@ public partial class AddChannelWindow : Window
             var msg = $"このチャンネルを追加すると、現在の監視間隔（{settings.CheckIntervalMinutes}分）では\n" +
                       $"1日のAPIクォータ（{ApiQuotaHelper.DailyLimit:N0}ユニット）を超過します。\n\n" +
                       $"推定使用量: {daily:N0} ユニット/日（{pct:F0}%）\n" +
-                      $"推奨監視間隔: {recommended}分\n\n" +
-                      "それでも追加しますか？（設定で間隔を調整してください）";
+                      $"追加すると監視間隔が {recommended}分 に変更されます";
             if (ConfirmDialog.Show(this, "クォータ超過の警告", msg, "追加する") != true)
                 return;
         }
         else if (pct >= 85)
         {
-            PreviewStatusText.Text = $"⚠ 追加後のAPI使用量が {pct:F0}% になります。";
+            var msg = $"追加後のAPI推定使用量が {pct:F0}% になります。\n追加しますか？";
+            if (ConfirmDialog.Show(this, "クォータ使用量の警告", msg, "追加する") != true)
+                return;
         }
 
         // UploadsPlaylistIdをAPIから取得（トピックチャンネル対応）

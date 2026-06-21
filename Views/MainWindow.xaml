@@ -234,7 +234,7 @@
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
                                         <Setter TargetName="Bd" Property="Background"
-                                                Value="#EF4444"/>
+                                                Value="{DynamicResource ErrorBrush}"/>
                                         <Setter TargetName="CloseIcon" Property="Foreground" Value="White"/>
                                     </Trigger>
                                 </ControlTemplate.Triggers>
@@ -324,25 +324,25 @@
                                                      Visibility="Collapsed">
                                                 <Canvas Width="24" Height="24">
                                                     <Path Data="M2 2l20 20"
-                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                                     <Path Data="M8.5 16.5a5 5 0 0 1 7 0"
-                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                                     <Path Data="M2 8.82a15 15 0 0 1 4.17-2.65"
-                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                                     <Path Data="M10.66 5c4.01-.36 8.14.9 11.34 3.76"
-                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                                     <Path Data="M16.85 11.25a10 10 0 0 1 2.22 1.68"
-                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                                     <Path Data="M5 12.85a10 10 0 0 1 5.17-2.39"
-                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                                     <Path Data="M12 20h.01"
-                                                          Stroke="#EF4444" StrokeThickness="2"
+                                                          Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                                 </Canvas>
                                             </Viewbox>
@@ -848,32 +848,32 @@
                                          HorizontalAlignment="Center">
                                     <Canvas Width="24" Height="24">
                                         <Path Data="M2 2l20 20"
-                                              Stroke="#EF4444" StrokeThickness="2"
+                                              Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                         <Path Data="M8.5 16.5a5 5 0 0 1 7 0"
-                                              Stroke="#EF4444" StrokeThickness="2"
+                                              Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                         <Path Data="M2 8.82a15 15 0 0 1 4.17-2.65"
-                                              Stroke="#EF4444" StrokeThickness="2"
+                                              Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                         <Path Data="M10.66 5c4.01-.36 8.14.9 11.34 3.76"
-                                              Stroke="#EF4444" StrokeThickness="2"
+                                              Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                         <Path Data="M16.85 11.25a10 10 0 0 1 2.22 1.68"
-                                              Stroke="#EF4444" StrokeThickness="2"
+                                              Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                         <Path Data="M5 12.85a10 10 0 0 1 5.17-2.39"
-                                              Stroke="#EF4444" StrokeThickness="2"
+                                              Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                         <Path Data="M12 20h.01"
-                                              Stroke="#EF4444" StrokeThickness="2"
+                                              Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2"
                                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
                                     </Canvas>
                                 </Viewbox>
                                 <TextBlock Text="インターネット接続がありません。"
                                            FontSize="12" TextWrapping="Wrap"
                                            TextAlignment="Center"
-                                           Foreground="#EF4444"
+                                           Foreground="{DynamicResource ErrorBrush}"
                                            HorizontalAlignment="Center"/>
                             </StackPanel>
                             <StackPanel x:Name="ChannelList" HorizontalAlignment="Stretch"/>
@@ -1416,7 +1416,7 @@
                             <TextBlock Text="YTNotifier" FontSize="20" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,4"/>
-                            <TextBlock Text="v1.8.1" FontSize="13"
+                            <TextBlock Text="v0.8.1" FontSize="13"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="0,0,0,12"/>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>

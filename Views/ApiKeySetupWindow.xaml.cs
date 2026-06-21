@@ -58,7 +58,10 @@ public partial class ApiKeySetupWindow : Window
 
     private void ApiKeyLink_Click(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
     {
-        Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        var uri = e.Uri.AbsoluteUri;
+        if (uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+            uri.StartsWith("http://",  StringComparison.OrdinalIgnoreCase))
+            Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
         e.Handled = true;
     }
 

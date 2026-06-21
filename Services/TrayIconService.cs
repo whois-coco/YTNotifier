@@ -36,15 +36,16 @@ public class TrayIconService : IDisposable
 
             var menu = new ContextMenuStrip();
             ApplyTrayMenuTheme(menu);
-            menu.Items.Add("🖥  ウィンドウを開く",  null, (_, _) => _showMainWindow());
+            menu.Items.Add("🖥  ウィンドウを開く",  null, (_, _) => { AppLogger.Log(LogMsg.TrayWindowOpened); _showMainWindow(); });
             menu.Items.Add("🔄  今すぐチェック",    null, async (_, _) =>
             {
+                AppLogger.Log(LogMsg.TrayManualCheckTriggered);
                 try { await MonitorService.Instance.ManualCheckAsync(); }
                 catch (Exception ex) { AppLogger.Log(LogMsg.CheckFailed, null, ex.Message); }
             });
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("▶  監視開始",           null, (_, _) => MonitorService.Instance.Start());
-            menu.Items.Add("⏸  監視停止",           null, (_, _) => MonitorService.Instance.Stop());
+            menu.Items.Add("▶  監視開始",           null, (_, _) => { AppLogger.Log(LogMsg.TrayMonitorStarted); MonitorService.Instance.Start(); });
+            menu.Items.Add("⏸  監視停止",           null, (_, _) => { AppLogger.Log(LogMsg.TrayMonitorStopped); MonitorService.Instance.Stop(); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("✖  終了",               null, (_, _) => _exitApp());
 
@@ -68,7 +69,12 @@ public class TrayIconService : IDisposable
         {
             if (_notifyIcon == null) return;
             _notifyIcon.Text = isRunning ? "YTNotifier - 監視中" : "YTNotifier - 停止中";
-            try { _notifyIcon.Icon = LoadIcon(isRunning ? "app.ico" : "app_warn.ico"); }
+            try
+            {
+                var oldIcon = _notifyIcon.Icon;
+                _notifyIcon.Icon = LoadIcon(isRunning ? "app.ico" : "app_warn.ico");
+                if (oldIcon != SystemIcons.Application) oldIcon?.Dispose();
+            }
             catch { }
         });
     }

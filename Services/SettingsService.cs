@@ -171,7 +171,12 @@ public class SettingsService
                 if (allowedFiles.Contains(entry.Name) &&
                     string.IsNullOrEmpty(entryDir))
                 {
-                    entry.ExtractToFile(Path.Combine(_appDataDir, DirConf, entry.Name), overwrite: true);
+                    var destPath    = Path.Combine(_appDataDir, DirConf, entry.Name);
+                    var fullDest    = Path.GetFullPath(destPath);
+                    var allowedRoot = Path.GetFullPath(Path.Combine(_appDataDir, DirConf)) + Path.DirectorySeparatorChar;
+                    if (!fullDest.StartsWith(allowedRoot, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    entry.ExtractToFile(destPath, overwrite: true);
                     continue;
                 }
 
@@ -362,7 +367,6 @@ public class SettingsService
                 }
                 Settings.TodayApiUnits += units;
                 var json = JsonConvert.SerializeObject(Settings, Formatting.Indented);
-                ApiKeyService.Save(_confDir, Settings.ApiKey);
                 WriteAtomic(_configPath, json);
             }
         }
@@ -405,6 +409,11 @@ public class SettingsService
         lock (_persistLock) return Channels.Where(c => c.IsEnabled).ToList();
     }
 
+    public List<ChannelInfo> GetChannelsSnapshot()
+    {
+        lock (_persistLock) return Channels.ToList();
+    }
+
     public void RemoveCategory(string categoryId)
     {
         lock (_persistLock)
@@ -421,9 +430,12 @@ public class SettingsService
 
     public void RenameCategory(string categoryId, string newName)
     {
-        var cat = Categories.FirstOrDefault(c => c.CategoryId == categoryId);
-        if (cat == null) return;
-        cat.CategoryName = newName;
+        lock (_persistLock)
+        {
+            var cat = Categories.FirstOrDefault(c => c.CategoryId == categoryId);
+            if (cat == null) return;
+            cat.CategoryName = newName;
+        }
         MarkDirty();
         SaveCategories();
     }
@@ -503,7 +515,23 @@ public class SettingsService
         }
         catch { Channels = new List<ChannelInfo>(); }
 
-        if (MigrateChannelsToFocusSlots()) { SaveChannelsSilent(); MarkDirty(); }
+        bool migrated = MigrateChannelsToFocusSlots();
+        migrated |= MigrateNotifyUpcomingToNullable();
+        if (migrated) { SaveChannelsSilent(); MarkDirty(); }
+    }
+
+    /// <summary>
+    /// NotifyUpcoming が false（旧デフォルト）のチャンネルを null（グローバルに従う）に変換する。
+    /// </summary>
+    private bool MigrateNotifyUpcomingToNullable()
+    {
+        bool migrated = false;
+        foreach (var ch in Channels.Where(c => c.NotifyUpcoming == false))
+        {
+            ch.NotifyUpcoming = null;
+            migrated = true;
+        }
+        return migrated;
     }
 
     /// <summary>

@@ -148,15 +148,6 @@ public partial class MainWindow : System.Windows.Window
         svc.Settings.GlobalNotifyUpcoming = val;
         svc.SaveSettings();
         AppLogger.Log(LogMsg.SettingGlobalNotifyUpcoming, null, val ? "ON" : "OFF");
-
-        // ON/OFFどちらも全チャンネルの NotifyUpcoming に一括適用
-        bool changed = false;
-        foreach (var ch in svc.Channels.Where(c => c.NotifyUpcoming != val))
-        {
-            ch.NotifyUpcoming = val;
-            changed = true;
-        }
-        if (changed) svc.SaveChannelsSilent();
     }
 
     private void NotificationSoundToggle_Changed(object sender, RoutedEventArgs e)
@@ -426,7 +417,7 @@ public partial class MainWindow : System.Windows.Window
         var dlg = new Microsoft.Win32.SaveFileDialog
         {
             Title = "バックアップの保存先を選択",
-            Filter = BackupFileFilterSingle,
+            Filter = AppConstants.BackupFileFilterSave,
             FileName = $"{BackupFilePrefix}{DateTime.Now:yyyyMMdd}.ytbk",
             DefaultExt = ".ytbk",
             InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
@@ -570,11 +561,11 @@ public partial class MainWindow : System.Windows.Window
         win.Show();
     }
 
-    private const string DebugDllName         = "YTNotifier.Debug.dll";
-    private const string BackupFileFilterSingle = "YTNotifierバックアップ (*.ytbk)|*.ytbk";
-    private const string BackupFilePrefix       = "YTNotifier_";
+    private const string BackupFilePrefix = "YTNotifier_";
     private const string StartupRegistryKey     = "YTNotifier";
 
+#if DEBUG
+    private const string DebugDllName           = "YTNotifier.Debug.dll";
     private static readonly string DebugDllPath = System.IO.Path.Combine(
         System.IO.Path.GetDirectoryName(Environment.ProcessPath
             ?? System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "",
@@ -597,6 +588,11 @@ public partial class MainWindow : System.Windows.Window
             AppLogger.Log(LogMsg.DevToolError, null, ex.Message);
         }
     }
+#else
+    internal static bool IsDebugDllAvailable() => false;
+
+    private void OpenDebugWindow_Click(object sender, RoutedEventArgs e) { }
+#endif
 
     private void RefreshLogStats()
     {

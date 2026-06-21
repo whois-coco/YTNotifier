@@ -97,34 +97,68 @@ public static class ApiQuotaHelper
         }
     }
 
-    /// <summary>スロット単位（複数スロット）の1日推定ユニット数。スロットごとのモードを考慮して合算する</summary>
+    /// <summary>
+    /// スロット単位（複数スロット）の1日推定ユニット数。
+    /// 実際には1回のチェックで全種別を処理するため、
+    /// Normal/LowFreq スロットの最小間隔をベースに算出し、
+    /// Focus スロットはウィンドウ内でベースより高頻度な分だけ加算する。
+    /// </summary>
     public static int EstimateDailyUnitsForFocusSlots(
         IEnumerable<YTNotifier.Models.FocusSlot> slots,
         int globalIntervalMinutes = 5)
     {
-        int total = 0;
-        foreach (var slot in slots.Where(s => s.IsEnabled))
+        var enabledSlots = slots.Where(s => s.IsEnabled).ToList();
+        if (enabledSlots.Count == 0) return 0;
+
+        // Normal/LowFreq スロットの最小間隔をベース間隔とする
+        int baseInterval = int.MaxValue;
+        foreach (var slot in enabledSlots)
         {
             switch (slot.SlotMode)
             {
                 case YTNotifier.Models.MonitorMode.Normal:
-                    var normalInterval = slot.SlotNormalIntervalMinutes > 0
+                    var ni = slot.SlotNormalIntervalMinutes > 0
                         ? slot.SlotNormalIntervalMinutes
                         : Math.Max(1, globalIntervalMinutes);
-                    total += (MinutesPerDay / normalInterval) * UnitsPerCheck;
+                    if (ni < baseInterval) baseInterval = ni;
                     break;
                 case YTNotifier.Models.MonitorMode.LowFreq:
-                    var lowInterval = Math.Max(1, slot.SlotLowFreqIntervalMinutes);
-                    total += (MinutesPerDay / lowInterval) * UnitsPerCheck;
-                    break;
-                default: // Focus（時間指定）
-                    var window   = slot.WindowMinutes;
-                    var interval = Math.Max(1, slot.IntervalMinutes);
-                    int activeDays = slot.Days == 0 ? 7 : CountBits(slot.Days);
-                    total += (int)Math.Round((window / (double)interval) * UnitsPerCheck * activeDays / 7.0);
+                    var li = Math.Max(1, slot.SlotLowFreqIntervalMinutes);
+                    if (li < baseInterval) baseInterval = li;
                     break;
             }
         }
+
+        int total;
+        if (baseInterval == int.MaxValue)
+        {
+            // Normal/LowFreq スロットなし（Focus スロットのみ）
+            total = 0;
+            foreach (var slot in enabledSlots.Where(s => s.SlotMode == YTNotifier.Models.MonitorMode.Focus))
+            {
+                var interval   = Math.Max(1, slot.IntervalMinutes);
+                int activeDays = slot.Days == 0 ? 7 : CountBits(slot.Days);
+                total += (int)Math.Round((slot.WindowMinutes / (double)interval) * UnitsPerCheck * activeDays / 7.0);
+            }
+        }
+        else
+        {
+            // ベース: 1日中 baseInterval 間隔でチェック
+            total = (MinutesPerDay / baseInterval) * UnitsPerCheck;
+
+            // Focus スロット: ウィンドウ内でベースより高頻度な分のみ追加
+            foreach (var slot in enabledSlots.Where(s => s.SlotMode == YTNotifier.Models.MonitorMode.Focus))
+            {
+                var focusInterval = Math.Max(1, slot.IntervalMinutes);
+                if (focusInterval >= baseInterval) continue;
+
+                int activeDays     = slot.Days == 0 ? 7 : CountBits(slot.Days);
+                var additionalChecks = slot.WindowMinutes / (double)focusInterval
+                                     - slot.WindowMinutes / (double)baseInterval;
+                total += (int)Math.Round(additionalChecks * UnitsPerCheck * activeDays / 7.0);
+            }
+        }
+
         return total;
     }
 

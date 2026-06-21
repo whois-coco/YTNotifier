@@ -7,7 +7,7 @@ namespace YTNotifier.Services;
 
 /// <summary>
 /// APIキーを AES-256 で難読化して api_key.dat に保存/読み込みするサービス。
-/// 鍵はコード埋め込みの固定ソルトから PBKDF2 で導出する。
+/// 鍵は固定パスワード・固定ソルトから PBKDF2 で導出する（難読化目的）。
 /// </summary>
 public static class ApiKeyService
 {

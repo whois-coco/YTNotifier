@@ -133,7 +133,7 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         try
         {
             bool isHandle    = input.StartsWith("@");
-            bool isChannelId = input.StartsWith(ChannelIdPrefix) && input.Length > 20;
+            bool isChannelId = input.StartsWith(ChannelIdPrefix) && input.Length == AppConstants.ChannelIdLength;
             bool isUrl       = input.StartsWith("http");
             bool isHandleName = !isHandle && !isChannelId && !isUrl; // "@" なしのハンドル名
 
@@ -201,7 +201,7 @@ public partial class YouTubeApiClient : IYouTubeApiClient
             {
                 var s = seg.TrimEnd('/');
                 if (s.StartsWith("@")) return s;
-                if (s.StartsWith(ChannelIdPrefix) && s.Length > 20) return s;
+                if (s.StartsWith(ChannelIdPrefix) && s.Length == AppConstants.ChannelIdLength) return s;
             }
         }
         catch { }

@@ -16,6 +16,8 @@ public class LoggerService
     public ObservableCollection<LogEntry> TodayEntries { get; } = new();
     private readonly string _logDir;
     private readonly object _fileLock = new();
+    private string? _debugDbPath;
+    private readonly object _dbLock = new();
     private const int MaxUiEntries      = 200;
     private const int MaxTodayEntries   = 1000;
     private const int MaxErrorEntries   = 500;
@@ -39,7 +41,8 @@ public class LoggerService
             for (var i = start; i < lines.Length; i++)
             {
                 var entry = ParseLogLine(lines[i], DateTime.Today);
-                if (entry != null) TodayEntries.Add(entry);
+                if (entry != null && (entry.Level == LogLevel.System || IsLevelVisible(entry.Level)))
+                    TodayEntries.Add(entry);
             }
         }
         catch { }
@@ -95,13 +98,22 @@ public class LoggerService
         // フィルター判定（System レベルは常時表示、その他は設定レベルに従う）
         bool show = level == LogLevel.System || IsLevelVisible(level);
 
-        // フィルターOFF → UIにも出力しない、ファイルにも出力しない
-        if (!show) return;
+        if (level == LogLevel.Debug)
+        {
+            var dbEntry = new LogEntry { Timestamp = DateTime.Now, Level = level, Message = message, ChannelName = channelName };
+            WriteToDebugDb(dbEntry, category);
+            if (!show) return;
+        }
+        else
+        {
+            if (!show) return;
+        }
 
         // ファイル書き込みを先に行い、UI更新が失敗しても記録が残るようにする
         WriteToFile(entry);
+        if (level != LogLevel.Debug) WriteToDebugDb(entry, category);  // DEBUG以外もDBへ記録
 
-        Application.Current?.Dispatcher.Invoke(() =>
+        Application.Current?.Dispatcher.InvokeAsync(() =>
         {
             // 中間リスト不要：逆順インデックスで直接削除
             if (!string.IsNullOrEmpty(channelName))
@@ -137,10 +149,10 @@ public class LoggerService
         var filter = SettingsService.Instance.Settings.LogLevel;
         return filter switch
         {
-            "Info"    => level is LogLevel.Info or LogLevel.Error,
+            "Info"    => level is LogLevel.Info or LogLevel.Warning or LogLevel.Error,
             "Warning" => level is LogLevel.Warning or LogLevel.Error,
             "Error"   => level == LogLevel.Error,
-            "Debug"   => true,
+            "Debug"   => level is LogLevel.Info or LogLevel.Warning or LogLevel.Error,
             _         => level is LogLevel.Info or LogLevel.Error
         };
     }
@@ -222,6 +234,22 @@ public class LoggerService
                     deleted++;
                 }
             }
+
+            // traceDBも同じ保持期間でクリーンアップ
+            foreach (var file in Directory.GetFiles(_logDir, "trace_*.db"))
+            {
+                var info = new FileInfo(file);
+                var shouldDelete = retentionDays == 0
+                    ? info.LastWriteTime.Date < today
+                    : info.LastWriteTime < cutoff;
+
+                if (shouldDelete)
+                {
+                    freed += info.Length;
+                    File.Delete(file);
+                    deleted++;
+                }
+            }
         }
         catch { }
         return (deleted, freed);
@@ -260,7 +288,7 @@ public class LoggerService
             ChannelName = channelName
         };
 
-        Application.Current?.Dispatcher.Invoke(() =>
+        Application.Current?.Dispatcher.InvokeAsync(() =>
         {
             ErrorEntries.Insert(0, entry);
             while (ErrorEntries.Count > MaxErrorEntries)
@@ -271,5 +299,50 @@ public class LoggerService
     public void ClearErrorLog()
     {
         Application.Current?.Dispatcher.Invoke(() => ErrorEntries.Clear());
+    }
+
+    private void InitDebugDb(DateTime date)
+    {
+        _debugDbPath = Path.Combine(_logDir, $"trace_{date:yyyyMMdd}.db");
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_debugDbPath}");
+        conn.Open();
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS log (
+                id  INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts  INTEGER NOT NULL,
+                lvl INTEGER NOT NULL,
+                ch  TEXT,
+                cat TEXT,
+                msg TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ts ON log(ts);
+            """;
+        cmd.ExecuteNonQuery();
+    }
+
+    private void WriteToDebugDb(LogEntry entry, LogCategory category)
+    {
+        if (SettingsService.Instance.Settings.LogLevel != "Debug") return;
+        if (_debugDbPath == null) InitDebugDb(entry.Timestamp.Date);
+        try
+        {
+            if (entry.Timestamp.Date > _currentLogDate)
+                InitDebugDb(entry.Timestamp.Date);
+            lock (_dbLock)
+            {
+                using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_debugDbPath}");
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "INSERT INTO log (ts, lvl, ch, cat, msg) VALUES ($ts, $lvl, $ch, $cat, $msg)";
+                cmd.Parameters.AddWithValue("$ts",  new DateTimeOffset(entry.Timestamp).ToUnixTimeMilliseconds());
+                cmd.Parameters.AddWithValue("$lvl", (int)entry.Level);
+                cmd.Parameters.AddWithValue("$ch",  entry.ChannelName ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("$cat", category.ToString());
+                cmd.Parameters.AddWithValue("$msg", entry.Message);
+                cmd.ExecuteNonQuery();
+            }
+        }
+        catch { }
     }
 }

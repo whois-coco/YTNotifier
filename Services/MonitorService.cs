@@ -137,16 +137,19 @@ public class MonitorService : IDisposable
     }
 
     // 新着ループの通知候補を1つのレコードにまとめる
+    // Video にはプレミア公開後の動画も含む（NotifyVideo で一元管理）
     private record NewVideoNotifyCandidates(
         VideoInfo? Video,
         VideoInfo? Short,
         VideoInfo? Live,
-        VideoInfo? Premiere,
+        VideoInfo? UpcomingLive,
+        VideoInfo? UpcomingPremiere,
         bool LatestLiveSeen,
         bool LatestPremiereSeen);
 
     private async Task CheckChannelAsync(ChannelInfo channel)
     {
+        bool quotaExceeded = false;
         try
         {
             channel.LastCheckedAt = DateTime.Now;
@@ -186,8 +189,10 @@ public class MonitorService : IDisposable
 
             var newCandidates = BuildNewVideoNotifyCandidates(channel, videos);
 
-            if (videos.Count > 0)
-                channel.LastCheckedVideoId = videos[0].VideoId;
+            // upcoming 動画はカーソルを進めない（公開済み動画が upcoming より古い位置にあっても検出できるよう）
+            var cursorVideo = videos.FirstOrDefault(v => !v.IsUpcoming);
+            if (cursorVideo != null)
+                channel.LastCheckedVideoId = cursorVideo.VideoId;
             if (newCandidates.Video != null)
                 channel.LastVideoId = newCandidates.Video.VideoId;
 
@@ -199,16 +204,18 @@ public class MonitorService : IDisposable
             SettingsService.Instance.UpdateChannelSilent(channel);
 
             // ===== 通知送信（種別ごとに独立）=====
-            if (newCandidates.Video != null)    await NotifyAsync(channel, newCandidates.Video);
-            if (newCandidates.Short != null)    await NotifyAsync(channel, newCandidates.Short);
-            if (newCandidates.Live != null)     await NotifyAsync(channel, newCandidates.Live);
-            if (newCandidates.Premiere != null) await NotifyAsync(channel, newCandidates.Premiere);
-            if (pendingNotifyLive != null)      await NotifyAsync(channel, pendingNotifyLive);
-            if (pendingNotifyPremiere != null)  await NotifyAsync(channel, pendingNotifyPremiere);
+            if (newCandidates.Video           != null) await NotifyAsync(channel, newCandidates.Video);
+            if (newCandidates.Short           != null) await NotifyAsync(channel, newCandidates.Short);
+            if (newCandidates.Live            != null) await NotifyAsync(channel, newCandidates.Live);
+            if (newCandidates.UpcomingLive    != null) await NotifyAsync(channel, newCandidates.UpcomingLive);
+            if (newCandidates.UpcomingPremiere != null) await NotifyAsync(channel, newCandidates.UpcomingPremiere);
+            if (pendingNotifyLive             != null) await NotifyAsync(channel, pendingNotifyLive);
+            if (pendingNotifyPremiere         != null) await NotifyAsync(channel, pendingNotifyPremiere);
         }
         catch (QuotaExceededException)
         {
             HandleQuotaExceeded();
+            quotaExceeded = true;
         }
         catch (Exception ex)
         {
@@ -224,6 +231,10 @@ public class MonitorService : IDisposable
             bool hadGrace = TickGracePeriods(channel);
             DateTime? suspended;
             lock (_quotaLock) suspended = _quotaSuspendedUntil;
+            // クォータ超過後にリセット時刻到達で _quotaSuspendedUntil が別スレッドにクリアされた場合も
+            // 次回リセット時刻まで待機させる（直前のリセット時刻はすでに過ぎているので +1日分を取得）
+            if (quotaExceeded && !suspended.HasValue)
+                suspended = AppConstants.GetNextQuotaResetTime();
             channel.NextCheckAt = suspended
                 ?? (hadGrace ? channel.LastCheckedAt.AddMinutes(1) : CalcNextCheckAt(channel, channel.LastCheckedAt));
             SettingsService.Instance.UpdateChannelSilent(channel);
@@ -285,7 +296,7 @@ public class MonitorService : IDisposable
                 && entry.GraceRemaining == 0)
             {
                 entry.GraceRemaining = AppConstants.GracePeriodAttempts;
-                AppLogger.Log(LogMsg.GracePeriodStarted, channel.ChannelName, entry.VideoId);
+                AppLogger.Log(LogMsg.GracePeriodStarted, channel.ChannelName, entry.VideoId, AppConstants.GracePeriodAttempts);
             }
         }
     }
@@ -297,22 +308,30 @@ public class MonitorService : IDisposable
     private static NewVideoNotifyCandidates BuildNewVideoNotifyCandidates(
         ChannelInfo channel, List<VideoInfo> videos)
     {
-        VideoInfo? notifyVideo    = null;
-        VideoInfo? notifyShort    = null;
-        VideoInfo? notifyLive     = null;
-        VideoInfo? notifyPremiere = null;
-        bool latestLiveSeen      = false;
-        bool latestPremiereSeen  = false;
-        var  settings            = SettingsService.Instance.Settings;
+        VideoInfo? notifyVideo          = null;
+        VideoInfo? notifyShort          = null;
+        VideoInfo? notifyLive           = null;
+        VideoInfo? notifyUpcomingLive    = null;
+        VideoInfo? notifyUpcomingPremiere = null;
+        bool upcomingLiveSeen           = false;
+        bool publishedLiveSeen          = false;
+        bool upcomingPremiereSeen       = false;
+        bool publishedPremiereSeen      = false;
+        var  settings                = SettingsService.Instance.Settings;
 
         foreach (var video in videos)
         {
             switch (video.Kind)
             {
                 case VideoKind.Live:
-                    if (!latestLiveSeen)
+                    if (video.IsUpcoming && !upcomingLiveSeen)
                     {
-                        latestLiveSeen = true;
+                        upcomingLiveSeen = true;
+                        notifyUpcomingLive = ResolveLiveCandidate(channel, video, settings);
+                    }
+                    else if (!video.IsUpcoming && !publishedLiveSeen)
+                    {
+                        publishedLiveSeen = true;
                         notifyLive = ResolveLiveCandidate(channel, video, settings);
                     }
                     else
@@ -323,10 +342,19 @@ public class MonitorService : IDisposable
                     break;
 
                 case VideoKind.Premiere:
-                    if (!latestPremiereSeen)
+                    if (video.IsUpcoming && !upcomingPremiereSeen)
                     {
-                        latestPremiereSeen = true;
-                        notifyPremiere = ResolvePremiereCandidate(channel, video, settings);
+                        upcomingPremiereSeen = true;
+                        notifyUpcomingPremiere = ResolvePremiereCandidate(channel, video, settings);
+                    }
+                    else if (!video.IsUpcoming && !publishedPremiereSeen)
+                    {
+                        // 公開済みプレミアは Video スロットで動画と競合（NotifyVideo で一元管理）
+                        publishedPremiereSeen = true;
+                        if (notifyVideo == null)
+                            notifyVideo = ResolvePremiereCandidate(channel, video, settings);
+                        else
+                            ResolvePremiereCandidate(channel, video, settings); // pending 更新のみ
                     }
                     else
                     {
@@ -348,8 +376,9 @@ public class MonitorService : IDisposable
         }
 
         return new NewVideoNotifyCandidates(
-            notifyVideo, notifyShort, notifyLive, notifyPremiere,
-            latestLiveSeen, latestPremiereSeen);
+            notifyVideo, notifyShort, notifyLive,
+            notifyUpcomingLive, notifyUpcomingPremiere,
+            publishedLiveSeen, publishedPremiereSeen);
     }
 
     /// <summary>ライブ配信の通知候補を解決し、pending リストを更新する。</summary>
@@ -362,7 +391,7 @@ public class MonitorService : IDisposable
             channel.PendingLives.RemoveAll(p => p.VideoId != video.VideoId);
             UpsertPendingEntry(channel.PendingLives, video.VideoId, scheduled);
 
-            bool notifyUpcoming = settings.GlobalNotifyUpcoming && channel.NotifyUpcoming;
+            bool notifyUpcoming = channel.NotifyUpcoming ?? settings.GlobalNotifyUpcoming;
             if (!notifyUpcoming)
             {
                 AppLogger.Log(LogMsg.LiveSkipped, channel.ChannelName, scheduled?.ToString("MM/dd HH:mm") ?? "-", video.Title);
@@ -377,6 +406,15 @@ public class MonitorService : IDisposable
         }
 
         channel.PendingLives.RemoveAll(p => p.VideoId == video.VideoId);
+
+        // upcoming 通知済みの場合はライブ開始通知をスキップ
+        bool notifyUpcomingOnStart = channel.NotifyUpcoming ?? settings.GlobalNotifyUpcoming;
+        if (notifyUpcomingOnStart && channel.LastLiveNotifiedId == video.VideoId)
+        {
+            channel.LastLiveNotifiedId = string.Empty;
+            AppLogger.Log(LogMsg.LiveStartSkipped, channel.ChannelName, video.Title);
+            return null;
+        }
         return FilterByKind(channel, video, channel.NotifyLive);
     }
 
@@ -390,7 +428,7 @@ public class MonitorService : IDisposable
             channel.PendingPremieres.RemoveAll(p => p.VideoId != video.VideoId);
             UpsertPendingEntry(channel.PendingPremieres, video.VideoId, scheduled);
 
-            bool notifyUpcoming = settings.GlobalNotifyUpcoming && channel.NotifyUpcoming;
+            bool notifyUpcoming = channel.NotifyUpcoming ?? settings.GlobalNotifyUpcoming;
             if (!notifyUpcoming)
             {
                 AppLogger.Log(LogMsg.PremiereSkipped, channel.ChannelName, scheduled?.ToString("MM/dd HH:mm") ?? "-", video.Title);
@@ -405,6 +443,15 @@ public class MonitorService : IDisposable
         }
 
         channel.PendingPremieres.RemoveAll(p => p.VideoId == video.VideoId);
+
+        // upcoming 通知済みの場合はプレミア開始通知をスキップ
+        bool notifyUpcomingOnStart = channel.NotifyUpcoming ?? settings.GlobalNotifyUpcoming;
+        if (notifyUpcomingOnStart && channel.LastPremiereNotifiedId == video.VideoId)
+        {
+            channel.LastPremiereNotifiedId = string.Empty;
+            AppLogger.Log(LogMsg.PremiereStartSkipped, channel.ChannelName, video.Title);
+            return null;
+        }
         return FilterByKind(channel, video, channel.NotifyVideo);
     }
 
@@ -451,13 +498,21 @@ public class MonitorService : IDisposable
 
                 if (newCandidates.LatestLiveSeen)
                 {
-                    channel.PendingLives.Clear();
                     AppLogger.Log(LogMsg.OldLiveDiscardedNew, channel.ChannelName, video.Title);
                 }
                 else if (pendingNotifyLive == null)
                 {
-                    channel.PendingLives.Clear();
-                    pendingNotifyLive = FilterByKind(channel, video, channel.NotifyLive);
+                    var transSettings = SettingsService.Instance.Settings;
+                    bool notifyUpcoming = channel.NotifyUpcoming ?? transSettings.GlobalNotifyUpcoming;
+                    if (notifyUpcoming && channel.LastLiveNotifiedId == video.VideoId)
+                    {
+                        channel.LastLiveNotifiedId = string.Empty;
+                        AppLogger.Log(LogMsg.LiveStartSkipped, channel.ChannelName, video.Title);
+                    }
+                    else
+                    {
+                        pendingNotifyLive = FilterByKind(channel, video, channel.NotifyLive);
+                    }
                 }
                 else
                 {
@@ -470,13 +525,21 @@ public class MonitorService : IDisposable
 
                 if (newCandidates.LatestPremiereSeen)
                 {
-                    channel.PendingPremieres.Clear();
                     AppLogger.Log(LogMsg.OldPremiereDiscardedNew, channel.ChannelName, video.Title);
                 }
                 else if (pendingNotifyPremiere == null)
                 {
-                    channel.PendingPremieres.Clear();
-                    pendingNotifyPremiere = FilterByKind(channel, video, channel.NotifyVideo);
+                    var transSettings = SettingsService.Instance.Settings;
+                    bool notifyUpcoming = channel.NotifyUpcoming ?? transSettings.GlobalNotifyUpcoming;
+                    if (notifyUpcoming && channel.LastPremiereNotifiedId == video.VideoId)
+                    {
+                        channel.LastPremiereNotifiedId = string.Empty;
+                        AppLogger.Log(LogMsg.PremiereStartSkipped, channel.ChannelName, video.Title);
+                    }
+                    else
+                    {
+                        pendingNotifyPremiere = FilterByKind(channel, video, channel.NotifyVideo);
+                    }
                 }
                 else
                 {

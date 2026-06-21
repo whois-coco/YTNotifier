@@ -390,8 +390,8 @@
     <Style x:Key="KindToggleShort" TargetType="ToggleButton" BasedOn="{StaticResource KindToggleButtonLarge}">
         <Style.Triggers>
             <Trigger Property="IsChecked" Value="True">
-                <Setter Property="Background" Value="#F97316"/>
-                <Setter Property="BorderBrush" Value="#F97316"/>
+                <Setter Property="Background" Value="{DynamicResource ShortBrush}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource ShortBrush}"/>
                 <Setter Property="Foreground" Value="White"/>
             </Trigger>
         </Style.Triggers>
@@ -401,8 +401,8 @@
     <Style x:Key="KindToggleLive" TargetType="ToggleButton" BasedOn="{StaticResource KindToggleButtonLarge}">
         <Style.Triggers>
             <Trigger Property="IsChecked" Value="True">
-                <Setter Property="Background" Value="#EF4444"/>
-                <Setter Property="BorderBrush" Value="#EF4444"/>
+                <Setter Property="Background" Value="{DynamicResource ErrorBrush}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource ErrorBrush}"/>
                 <Setter Property="Foreground" Value="White"/>
             </Trigger>
         </Style.Triggers>

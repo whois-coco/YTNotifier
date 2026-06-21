@@ -150,8 +150,6 @@ public partial class MainWindow : System.Windows.Window
         else ExecuteSearch();
     }
 
-    private void SearchClearButton_Click(object sender, RoutedEventArgs e) => ClearSearch();
-
     private void ExecuteSearch()
     {
         _searchQuery = ChannelSearchBox.Text.Trim();
@@ -229,6 +227,7 @@ public partial class MainWindow : System.Windows.Window
             EmptyState.Visibility = matched.Count == 0 && channels.Count > 0
                 ? Visibility.Visible : Visibility.Collapsed;
             foreach (var ch in matched) ChannelList.Children.Add(CreateChannelRow(ch));
+            UpdateQuotaInfo();
             return;
         }
 
@@ -262,6 +261,8 @@ public partial class MainWindow : System.Windows.Window
                 SetRowInteractive(child, false);
                 SetDeleteButtonVisibility(child, true);
             }
+
+        UpdateQuotaInfo();
     }
 
     // カテゴリなし表示モードかどうか
@@ -559,7 +560,7 @@ public partial class MainWindow : System.Windows.Window
             if (QuotaInfoText == null) return;
             var svc      = SettingsService.Instance;
             var settings = svc.Settings;
-            var channels = svc.Channels;
+            var channels = svc.GetChannelsSnapshot();
             var interval = settings.CheckIntervalMinutes;
             var daily    = ApiQuotaHelper.EstimateDailyUnitsForChannels(interval, channels);
             var pct      = Math.Min(daily * 100.0 / ApiQuotaHelper.DailyLimit, 100.0);
@@ -578,7 +579,7 @@ public partial class MainWindow : System.Windows.Window
             ActualQuotaPercentText.Text = $"{(int)Math.Round(actualPct)}%";
             ApplyQuotaBar(ActualQuotaBar, ActualQuotaBarBg, ActualQuotaInfoText, ActualQuotaPercentText, actualPct);
         }
-        catch { }
+        catch (Exception ex) { AppLogger.Log(LogMsg.UiUpdateFailed, null, nameof(UpdateQuotaInfo), ex.Message); }
     }
 
     // プログレスバー表示の共通処理（bar/barBg をキャプチャして SizeChanged にも対応）
@@ -589,11 +590,11 @@ public partial class MainWindow : System.Windows.Window
     {
         // 表示と同じ四捨五入した値で色判定
         var pctRounded = (int)Math.Round(pct);
-        var barColor = pctRounded >= 86 ? System.Windows.Media.Color.FromRgb(0xEF, 0x44, 0x44)   // 赤
-                     : pctRounded >= 76 ? System.Windows.Media.Color.FromRgb(0xEA, 0xB3, 0x08)   // オレンジ
-                     : pctRounded >= 61 ? System.Windows.Media.Color.FromRgb(0xFF, 0xD7, 0x00)   // 黄
-                                 : System.Windows.Media.Color.FromRgb(0x22, 0xC5, 0x5E);
-        bar.Background = new System.Windows.Media.SolidColorBrush(barColor);
+        var res = Application.Current.Resources;
+        bar.Background = pctRounded >= 86 ? (System.Windows.Media.Brush)res["ErrorBrush"]
+                       : pctRounded >= 76 ? (System.Windows.Media.Brush)res["QuotaWarnHighBrush"]
+                       : pctRounded >= 61 ? (System.Windows.Media.Brush)res["QuotaWarnLowBrush"]
+                                          : (System.Windows.Media.Brush)res["QuotaOkBrush"];
         barBg.Tag = pct;
 
         void SetBarWidth()
@@ -633,6 +634,24 @@ public partial class MainWindow : System.Windows.Window
                 item.IsEnabled = !over;
                 item.ToolTip   = over ? $"クォータ超過（{cost:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日）" : $"{cost:N0} ユニット/日";
                 item.Opacity   = over ? 0.4 : 1.0;
+            }
+        }
+
+        // 現在の選択がクォータ超過なら最小有効間隔へ自動調整
+        if (IntervalComboBox.SelectedItem is System.Windows.Controls.ComboBoxItem currentItem && !currentItem.IsEnabled)
+        {
+            var firstEnabled = IntervalComboBox.Items.OfType<System.Windows.Controls.ComboBoxItem>()
+                .FirstOrDefault(i => i.IsEnabled && i.Tag is string t && int.TryParse(t, out _));
+            if (firstEnabled != null && int.TryParse(firstEnabled.Tag?.ToString(), out var newMins))
+            {
+                _loadingSettings = true;
+                IntervalComboBox.SelectedItem = firstEnabled;
+                _loadingSettings = false;
+                SettingsService.Instance.Settings.CheckIntervalMinutes = newMins;
+                SettingsService.Instance.SaveSettings();
+                MonitorService.Instance.ResetNormalChannels(newMins);
+                MonitorService.Instance.RestartWithNewInterval();
+                AppLogger.Log(LogMsg.QuotaAutoIntervalAdjusted, null, newMins);
             }
         }
     }
@@ -740,8 +759,7 @@ public partial class MainWindow : System.Windows.Window
             Text = "🗑", FontSize = 13,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Foreground = new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0xEF, 0x44, 0x44))
+            Foreground = (System.Windows.Media.Brush)Application.Current.Resources["ErrorBrush"]
         };
         btn.Content = icon;
         btn.Click += (_, e) =>
@@ -1189,7 +1207,7 @@ public partial class MainWindow : System.Windows.Window
 
     private static UIElement BuildKindIcon(string label, bool active)
     {
-        var color = active ? Brushes.White : Brushes.Gray;
+        var color = active ? Brushes.White : (System.Windows.Media.Brush)Application.Current.Resources["TextMutedBrush"];
 
         if (label == "Short")
             return new System.Windows.Shapes.Path { Data = Geometry.Parse(ShortIconPath), Width = 18, Height = 18, Stretch = Stretch.Uniform, Fill = color };
@@ -1286,8 +1304,13 @@ public partial class MainWindow : System.Windows.Window
         OpenUrl(url);
     }
 
-    private static void OpenUrl(string url) =>
+    private static void OpenUrl(string url)
+    {
+        if (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+            !url.StartsWith("http://",  StringComparison.OrdinalIgnoreCase))
+            return;
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+    }
 
     private void ShowRenameDialog(ChannelInfo ch)
     {
@@ -1303,10 +1326,12 @@ public partial class MainWindow : System.Windows.Window
     {
         e.Handled = true;
         if (sender is not Button btn || btn.Tag is not ChannelInfo ch) return;
-        if (ConfirmDialog.Show(Application.Current.MainWindow as Window, "チャンネルを削除", $"「{ch.ChannelName}」を削除しますか？", "削除") != true) return;
+        var mainWindow = Application.Current.Windows.OfType<MainWindow>().FirstOrDefault();
+        if (mainWindow == null) return;
+        if (ConfirmDialog.Show(mainWindow, "チャンネルを削除", $"「{ch.ChannelName}」を削除しますか？", "削除") != true) return;
         SettingsService.Instance.RemoveChannel(ch.ChannelId);
         AppLogger.Log(LogMsg.ChannelRemoved, ch.ChannelName);
-        (Application.Current.MainWindow as MainWindow)?.RefreshChannelList();
+        mainWindow?.RefreshChannelList();
     }
 
     // ===== ドラッグアンドドロップ =====

@@ -57,7 +57,7 @@ public partial class MainWindow : System.Windows.Window
                 : quotaSuspend ? "クォータ超過"
                 : effectiveRunning ? "監視中" : "停止中";
             txt.Foreground = _isOffline
-                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xEF, 0x44, 0x44))
+                ? (System.Windows.Media.Brush)Application.Current.Resources["ErrorBrush"]
                 : quotaSuspend
                     ? (System.Windows.Media.Brush)Application.Current.Resources["WarningBrush"]
                     : effectiveRunning
@@ -111,9 +111,12 @@ public partial class MainWindow : System.Windows.Window
         }
         else
         {
-            MonitorService.Instance.Start();
-            UpdateMonitorStatus(true);
             AppLogger.Log(LogMsg.NetworkRestored);
+            if (!string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKey))
+            {
+                MonitorService.Instance.Start();
+                UpdateMonitorStatus(true);
+            }
         }
     }
 
@@ -200,6 +203,9 @@ public partial class MainWindow : System.Windows.Window
             active.BorderBrush    = (Brush)Application.Current.Resources["PrimaryBrush"];
             if (active.Child is TextBlock activeTb)
                 SetDynamicBrush(activeTb, TextBlock.ForegroundProperty, "PrimaryBrush");
+
+            if (active == SettingsNavMonitor)
+                UpdateQuotaInfo();
         }
     }
 
@@ -265,6 +271,7 @@ public partial class MainWindow : System.Windows.Window
         var dlg = new AddChannelWindow(onChannelAdded: () =>
         {
             Dispatcher.Invoke(RefreshChannelList);
+            Dispatcher.Invoke(UpdateQuotaInfo);
         })
         { Owner = this };
         dlg.ShowDialog();

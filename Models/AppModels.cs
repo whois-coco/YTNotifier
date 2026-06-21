@@ -19,7 +19,7 @@ public class AppSettings
     public int CheckIntervalMinutes { get; set; } = 5;
 
     [JsonProperty("showDesktopNotification")]
-    public bool ShowDesktopNotification { get; set; } = false;
+    public bool ShowDesktopNotification { get; set; } = true;
 
     /// <summary>トースト通知スタイル</summary>
     [JsonProperty("toastStyle")]
@@ -28,7 +28,7 @@ public class AppSettings
 
     /// <summary>全チャンネル共通: 待機所（upcoming）通知のグローバルON/OFF</summary>
     [JsonProperty("globalNotifyUpcoming")]
-    public bool GlobalNotifyUpcoming { get; set; } = false;
+    public bool GlobalNotifyUpcoming { get; set; } = true;
 
     [JsonProperty("minimizeToTray")]
     public bool MinimizeToTray { get; set; } = false;
@@ -59,13 +59,13 @@ public class AppSettings
     public bool AlwaysOnTop { get; set; } = false;
 
     [JsonProperty("notificationSound")]
-    public bool NotificationSound { get; set; } = false;
+    public bool NotificationSound { get; set; } = true;
 
     [JsonProperty("isMuted")]
     public bool IsMuted { get; set; } = false;
 
     [JsonProperty("flashTaskbar")]
-    public bool FlashTaskbar { get; set; } = false;
+    public bool FlashTaskbar { get; set; } = true;
 
     [JsonProperty("preMuteDesktopNotification")]
     public bool PreMuteDesktopNotification { get; set; } = false;
@@ -195,11 +195,12 @@ public class ChannelInfo
     public bool NotifyLive { get; set; } = true;
 
     /// <summary>
-    /// ON: upcoming（待機所）段階で通知（ライブ配信前・プレミア公開前）
-    /// OFF: live ステータスになった時のみ通知
+    /// null:  グローバル設定に従う（デフォルト）
+    /// true:  個別にON（グローバルに関わらず通知）
+    /// false: 個別にOFF（グローバルに関わらずスキップ）
     /// </summary>
     [JsonProperty("notifyUpcoming")]
-    public bool NotifyUpcoming { get; set; } = false;
+    public bool? NotifyUpcoming { get; set; } = null;
 
     [JsonProperty("testDataPath")]
     public string TestDataPath { get; set; } = string.Empty;
@@ -359,9 +360,9 @@ public class FocusSlot
 {
     [JsonProperty("notifyKind")]
     public YTNotifier.Services.VideoKind NotifyKind { get; set; } = YTNotifier.Services.VideoKind.Video;
-    /// <summary>曜日ビットマスク (bit0=Sun..bit6=Sat, 0=全曜日)</summary>
+    /// <summary>曜日ビットマスク (bit0=Sun..bit6=Sat, 0b1111111=全曜日)</summary>
     [JsonProperty("days")]
-    public int Days { get; set; } = 0;
+    public int Days { get; set; } = 0b1111111;
     [JsonProperty("hour")]
     public int Hour { get; set; } = 18;
     [JsonProperty("minute")]
