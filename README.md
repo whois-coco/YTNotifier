@@ -1,6 +1,6 @@
 # YTNotifier
 
-YouTube チャンネルの新着動画・ライブ配信・プレミア公開をリアルタイムで通知する Windows デスクトップアプリケーションです。
+YouTube チャンネルの新着動画・Short・ライブ配信・プレミア公開をリアルタイムで通知する Windows デスクトップアプリケーションです。
 
 機能の詳細は [FUNCTION.md](FUNCTION.md)、変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照してください。
 
