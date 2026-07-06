@@ -16,7 +16,9 @@ public partial class App : System.Windows.Application
     private static Mutex? _mutex;
     private MainWindow? _mainWindow;
     private TrayIconService? _trayIconService;
+    private bool _isDuplicateInstance = false;
     private bool _errorShown = false;
+    private int _flushed = 0;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -24,6 +26,7 @@ public partial class App : System.Windows.Application
         _mutex = new Mutex(true, "YTNotifier_SingleInstance", out bool createdNew);
         if (!createdNew)
         {
+            _isDuplicateInstance = true;
             System.Windows.MessageBox.Show(
                 "YTNotifier はすでに起動しています。\nタスクトレイを確認してください。",
                 "多重起動", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -33,6 +36,7 @@ public partial class App : System.Windows.Application
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+        AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
         // トースト通知用 AppID 設定（WPFで ToastContentBuilder.Show() を使うために必要）
@@ -60,7 +64,8 @@ public partial class App : System.Windows.Application
         _trayIconService.Initialize();
 
         // APIキー未設定の初回起動時はセットアップウィンドウを先に表示
-        if (string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKey))
+        if (SettingsService.Instance.Settings.ApiKeys.Count == 0 ||
+            string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKeys[0]))
         {
             var setup = new ApiKeySetupWindow();
             setup.ShowDialog();
@@ -153,6 +158,21 @@ public partial class App : System.Windows.Application
     {
         LogError("致命的エラー",
             (e.ExceptionObject as Exception)?.ToString() ?? e.ExceptionObject?.ToString() ?? "不明");
+        FlushAndBackup();
+    }
+
+    private void OnProcessExit(object? sender, EventArgs e)
+    {
+        if (_isDuplicateInstance) return;
+        FlushAndBackup();
+    }
+
+    private void FlushAndBackup()
+    {
+        if (Interlocked.Exchange(ref _flushed, 1) != 0) return;
+        try { SettingsService.Instance.FlushAll(); } catch { }
+        try { SettingsService.Instance.SaveAutoBackupIfDirty(); } catch { }
+        try { LoggerService.Instance.FlushLog(); } catch { }
     }
 
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
@@ -201,10 +221,14 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        if (_isDuplicateInstance)
+        {
+            _mutex?.Dispose();
+            base.OnExit(e);
+            return;
+        }
         MonitorService.Instance.Stop();
-        // 変更があれば bkup/auto_backup.ytbk へ自動保存
-        try { SettingsService.Instance.SaveAutoBackupIfDirty(); } catch { }
-        try { SettingsService.Instance.SaveChannelsSilent(); } catch { }
+        FlushAndBackup();
         _trayIconService?.Dispose();
         _mutex?.ReleaseMutex();
         _mutex?.Dispose();

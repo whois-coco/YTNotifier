@@ -6,7 +6,7 @@ namespace YTNotifier.Models;
 public class AppSettings
 {
     [Newtonsoft.Json.JsonIgnore]
-    public string ApiKey { get; set; } = string.Empty;
+    public List<string> ApiKeys { get; set; } = new();
 
     [JsonProperty("isDarkMode")]
     public bool IsDarkMode { get; set; } = false;
@@ -26,9 +26,13 @@ public class AppSettings
     [Newtonsoft.Json.JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
     public ToastStyle ToastStyle { get; set; } = ToastStyle.Standard;
 
-    /// <summary>全チャンネル共通: 待機所（upcoming）通知のグローバルON/OFF</summary>
+    /// <summary>全チャンネル共通: 待機所（upcoming）通知のグローバルON/OFF（廃止・移行用に読み取りのみ）</summary>
     [JsonProperty("globalNotifyUpcoming")]
     public bool GlobalNotifyUpcoming { get; set; } = true;
+
+    /// <summary>UpcomingNotifyMode へのマイグレーション完了フラグ</summary>
+    [JsonProperty("upcomingMigrated")]
+    public bool UpcomingMigrated { get; set; } = false;
 
     [JsonProperty("minimizeToTray")]
     public bool MinimizeToTray { get; set; } = false;
@@ -88,17 +92,18 @@ public class AppSettings
     [JsonProperty("autoCleanLogs")]
     public bool AutoCleanLogs { get; set; } = false;
 
-    // ===== ログ表示フィルター =====
-    // INFO / WARNING / ERROR / DEBUG のいずれかを設定する
-    // デフォルトは INFO（SYSTEM + INFO + ERROR を表示）
     [JsonProperty("continuousAddMode")]
     public bool ContinuousAddMode { get; set; } = true;  // 連続追加モード（デフォルトON）
 
-    // 当日のAPI実使用量追跡
-    [JsonProperty("todayApiUnits")]
+    // 当日のAPI実使用量追跡（state.json で管理）
+    [Newtonsoft.Json.JsonIgnore]
     public int    TodayApiUnits { get; set; } = 0;
-    [JsonProperty("todayApiDate")]
+    [Newtonsoft.Json.JsonIgnore]
     public string TodayApiDate  { get; set; } = "";
+    [JsonProperty("lastStartupCheckDate")]
+    public string LastStartupCheckDate { get; set; } = "";
+    [JsonProperty("lastDailyFullScanDate")]
+    public string LastDailyFullScanDate { get; set; } = "";
 }
 
 public class ChannelInfo
@@ -118,18 +123,17 @@ public class ChannelInfo
     [JsonProperty("subscriberCount")]
     public string SubscriberCount { get; set; } = string.Empty;
 
-    /// <summary>プレイリスト走査カーソル（全種別共通）。このIDより新しい動画だけを新着として扱う</summary>
-    [JsonProperty("lastCheckedVideoId")]
+    /// <summary>プレイリスト走査カーソル（全種別共通）。state.json で管理</summary>
+    [JsonIgnore]
     public string LastCheckedVideoId { get; set; } = string.Empty;
 
-    /// <summary>UI のクリック機能で「最新動画を開く」ために使用（動画のみ）</summary>
-    [JsonProperty("lastVideoId")]
+    /// <summary>UI のクリック機能で「最新動画を開く」ために使用（動画のみ）。state.json で管理</summary>
+    [JsonIgnore]
     public string LastVideoId { get; set; } = string.Empty;
 
-
-    // ===== upcoming 待ちリスト（複数の同時 upcoming ライブ/プレミアに対応）=====
+    // ===== upcoming 待ちリスト（state.json で管理）=====
     private List<PendingVideoEntry> _pendingLives = new();
-    [JsonProperty("pendingLives")]
+    [JsonIgnore]
     public List<PendingVideoEntry> PendingLives
     {
         get => _pendingLives;
@@ -137,42 +141,96 @@ public class ChannelInfo
     }
 
     private List<PendingVideoEntry> _pendingPremieres = new();
-    [JsonProperty("pendingPremieres")]
+    [JsonIgnore]
     public List<PendingVideoEntry> PendingPremieres
     {
         get => _pendingPremieres;
         set => _pendingPremieres = value ?? new();
     }
 
-    /// <summary>ライブ通知済みVideoId（upcoming 通知ON時の再通知防止用）</summary>
-    [JsonProperty("lastLiveNotifiedId")]
+    /// <summary>配信中ライブ。state.json で管理</summary>
+    [JsonIgnore]
+    public List<PendingVideoEntry> ActiveLives { get; set; } = new();
+
+    /// <summary>公開中プレミア。state.json で管理</summary>
+    [JsonIgnore]
+    public List<PendingVideoEntry> ActivePremieres { get; set; } = new();
+
+    /// <summary>ライブ通知済みVideoId。state.json で管理</summary>
+    [JsonIgnore]
     public string LastLiveNotifiedId { get; set; } = string.Empty;
 
-    /// <summary>プレミア通知済みVideoId（upcoming 通知ON時の再通知防止用）</summary>
-    [JsonProperty("lastPremiereNotifiedId")]
+    /// <summary>プレミア通知済みVideoId。state.json で管理</summary>
+    [JsonIgnore]
     public string LastPremiereNotifiedId { get; set; } = string.Empty;
 
-    [JsonProperty("lastCheckedAt")]
+    [JsonIgnore]
     public DateTime LastCheckedAt { get; set; } = DateTime.MinValue;
 
-    // ===== v1→v2 マイグレーション専用フィールド =====
-    // 初回チェック時に PendingLives / PendingPremieres へ移行後クリアされる。
-    // 新規コードからは参照しないこと。
-    [JsonProperty("lastLiveId")]
+    // ===== v1→v2 マイグレーション専用フィールド（state.json で管理）=====
+    [JsonIgnore]
     public string LastLiveId { get; set; } = string.Empty;
 
-    [JsonProperty("lastPremiereId")]
+    [JsonIgnore]
     public string LastPremiereId { get; set; } = string.Empty;
 
-    [JsonProperty("nextLiveCheckAt")]
+    [JsonIgnore]
     public DateTime? NextLiveCheckAt { get; set; } = null;
 
-    [JsonProperty("liveGraceRemaining")]
+    [JsonIgnore]
     public int LiveGraceRemaining { get; set; } = 0;
 
-    [JsonProperty("nextPremiereCheckAt")]
+    [JsonIgnore]
     public DateTime? NextPremiereCheckAt { get; set; } = null;
     // ===== /v1→v2 マイグレーション専用フィールド =====
+
+    /// <summary>最後に通知した動画タイトル。state.json で管理</summary>
+    [JsonIgnore]
+    public string LastVideoTitle { get; set; } = string.Empty;
+
+    /// <summary>動画通知日時。state.json で管理</summary>
+    [JsonIgnore]
+    public DateTime? LastVideoNotifiedAt { get; set; }
+
+    /// <summary>最後に通知したShortのVideoId。state.json で管理</summary>
+    [JsonIgnore]
+    public string LastShortNotifiedId { get; set; } = string.Empty;
+
+    /// <summary>最後に通知したShortタイトル。state.json で管理</summary>
+    [JsonIgnore]
+    public string LastShortTitle { get; set; } = string.Empty;
+
+    /// <summary>Short通知日時。state.json で管理</summary>
+    [JsonIgnore]
+    public DateTime? LastShortNotifiedAt { get; set; }
+
+    /// <summary>最後に通知したライブタイトル。state.json で管理</summary>
+    [JsonIgnore]
+    public string LastLiveNotifiedTitle { get; set; } = string.Empty;
+
+    /// <summary>ライブ通知日時。state.json で管理</summary>
+    [JsonIgnore]
+    public DateTime? LastLiveNotifiedAt { get; set; }
+
+    /// <summary>最後に通知したプレミアタイトル。state.json で管理</summary>
+    [JsonIgnore]
+    public string LastPremiereNotifiedTitle { get; set; } = string.Empty;
+
+    /// <summary>プレミア通知日時。state.json で管理</summary>
+    [JsonIgnore]
+    public DateTime? LastPremiereNotifiedAt { get; set; }
+
+    [JsonIgnore]
+    public string?    LatestTitle { get; set; }
+
+    [JsonIgnore]
+    public VideoKind? LatestKind  { get; set; }
+
+    [JsonIgnore]
+    public string?    LatestVideoId { get; set; }
+
+    [JsonIgnore]
+    public TimeSpan?  LatestDuration { get; set; }
 
     [JsonProperty("isEnabled")]
     public bool IsEnabled { get; set; } = true;
@@ -184,6 +242,9 @@ public class ChannelInfo
     [JsonProperty("hasUnread")]
     public bool HasUnread { get; set; } = false;
 
+    [JsonProperty("isDormant")]
+    public bool IsDormant { get; set; } = false;
+
     // 通知種別フィルター（デフォルトは全て有効）
     [JsonProperty("notifyVideo")]
     public bool NotifyVideo { get; set; } = true;
@@ -194,13 +255,18 @@ public class ChannelInfo
     [JsonProperty("notifyLive")]
     public bool NotifyLive { get; set; } = true;
 
-    /// <summary>
-    /// null:  グローバル設定に従う（デフォルト）
-    /// true:  個別にON（グローバルに関わらず通知）
-    /// false: 個別にOFF（グローバルに関わらずスキップ）
-    /// </summary>
+    /// <summary>ライブ/プレミア待機所の通知方法（移行後は UpcomingNotifyMode を使用）</summary>
     [JsonProperty("notifyUpcoming")]
     public bool? NotifyUpcoming { get; set; } = null;
+
+    /// <summary>ライブ/プレミア upcoming の通知方法</summary>
+    [JsonProperty("upcomingNotifyMode")]
+    [Newtonsoft.Json.JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
+    public UpcomingNotifyMode UpcomingNotifyMode { get; set; } = UpcomingNotifyMode.WaitingRoomOnly;
+
+    /// <summary>待機所通知リードタイム（分）</summary>
+    [JsonProperty("upcomingNotifyLeadMinutes")]
+    public int UpcomingNotifyLeadMinutes { get; set; } = 10;
 
     [JsonProperty("testDataPath")]
     public string TestDataPath { get; set; } = string.Empty;
@@ -249,14 +315,14 @@ public class ChannelInfo
     [JsonProperty("lowFreqIntervalMinutes")]
     public int LowFreqIntervalMinutes { get; set; } = 60;
 
-    /// <summary>アップロードプレイリストID（channels.list から取得）空の場合はUC→UU変換で代替</summary>
-    [JsonProperty("uploadsPlaylistId")]
+    /// <summary>アップロードプレイリストID（channels.list から取得）。state.json で管理</summary>
+    [JsonIgnore]
     public string UploadsPlaylistId { get; set; } = "";
     [JsonProperty("normalIntervalMinutes")]
     public int NormalIntervalMinutes { get; set; } = 0;
 
-    // 次回チェック予定時刻
-    [JsonProperty("nextCheckAt")]
+    // 次回チェック予定時刻（state.json で管理）
+    [JsonIgnore]
     public DateTime NextCheckAt { get; set; } = DateTime.MinValue;
 
     [JsonIgnore]
@@ -284,6 +350,13 @@ public enum MonitorMode
     Normal   = 0,  // 全体設定に従う
     Focus    = 1,  // 集中監視のみ
     LowFreq  = 2,  // 低頻度監視
+}
+
+public enum UpcomingNotifyMode
+{
+    WaitingRoomOnly = 0,  // 待機所のみ（開始時通知なし）
+    LiveStartOnly   = 1,  // ライブ配信開始時のみ（待機所通知なし）
+    Both            = 2,  // 両方通知
 }
 
 public class CategoryInfo
@@ -350,6 +423,16 @@ public class PendingVideoEntry
     [JsonProperty("scheduledAt")]
     public DateTime? ScheduledAt { get; set; }
 
+    [JsonProperty("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [JsonProperty("thumbnailUrl")]
+    public string? ThumbnailUrl { get; set; }
+
+    /// <summary>待機所通知送信済みフラグ（X分前通知の二重送信防止）</summary>
+    [JsonProperty("upcomingNotified")]
+    public bool UpcomingNotified { get; set; } = false;
+
     /// <summary>開始時刻到達後の猶予チェック残回数</summary>
     [JsonProperty("graceRemaining")]
     public int GraceRemaining { get; set; } = 0;
@@ -385,4 +468,128 @@ public enum ToastStyle
 {
     Standard,      // デフォルト通知（チャンネルアイコン＋動画情報）
     Thumbnail      // サムネイル通知（サムネイル大表示＋チャンネル名＋種別＋タイトル）
+}
+
+/// <summary>チャンネルごとの実行状態（state.json で管理）</summary>
+public class ChannelState
+{
+    [JsonProperty("lastCheckedVideoId")]
+    public string LastCheckedVideoId { get; set; } = string.Empty;
+
+    [JsonProperty("lastVideoId")]
+    public string LastVideoId { get; set; } = string.Empty;
+
+    [JsonProperty("nextCheckAt")]
+    public DateTime NextCheckAt { get; set; } = DateTime.MinValue;
+
+    [JsonProperty("lastCheckedAt")]
+    public DateTime LastCheckedAt { get; set; } = DateTime.MinValue;
+
+    [JsonProperty("uploadsPlaylistId")]
+    public string UploadsPlaylistId { get; set; } = string.Empty;
+
+    private List<PendingVideoEntry> _pendingLives = new();
+    [JsonProperty("pendingLives")]
+    public List<PendingVideoEntry> PendingLives
+    {
+        get => _pendingLives;
+        set => _pendingLives = value ?? new();
+    }
+
+    private List<PendingVideoEntry> _pendingPremieres = new();
+    [JsonProperty("pendingPremieres")]
+    public List<PendingVideoEntry> PendingPremieres
+    {
+        get => _pendingPremieres;
+        set => _pendingPremieres = value ?? new();
+    }
+
+    [JsonProperty("activeLives")]
+    public List<PendingVideoEntry> ActiveLives { get; set; } = new();
+
+    [JsonProperty("activePremieres")]
+    public List<PendingVideoEntry> ActivePremieres { get; set; } = new();
+
+    [JsonProperty("lastLiveNotifiedId")]
+    public string LastLiveNotifiedId { get; set; } = string.Empty;
+
+    [JsonProperty("lastPremiereNotifiedId")]
+    public string LastPremiereNotifiedId { get; set; } = string.Empty;
+
+    [JsonProperty("lastLiveId")]
+    public string LastLiveId { get; set; } = string.Empty;
+
+    [JsonProperty("lastPremiereId")]
+    public string LastPremiereId { get; set; } = string.Empty;
+
+    [JsonProperty("nextLiveCheckAt")]
+    public DateTime? NextLiveCheckAt { get; set; }
+
+    [JsonProperty("nextPremiereCheckAt")]
+    public DateTime? NextPremiereCheckAt { get; set; }
+
+    [JsonProperty("liveGraceRemaining")]
+    public int LiveGraceRemaining { get; set; } = 0;
+
+    [JsonProperty("lastVideoTitle")]
+    public string LastVideoTitle { get; set; } = string.Empty;
+
+    [JsonProperty("lastVideoNotifiedAt")]
+    public DateTime? LastVideoNotifiedAt { get; set; }
+
+    [JsonProperty("lastShortNotifiedId")]
+    public string LastShortNotifiedId { get; set; } = string.Empty;
+
+    [JsonProperty("lastShortTitle")]
+    public string LastShortTitle { get; set; } = string.Empty;
+
+    [JsonProperty("lastShortNotifiedAt")]
+    public DateTime? LastShortNotifiedAt { get; set; }
+
+    [JsonProperty("lastLiveNotifiedTitle")]
+    public string LastLiveNotifiedTitle { get; set; } = string.Empty;
+
+    [JsonProperty("lastLiveNotifiedAt")]
+    public DateTime? LastLiveNotifiedAt { get; set; }
+
+    [JsonProperty("lastPremiereNotifiedTitle")]
+    public string LastPremiereNotifiedTitle { get; set; } = string.Empty;
+
+    [JsonProperty("lastPremiereNotifiedAt")]
+    public DateTime? LastPremiereNotifiedAt { get; set; }
+
+    [JsonProperty("latestTitle")]
+    public string?    LatestTitle { get; set; }
+
+    [JsonProperty("latestKind")]
+    public VideoKind? LatestKind  { get; set; }
+
+    [JsonProperty("latestVideoId")]
+    public string?    LatestVideoId { get; set; }
+
+    [JsonProperty("latestDuration")]
+    public TimeSpan?  LatestDuration { get; set; }
+}
+
+/// <summary>Gemini 要約結果1件分（gemini_summary_cache.json で管理）</summary>
+public class GeminiSummaryEntry
+{
+    [JsonProperty("headline")]
+    public string Headline { get; set; } = string.Empty;
+
+    [JsonProperty("detail")]
+    public string Detail { get; set; } = string.Empty;
+}
+
+/// <summary>アプリ全体の実行状態（state.json で管理）</summary>
+public class AppState
+{
+    [JsonProperty("todayApiUnits")]
+    public int TodayApiUnits { get; set; } = 0;
+
+    [JsonProperty("todayApiDate")]
+    public string TodayApiDate { get; set; } = string.Empty;
+
+    [JsonProperty("channels")]
+    public Dictionary<string, ChannelState> Channels { get; set; } = new();
 }

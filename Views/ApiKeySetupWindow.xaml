@@ -2,9 +2,9 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="YTNotifier - 初回設定"
-        Width="480" Height="230"
-        MinWidth="480" MaxWidth="480"
-        MinHeight="230" MaxHeight="230"
+        Width="640" Height="680"
+        MinWidth="640" MaxWidth="640"
+        MinHeight="680" MaxHeight="680"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         WindowStyle="None">
@@ -54,45 +54,108 @@
                 </DockPanel>
             </Border>
 
-            <!-- コンテンツ -->
-            <StackPanel Margin="20,16,20,16">
-                <TextBlock Text="APIキー" FontSize="11" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
-                           Margin="0,0,0,6"/>
-                <Grid Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="ApiKeyBox" Grid.Column="0"
-                             Style="{StaticResource ModernTextBox}"
-                             Margin="0,0,8,0"
-                             KeyDown="ApiKeyBox_KeyDown"/>
-                    <Button Grid.Column="1" x:Name="SaveButton"
-                            Style="{StaticResource PrimaryButton}"
-                            Content="保存" Padding="16,8"
-                            Click="SaveButton_Click"/>
-                </Grid>
-                <TextBlock FontSize="11" Foreground="{DynamicResource TextMutedBrush}">
-                    <Hyperlink RequestNavigate="ApiKeyLink_Click"
-                               NavigateUri="https://console.developers.google.com">
-                        Google Cloud Console でAPIキーを取得 →
-                    </Hyperlink>
-                </TextBlock>
-                <Grid Margin="0,12,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="バックアップから復元する" FontSize="11"
-                               Foreground="{DynamicResource TextMutedBrush}"
-                               VerticalAlignment="Center"/>
-                    <Button Grid.Column="1"
+            <!-- フッター（戻る/次へ・進捗表示） -->
+            <Grid DockPanel.Dock="Bottom" Margin="20,12,20,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Button x:Name="BackButton" Grid.Column="0"
+                        Style="{StaticResource SecondaryButton}"
+                        Content="戻る" Padding="16,8"
+                        Click="BackButton_Click"/>
+                <TextBlock x:Name="ProgressText" Grid.Column="1"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           FontSize="11" Foreground="{DynamicResource TextMutedBrush}"/>
+                <Button x:Name="NextButton" Grid.Column="2"
+                        Style="{StaticResource PrimaryButton}"
+                        Content="次へ" Padding="16,8"
+                        Click="NextButton_Click"/>
+            </Grid>
+
+            <!-- コンテンツ（ステップごとに切替） -->
+            <Grid Margin="20,16,20,0">
+
+                <!-- ステップ1：説明 -->
+                <StackPanel x:Name="IntroPanel">
+                    <TextBlock x:Name="IntroTitleText" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Margin="0,0,0,8"/>
+                    <TextBlock FontSize="13" TextWrapping="Wrap"
+                               LineHeight="22" LineStackingStrategy="BlockLineHeight"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Text="YTNotifierはYouTubeの新着動画・ライブ配信を監視するために、YouTube Data API v3という仕組みを利用しています。このAPIを利用するには「APIキー」と呼ばれる、いわば専用の合言葉のようなものが必要です。APIキーはお客様ご自身のGoogleアカウントで発行するもので、次の手順で無料で取得できます。"/>
+                    <TextBlock Margin="0,12,0,0" FontSize="11">
+                        <Hyperlink Click="SkipLink_Click">手順を省略してAPIキーを直接入力する →</Hyperlink>
+                    </TextBlock>
+                    <Grid Margin="0,20,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="既に利用した事がありバックアップをお持ちの方は復元ボタンから復元を行って下さい。" FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1"
+                                Style="{StaticResource SecondaryButton}"
+                                Content="📂 復元" Padding="12,6"
+                                Click="RestoreButton_Click"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- ステップ2〜19：手順画像 -->
+                <StackPanel x:Name="StepImagePanel" Visibility="Collapsed">
+                    <TextBlock x:Name="StepTitleText" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Margin="0,0,0,8"/>
+                    <Border Width="560" Height="300" HorizontalAlignment="Left"
+                            Background="{DynamicResource SidebarBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                        <Image x:Name="StepImage" Stretch="Uniform"/>
+                    </Border>
+                    <Button x:Name="OpenConsoleButton" Margin="0,12,0,0"
+                            HorizontalAlignment="Left"
                             Style="{StaticResource SecondaryButton}"
-                            Content="📂 復元" Padding="12,6"
-                            Click="RestoreButton_Click"/>
-                </Grid>
-            </StackPanel>
+                            Content="Google Cloud Consoleを開く" Padding="12,6"
+                            Click="OpenConsoleButton_Click"
+                            Visibility="Collapsed"/>
+                    <TextBlock x:Name="StepDescriptionText" Margin="0,12,0,0"
+                               FontSize="13" TextWrapping="Wrap"
+                               LineHeight="22" LineStackingStrategy="BlockLineHeight"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </StackPanel>
+
+                <!-- ステップ20：APIキー入力 -->
+                <StackPanel x:Name="KeyInputPanel" Visibility="Collapsed">
+                    <TextBlock x:Name="KeyInputTitleText" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Margin="0,0,0,8"/>
+                    <TextBlock Text="取得したAPIキーを以下のAPIキー欄に入力してください。" FontSize="13" TextWrapping="Wrap"
+                               LineHeight="22" LineStackingStrategy="BlockLineHeight"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Margin="0,0,0,12"/>
+                    <TextBlock Text="APIキー" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,0,0,6"/>
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="ApiKeyBox" Grid.Column="0"
+                                 Style="{StaticResource ModernTextBox}"
+                                 Margin="0,0,8,0"
+                                 KeyDown="ApiKeyBox_KeyDown"/>
+                        <Button Grid.Column="1" x:Name="SaveButton"
+                                Style="{StaticResource PrimaryButton}"
+                                Content="保存" Padding="16,8"
+                                Click="SaveButton_Click"/>
+                    </Grid>
+                </StackPanel>
+
+            </Grid>
         </DockPanel>
     </Border>
 </Window>

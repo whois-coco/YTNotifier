@@ -64,83 +64,49 @@
                                    VerticalAlignment="Center"/>
                     </Grid>
 
-                    <!-- 通知種別 -->
-                    <TextBlock Text="通知種別" FontSize="10" FontWeight="Bold"
-                               Foreground="{DynamicResource TextMutedBrush}"
-                               Margin="0,0,0,10"/>
-                    <Grid Margin="0,0,0,12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <!-- 動画 -->
-                        <StackPanel Grid.Column="0" HorizontalAlignment="Center" Orientation="Horizontal">
-                            <ToggleButton x:Name="NotifyVideoToggle" Style="{StaticResource KindToggleVideo}"
-                                          Width="40" ToolTip="動画" Margin="0,0,6,0">
-                                <Viewbox Width="14" Height="14">
-                                    <Canvas Width="24" Height="24">
-                                        <Path Data="M16 13 L21.223 16.482 A0.5 0.5 0 0 0 22 16.066 L22 7.87 A0.5 0.5 0 0 0 21.248 7.438 L16 10.5 Z"
-                                              Fill="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
-                                        <Path Data="M2 6 L16 6 C17.105 6 18 6.895 18 8 L18 18 C18 19.105 17.105 20 16 20 L2 20 C0.895 20 0 19.105 0 18 L0 8 C0 6.895 0.895 6 2 6 Z"
-                                              Fill="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
-                                    </Canvas>
-                                </Viewbox>
-                            </ToggleButton>
-                            <TextBlock Text="動画" FontSize="11" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        </StackPanel>
-                        <!-- Short -->
-                        <StackPanel Grid.Column="1" HorizontalAlignment="Center" Orientation="Horizontal">
-                            <ToggleButton x:Name="NotifyShortToggle" Style="{StaticResource KindToggleShort}"
-                                          Width="40" ToolTip="Short" Margin="0,0,6,0">
-                                <Viewbox Width="14" Height="14">
-                                    <Path Data="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"
-                                          Stretch="Uniform"
-                                          Fill="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
-                                </Viewbox>
-                            </ToggleButton>
-                            <TextBlock Text="Short" FontSize="11" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        </StackPanel>
-                        <!-- ライブ -->
-                        <StackPanel Grid.Column="2" HorizontalAlignment="Center" Orientation="Horizontal">
-                            <ToggleButton x:Name="NotifyLiveToggle" Style="{StaticResource KindToggleLive}"
-                                          Width="40" ToolTip="ライブ配信" Margin="0,0,6,0">
-                                <Viewbox Width="14" Height="14">
-                                    <Canvas Width="24" Height="24">
-                                        <Path Data="M4.9 16.1C1 12.2 1 5.8 4.9 1.9" Stroke="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
-                                        <Path Data="M7.8 4.7a6.14 6.14 0 0 0-.8 7.5" Stroke="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
-                                        <Path Data="M16.2 4.8c2 2 2.26 5.11.8 7.47" Stroke="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
-                                        <Path Data="M19.1 1.9a9.96 9.96 0 0 1 0 14.1" Stroke="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
-                                        <Path Data="M9.5 18h5" Stroke="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
-                                        <Path Data="m8 22 4-11 4 11" Stroke="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent"/>
-                                        <Ellipse Canvas.Left="10" Canvas.Top="7" Width="4" Height="4" Stroke="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}" StrokeThickness="2" Fill="Transparent"/>
-                                    </Canvas>
-                                </Viewbox>
-                            </ToggleButton>
-                            <TextBlock Text="ライブ配信" FontSize="11" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        </StackPanel>
-                    </Grid>
-
                     <!-- 待機所通知オプション -->
                     <Border Background="{DynamicResource SurfaceAltBrush}"
-                            CornerRadius="6" Padding="12,8" Margin="0,0,0,12">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="プレミア/ライブ待機所通知"
-                                       FontSize="12" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"
-                                       VerticalAlignment="Center"/>
-                            <CheckBox x:Name="NotifyUpcomingToggle"
-                                      Grid.Column="1"
-                                      Style="{StaticResource ToggleSwitch}"
-                                      VerticalAlignment="Center"/>
-                        </Grid>
+                            CornerRadius="6" Padding="12,10" Margin="0,0,0,12">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="プレミア/ライブ通知方法"
+                                           FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox x:Name="UpcomingNotifyModeCombo"
+                                          Grid.Column="1" Width="160"
+                                          Style="{StaticResource ModernComboBox}"
+                                          SelectionChanged="UpcomingNotifyModeCombo_Changed">
+                                    <ComboBoxItem Content="待機所のみ"       Tag="WaitingRoomOnly" Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="開始時のみ"       Tag="LiveStartOnly"   Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="両方"             Tag="Both"            Style="{StaticResource ModernComboBoxItem}"/>
+                                </ComboBox>
+                            </Grid>
+                            <Grid x:Name="UpcomingLeadRow">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="待機所通知タイミング"
+                                           FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox x:Name="UpcomingLeadCombo"
+                                          Grid.Column="1" Width="110"
+                                          Style="{StaticResource ModernComboBox}"
+                                          SelectionChanged="UpcomingLeadCombo_Changed">
+                                    <ComboBoxItem Content="5分前"  Tag="5"  Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="10分前" Tag="10" Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="15分前" Tag="15" Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="30分前" Tag="30" Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="60分前" Tag="60" Style="{StaticResource ModernComboBoxItem}"/>
+                                </ComboBox>
+                            </Grid>
+                        </StackPanel>
                     </Border>
 
                     <!-- 監視設定 -->
@@ -184,16 +150,32 @@
                                 <Border x:Name="DetailQuotaBarBg" Grid.Column="0"
                                         Background="{DynamicResource SurfaceElevatedBrush}"
                                         CornerRadius="4" Height="10" VerticalAlignment="Center">
-                                    <Grid HorizontalAlignment="Left">
-                                        <Border x:Name="DetailQuotaBar"
-                                                CornerRadius="4" Height="10" Width="0" MinWidth="0"/>
-                                    </Grid>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                        <Border x:Name="DetailQuotaBarNormal"
+                                                Height="10" Width="0" MinWidth="0"
+                                                Background="{DynamicResource PrimaryBrush}"/>
+                                        <Border x:Name="DetailQuotaBarLowFreq"
+                                                Height="10" Width="0" MinWidth="0"
+                                                Background="{DynamicResource WarningBrush}"/>
+                                        <Border x:Name="DetailQuotaBarFocus"
+                                                Height="10" Width="0" MinWidth="0"
+                                                Background="{DynamicResource SuccessBrush}"/>
+                                    </StackPanel>
                                 </Border>
                                 <TextBlock x:Name="EstimateText" Grid.Column="1"
                                            FontSize="11" FontWeight="SemiBold"
                                            VerticalAlignment="Center" Margin="8,0,0,0"
                                            Foreground="{DynamicResource TextMutedBrush}"/>
                             </Grid>
+                            <!-- セグメントバー凡例 -->
+                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                <Ellipse Width="7" Height="7" Fill="{DynamicResource PrimaryBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="通常" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="3,0,8,0" VerticalAlignment="Center"/>
+                                <Ellipse Width="7" Height="7" Fill="{DynamicResource WarningBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="低頻度" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="3,0,8,0" VerticalAlignment="Center"/>
+                                <Ellipse Width="7" Height="7" Fill="{DynamicResource SuccessBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="時間指定" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="3,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

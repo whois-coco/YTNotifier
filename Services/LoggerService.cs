@@ -23,11 +23,20 @@ public class LoggerService
     private const int MaxErrorEntries   = 500;
     private DateTime _currentLogDate = DateTime.Today;
 
+    private readonly List<(string path, string line)> _logBuffer = new();
+    private readonly object _bufferLock = new();
+    private const int LogBufferFlushCount = 50;
+    private const int LogBufferFlushIntervalMs = 5 * 60 * 1000;
+    private readonly System.Threading.Timer _logFlushTimer;
+
     private LoggerService()
     {
         _logDir = Path.Combine(SettingsService.Instance.AppDataDir, AppConstants.DirLogs);
         Directory.CreateDirectory(_logDir);
         LoadTodayLogFile();
+        var initialMs = CalcFlushIntervalMs();
+        _logFlushTimer = new System.Threading.Timer(
+            _ => FlushLog(), null, initialMs, initialMs);
     }
 
     private void LoadTodayLogFile()
@@ -176,15 +185,52 @@ public class LoggerService
 
     private void WriteToFile(LogEntry entry)
     {
+        var fileName = $"{entry.Timestamp:yyyy-MM-dd}.log";
+        var path     = Path.Combine(_logDir, fileName);
+        var line     = $"[{entry.Timestamp:HH:mm:ss}] [{entry.LevelText,-7}]";
+        if (entry.ChannelName != null) line += $" [{entry.ChannelName}]";
+        line += $" {entry.Message}";
+
+        bool flush;
+        lock (_bufferLock)
+        {
+            _logBuffer.Add((path, line));
+            flush = _logBuffer.Count >= LogBufferFlushCount;
+        }
+        if (flush) FlushLog();
+    }
+
+    private int CalcFlushIntervalMs()
+    {
+        var checkMs = SettingsService.Instance.Settings.CheckIntervalMinutes * 60 * 1000;
+        return Math.Min(LogBufferFlushIntervalMs, checkMs);
+    }
+
+    /// <summary>グローバルチェック間隔が変わったときにタイマーを再設定する</summary>
+    public void UpdateFlushInterval()
+    {
+        var ms = CalcFlushIntervalMs();
+        _logFlushTimer.Change(ms, ms);
+    }
+
+    /// <summary>バッファ内のログをすべてファイルに書き出す。アプリ終了時・タイマー・50行到達時・チェック完了時に呼ばれる</summary>
+    public void FlushLog()
+    {
+        List<(string path, string line)> snapshot;
+        lock (_bufferLock)
+        {
+            if (_logBuffer.Count == 0) return;
+            snapshot = new List<(string, string)>(_logBuffer);
+            _logBuffer.Clear();
+        }
         try
         {
-            var fileName = $"{entry.Timestamp:yyyy-MM-dd}.log";
-            var path     = Path.Combine(_logDir, fileName);
-            var line     = $"[{entry.Timestamp:HH:mm:ss}] [{entry.LevelText,-7}]";
-            if (entry.ChannelName != null) line += $" [{entry.ChannelName}]";
-            line += $" {entry.Message}";
             lock (_fileLock)
-                File.AppendAllText(path, line + Environment.NewLine);
+            {
+                foreach (var group in snapshot.GroupBy(e => e.path))
+                    File.AppendAllText(group.Key,
+                        string.Join(Environment.NewLine, group.Select(e => e.line)) + Environment.NewLine);
+            }
         }
         catch { }
     }

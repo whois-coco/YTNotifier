@@ -35,6 +35,11 @@ namespace YTNotifier.Views;
 
 public partial class MainWindow : System.Windows.Window
 {
+    private const string FallbackPingTarget              = "8.8.8.8";
+    private const int    PingTimeoutMilliseconds         = 1000;
+    private const string ConnectTestUrl                  = "http://www.msftconnecttest.com/connecttest.txt";
+    private const int    ConnectTestTimeoutMilliseconds  = 3000;
+
     // ===== 監視ステータス =====
     private void UpdateMonitorStatus(bool isRunning)
     {
@@ -77,15 +82,29 @@ public partial class MainWindow : System.Windows.Window
         if (_sidebarCollapsed) UpdateToggleIconColor(effectiveRunning);
     }
 
-    /// <summary>実際にDNS解決を試みてネットワーク疎通を確認する</summary>
+    /// <summary>NIC状態・HTTP疎通・pingの順でネットワーク接続を確認する</summary>
     internal async void CheckNetworkState()
     {
         var isAvailable = false;
         try
         {
-            using var ping = new System.Net.NetworkInformation.Ping();
-            var reply = await ping.SendPingAsync("8.8.8.8", 1000);
-            isAvailable = reply.Status == System.Net.NetworkInformation.IPStatus.Success;
+            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
+            {
+                if (!_isOffline)
+                    UpdateNetworkState(false);
+                return;
+            }
+
+            using var cts = new System.Threading.CancellationTokenSource(ConnectTestTimeoutMilliseconds);
+            var response = await _httpClient.GetAsync(ConnectTestUrl, cts.Token);
+            isAvailable = response.StatusCode == System.Net.HttpStatusCode.OK;
+
+            if (!isAvailable)
+            {
+                using var ping = new System.Net.NetworkInformation.Ping();
+                var reply = await ping.SendPingAsync(FallbackPingTarget, PingTimeoutMilliseconds);
+                isAvailable = reply.Status == System.Net.NetworkInformation.IPStatus.Success;
+            }
         }
         catch { isAvailable = false; }
 
@@ -112,7 +131,7 @@ public partial class MainWindow : System.Windows.Window
         else
         {
             AppLogger.Log(LogMsg.NetworkRestored);
-            if (!string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKey))
+            if (SettingsService.Instance.Settings.ApiKeys.Count > 0 && !string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKeys[0]))
             {
                 MonitorService.Instance.Start();
                 UpdateMonitorStatus(true);
@@ -212,27 +231,61 @@ public partial class MainWindow : System.Windows.Window
     // ===== ナビゲーション =====
     private void Nav_Click(object sender, RoutedEventArgs e)
     {
-        var pageMap = new Dictionary<object, UIElement>
-        {
-            [NavWatch]    = PageWatch,
-            [NavSettings] = PageSettings,
-        };
-
         if (sender == NavWatch)         AppLogger.Log(LogMsg.NavPageSwitched, null, "チャンネル");
+        else if (sender == NavDormant)  AppLogger.Log(LogMsg.NavPageSwitched, null, "休眠");
         else if (sender == NavSettings) AppLogger.Log(LogMsg.NavPageSwitched, null, "設定");
 
-        foreach (var (_, page) in pageMap)
-            page.Visibility = Visibility.Collapsed;
+        PageWatch.Visibility    = Visibility.Collapsed;
+        PageDormant.Visibility  = Visibility.Collapsed;
+        PageSettings.Visibility = Visibility.Collapsed;
 
-        if (pageMap.TryGetValue(sender, out var targetPage))
-            targetPage.Visibility = Visibility.Visible;
-
-        if (sender == NavSettings)
+        if (sender == NavDormant)
+        {
+            PageDormant.Visibility  = Visibility.Visible;
+            _currentNav = "Dormant";
+            RefreshDormantChannelList();
+        }
+        else if (sender == NavWatch)
+        {
+            PageWatch.Visibility = Visibility.Visible;
+            _currentNav          = "Watch";
+            RefreshChannelList();
+        }
+        else if (sender == NavSettings)
+        {
+            PageSettings.Visibility = Visibility.Visible;
             SettingsNavBorder_Click(SettingsNavDisplay, null!);
+        }
 
         // セレクターバー切り替え
         SetNavSelectorBar(NavWatch,    sender == NavWatch);
+        SetNavSelectorBar(NavDormant,  sender == NavDormant);
         SetNavSelectorBar(NavSettings, sender == NavSettings);
+    }
+
+    private void NavWatch_RightClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        var clearItem = new MenuItem { Header = "🔔 NEWバッジを全て消す" };
+        clearItem.Click += (_, _) =>
+        {
+            var channels = SettingsService.Instance.Channels.Where(c => c.HasUnread).ToList();
+            foreach (var c in channels) c.HasUnread = false;
+            if (channels.Count > 0)
+            {
+                SettingsService.Instance.MarkDirty();
+                RefreshChannelList();
+            }
+            AppLogger.Log(LogMsg.CategoryContextClearNew, null, "全チャンネル");
+        };
+
+        var hasUnread = SettingsService.Instance.Channels.Any(c => c.HasUnread);
+        clearItem.IsEnabled = hasUnread;
+        clearItem.Opacity   = hasUnread ? 1.0 : 0.4;
+
+        var menu = new ContextMenu();
+        menu.Items.Add(clearItem);
+        menu.IsOpen = true;
     }
 
     private void SetNavSelectorBar(Button btn, bool active)
@@ -265,27 +318,97 @@ public partial class MainWindow : System.Windows.Window
 
     private void TitleBar_Close(object sender, RoutedEventArgs e) => Close();
 
-    // ===== チャンネル追加 =====
-    private void AddChannelHeader_Click(object sender, RoutedEventArgs e)
+    // ===== ミュートボタン =====
+    private void MuteButton_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new AddChannelWindow(onChannelAdded: () =>
+        _isMuted = !_isMuted;
+        var s = SettingsService.Instance.Settings;
+
+        if (_isMuted)
         {
-            Dispatcher.Invoke(RefreshChannelList);
-            Dispatcher.Invoke(UpdateQuotaInfo);
-        })
-        { Owner = this };
-        dlg.ShowDialog();
+            _preMuteDesktopNotification      = s.ShowDesktopNotification;
+            _preMuteNotificationSound        = s.NotificationSound;
+            _preMuteFlashTaskbar             = s.FlashTaskbar;
+            s.PreMuteDesktopNotification     = _preMuteDesktopNotification;
+            s.PreMuteNotificationSound       = _preMuteNotificationSound;
+            s.PreMuteFlashTaskbar            = _preMuteFlashTaskbar;
+            s.IsMuted                        = true;
+            s.ShowDesktopNotification        = false;
+            s.NotificationSound              = false;
+            s.FlashTaskbar                   = false;
+        }
+        else
+        {
+            s.ShowDesktopNotification = _preMuteDesktopNotification;
+            s.NotificationSound       = _preMuteNotificationSound;
+            s.FlashTaskbar            = _preMuteFlashTaskbar;
+            s.IsMuted                 = false;
+        }
+
+        AppLogger.Log(LogMsg.SettingMute, null, _isMuted ? "ON" : "OFF");
+        _loadingSettings = true;
+        NotificationToggle.IsChecked      = s.ShowDesktopNotification;
+        NotificationSoundToggle.IsChecked = s.NotificationSound;
+        FlashTaskbarToggle.IsChecked      = s.FlashTaskbar;
+        _loadingSettings = false;
+        UpdateMuteButton(_isMuted);
+        SettingsService.Instance.MarkDirty();
     }
 
-    // ===== アクションボタン =====
-    private async void ManualCheckButton_Click(object sender, RoutedEventArgs e)
+    private void UpdateMuteButton(bool muted)
     {
-        AppLogger.Log(LogMsg.ManualCheckTriggered);
-        InlineCheckButton.IsEnabled = false;
-        Nav_Click(NavWatch, e);
-        await MonitorService.Instance.ManualCheckAsync();
-        RefreshChannelList();
-        InlineCheckButton.IsEnabled = true;
+        var template = MuteButton.Template;
+        if (template == null) return;
+
+        foreach (var n in new[] { "BellIcon", "BellIcon2" })
+            if (template.FindName(n, MuteButton) is System.Windows.Shapes.Path p)
+                p.Visibility = muted ? Visibility.Collapsed : Visibility.Visible;
+
+        foreach (var n in new[] { "BellOffIcon", "BellOffIcon2", "BellOffIcon3", "BellOffIcon4" })
+            if (template.FindName(n, MuteButton) is System.Windows.Shapes.Path p)
+                p.Visibility = muted ? Visibility.Visible : Visibility.Collapsed;
+
+        MuteButton.ToolTip = muted ? "通知ミュート: ON（クリックで解除）" : "通知ミュート: OFF";
+    }
+
+    // ===== コンパクトモードボタン =====
+    private void CompactModeButton_Click(object sender, RoutedEventArgs e)
+    {
+        var enabled = !SettingsService.Instance.Settings.CompactMode;
+        AppLogger.Log(LogMsg.SettingCompactMode, null, enabled ? "ON" : "OFF");
+        ApplyCompactMode(enabled);
+    }
+
+    private void UpdateCompactModeButton(bool enabled)
+    {
+        if (CompactModeButton.Template?.FindName("ShrinkIcon", CompactModeButton) is System.Windows.Shapes.Path shrink)
+            shrink.Visibility = enabled ? Visibility.Visible   : Visibility.Collapsed;
+        if (CompactModeButton.Template?.FindName("ExpandIcon", CompactModeButton) is System.Windows.Shapes.Path expand)
+            expand.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        CompactModeButton.ToolTip = enabled ? "コンパクトモード: ON（クリックで解除）" : "コンパクトモード: OFF";
+    }
+
+    // ===== ピンボタン =====
+    private void PinButton_Click(object sender, RoutedEventArgs e)
+    {
+        var enabled = !SettingsService.Instance.Settings.AlwaysOnTop;
+        Topmost = enabled;
+        SettingsService.Instance.Settings.AlwaysOnTop = enabled;
+        AppLogger.Log(LogMsg.SettingAlwaysOnTop, null, enabled ? "ON" : "OFF");
+        _loadingSettings = true;
+        AlwaysOnTopToggle.IsChecked = enabled;
+        _loadingSettings = false;
+        UpdatePinButton(enabled);
+        SettingsService.Instance.MarkDirty();
+    }
+
+    private void UpdatePinButton(bool pinned)
+    {
+        if (PinButton.Template?.FindName("PinIcon", PinButton) is System.Windows.Shapes.Path icon)
+            icon.Stroke = pinned
+                ? (Brush)Application.Current.Resources["ErrorBrush"]
+                : (Brush)Application.Current.Resources["SidebarTextBrush"];
+        PinButton.ToolTip = pinned ? "常に前面に表示: ON（クリックで解除）" : "常に前面に表示: OFF";
     }
 
     private void MonitorToggleButton_Click(object sender, RoutedEventArgs e)

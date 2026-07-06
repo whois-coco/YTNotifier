@@ -12,6 +12,8 @@ namespace YTNotifier.Views;
 
 public partial class ActivityLogWindow : Window
 {
+    private const string WindowsExplorer = "explorer.exe";
+
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
     private const int WM_NCLBUTTONDOWN = 0xA1;
@@ -34,6 +36,7 @@ public partial class ActivityLogWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        WindowCornerHelper.Apply(this);
         LogList.ItemsSource = LoggerService.Instance.TodayEntries;
 
         _handler = (_, _) =>
@@ -62,7 +65,7 @@ public partial class ActivityLogWindow : Window
         AppLogger.Log(LogMsg.LogFolderOpened);
         var dir = Path.Combine(SettingsService.Instance.AppDataDir, AppConstants.DirLogs);
         Directory.CreateDirectory(dir);
-        Process.Start(new ProcessStartInfo("explorer.exe", dir) { UseShellExecute = true });
+        Process.Start(new ProcessStartInfo(WindowsExplorer, dir) { UseShellExecute = true });
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

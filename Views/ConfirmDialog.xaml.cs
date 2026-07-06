@@ -8,6 +8,7 @@ public partial class ConfirmDialog : Window
                          string okLabel = "OK", string cancelLabel = "キャンセル")
     {
         InitializeComponent();
+        Loaded         += (_, _) => WindowCornerHelper.Apply(this);
         Owner          = owner;
         TitleText.Text = title;
         MessageText.Text = message;

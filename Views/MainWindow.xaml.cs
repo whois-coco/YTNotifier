@@ -37,16 +37,16 @@ namespace YTNotifier.Views;
 public partial class MainWindow : System.Windows.Window
 {
     // ===== 定数 =====
-    private const int    SidebarExpandedWidth    = 110;
+    private const int    SidebarExpandedWidth    = 120;
     private const int    SidebarCollapsedWidth   = 44;
     private const int    ChannelRowHeight        = 60;
     private const int    ChannelRowHeightCompact    = 36;
     private const int    CategoryRowHeight          = 36;
     private const int    CategoryRowHeightCompact   = 24;
     private const double ChannelRowMarginBottom  = 2;
-    private const int    ContentWidthNormal      = 360;
+    private const int    ContentWidthNormal      = 400;
     private const int    ContentWidthCompact     = 286;
-    private const int    ExpandedTotalWidth      = SidebarExpandedWidth  + ContentWidthNormal;  // 470
+    private const int    ExpandedTotalWidth      = SidebarExpandedWidth  + ContentWidthNormal;  // 480
     private const int    CollapsedTotalWidth     = SidebarCollapsedWidth + ContentWidthNormal;  // 404
     private const int    CompactTotalWidth       = SidebarCollapsedWidth + ContentWidthCompact; // 340
     private const int    WindowMinWidth          = CompactTotalWidth; // コンパクト幅を下限とする
@@ -57,12 +57,18 @@ public partial class MainWindow : System.Windows.Window
         "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z";
 
     // ===== フィールド =====
+    private Border?    _navWatchUnreadBadge   = null;
+    private TextBlock? _navWatchUnreadText    = null;
+    private Border?    _navWatchCompactBadge  = null;
+    private TextBlock? _navWatchCompactText   = null;
     private bool _sidebarCollapsed      = false;
     private bool _loadingSettings       = false;
     private bool _isOffline             = false;
     private System.Windows.Threading.DispatcherTimer? _networkCheckTimer;
     internal bool _editMode             = false;
-    private bool _uncategorizedCollapsed = false;
+    private bool _dormantEditMode       = false;
+    private bool _uncategorizedCollapsed         = false;
+    private bool _dormantUncategorizedCollapsed  = false;
 
     // アイコンキャッシュ（URL → BitmapImage）。コレクション操作は全て UI スレッドに集約しスレッド安全を担保
     private const int IconCacheMaxEntries = 300;
@@ -74,9 +80,6 @@ public partial class MainWindow : System.Windows.Window
     // D&D
     private ChannelInfo?  _dragSource      = null;
     private bool          _isDragging      = false;
-    private Border?       _dropIndicator   = null;
-    private int           _dropIndicatorIndex = -1;
-    private List<(double y, int childIndex)> _catBoundaries = new();
 
     // D&Dアニメーション
     private int     _animDropIndex  = -1;
@@ -94,8 +97,17 @@ public partial class MainWindow : System.Windows.Window
 
     // APIキー
     private string _actualApiKey = "";
+    private int    _selectedApiKeySlotIndex = 0;
     // 検索
-    private string _searchQuery = "";
+    private string _searchQuery    = "";
+    private bool   _searchExpanded = false;
+
+    // 休眠リスト検索
+    private string _dormantSearchQuery    = "";
+    private bool   _dormantSearchExpanded = false;
+
+    // ナビゲーション状態
+    private string     _currentNav = "Watch";
 
     // MonitorService イベントハンドラ（解除用に保持）
     private Action<bool>? _onStatusChanged;
@@ -112,15 +124,6 @@ public partial class MainWindow : System.Windows.Window
     // ===== アイコンキャッシュ =====
     private static string GetIconCacheDir() =>
         System.IO.Path.Combine(SettingsService.Instance.AppDataDir, AppConstants.DirIcons);
-
-    private static string GetDiskPath(string url)
-    {
-        using var sha1 = System.Security.Cryptography.SHA1.Create();
-        var hash = sha1.ComputeHash(System.Text.Encoding.UTF8.GetBytes(url));
-        return System.IO.Path.Combine(
-            GetIconCacheDir(),
-            BitConverter.ToString(hash).Replace("-", "").ToLower() + ".png");
-    }
 
     private static BitmapImage? LoadBitmapFromFile(string filePath)
     {
@@ -145,7 +148,7 @@ public partial class MainWindow : System.Windows.Window
         _iconCache[url] = bmp;
     }
 
-    private static BitmapImage? GetCachedIcon(string url)
+    private static BitmapImage? GetCachedIcon(string url, string channelId)
     {
         if (string.IsNullOrEmpty(url)) return null;
         if (_iconCache.TryGetValue(url, out var cached)) return cached;
@@ -154,7 +157,7 @@ public partial class MainWindow : System.Windows.Window
         try { System.IO.Directory.CreateDirectory(cacheDir); }
         catch { return null; }
 
-        var diskPath = GetDiskPath(url);
+        var diskPath = ImageCacheService.GetIconDiskPath(url, channelId);
         if (System.IO.File.Exists(diskPath))
         {
             var bmp = LoadBitmapFromFile(diskPath);
@@ -199,15 +202,18 @@ public partial class MainWindow : System.Windows.Window
         if (Application.Current.MainWindow is not MainWindow win) return;
         if (!_iconCache.TryGetValue(url, out var bmp)) return;
 
-        foreach (var row in win.ChannelList.Children.OfType<Border>())
+        foreach (var list in new[] { win.ChannelList, win.DormantChannelList })
         {
-            if (row.Tag is not ChannelInfo ch || ch.ThumbnailUrl != url) continue;
-            if (row.Child is not Grid outer) continue;
-            var inner = outer.Children.OfType<Grid>().FirstOrDefault();
-            var iconBorder = inner?.Children.OfType<Border>()
-                .FirstOrDefault(b => b.Tag is string s && s == "IconBorder");
-            if (iconBorder != null)
-                iconBorder.Child = new System.Windows.Controls.Image { Source = bmp, Stretch = Stretch.UniformToFill };
+            foreach (var row in list.Children.OfType<Border>())
+            {
+                if (row.Tag is not ChannelInfo ch || ch.ThumbnailUrl != url) continue;
+                if (row.Child is not Grid outer) continue;
+                var inner = outer.Children.OfType<Grid>().FirstOrDefault();
+                var iconBorder = inner?.Children.OfType<Border>()
+                    .FirstOrDefault(b => b.Tag is string s && s == "IconBorder");
+                if (iconBorder != null)
+                    iconBorder.Child = new System.Windows.Controls.Image { Source = bmp, Stretch = Stretch.UniformToFill };
+            }
         }
     }
 
@@ -228,12 +234,14 @@ public partial class MainWindow : System.Windows.Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        WindowCornerHelper.Apply(this);
         try { LoadSettings(); }
         catch (Exception ex) { AppLogger.Log(LogMsg.SettingsLoadError, null, ex.Message); }
 
         UpdateMinWidth();
         RestoreWindowBounds();
         InitChannelListDragDrop();
+        InitDormantChannelListDragDrop();
 
         // ネットワーク状態監視（ポーリング方式・5秒ごと）
         _networkCheckTimer = new System.Windows.Threading.DispatcherTimer
@@ -259,12 +267,17 @@ public partial class MainWindow : System.Windows.Window
         }
         UpdateMuteButton(_isMuted);
 
-        if (s.CompactMode) ApplyCompactMode(true, skipRefresh: true);
+        if (s.CompactMode) ApplyCompactMode(true, skipRefresh: true, skipSave: true);
         else               UpdateCompactModeButton(false);
 
         // コンパクト・非コンパクト共通：SyncWindowWidth で幅を確定しレイアウトを完走させてから
         // RefreshChannelList を呼ぶことで、SCP が再測定され起動直後からスクロールが機能する
         Dispatcher.Invoke(SyncWindowWidth, System.Windows.Threading.DispatcherPriority.Render);
+        NavWatch.ApplyTemplate();
+        _navWatchUnreadBadge  = NavWatch.Template?.FindName("NavWatchUnreadBadge",  NavWatch) as Border;
+        _navWatchUnreadText   = NavWatch.Template?.FindName("NavWatchUnreadText",   NavWatch) as TextBlock;
+        _navWatchCompactBadge = NavWatch.Template?.FindName("NavWatchCompactBadge", NavWatch) as Border;
+        _navWatchCompactText  = NavWatch.Template?.FindName("NavWatchCompactText",  NavWatch) as TextBlock;
         try { RefreshChannelList(); }
         catch (Exception ex) { AppLogger.Log(LogMsg.ChannelListError, null, ex.Message); }
 
@@ -286,6 +299,39 @@ public partial class MainWindow : System.Windows.Window
         SetNavSelectorBar(NavWatch,    true);
         SetNavSelectorBar(NavSettings, false);
         InitMonitor();
+
+        // ABOUTページのバージョン表示を設定し、起動時アップデート確認を実行
+        if (FindName("AboutVersionText") is TextBlock versionText)
+            versionText.Text = $"v{AppConstants.AppVersion}";
+        _ = CheckForUpdateAsync();
+    }
+
+    private async Task CheckForUpdateAsync()
+    {
+        var latestTag = await UpdateCheckService.CheckAsync();
+        if (latestTag == null) return;
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            if (FindName("UpdateBannerText") is TextBlock bannerText)
+                bannerText.Text = $"新しいバージョン {latestTag} が公開されています";
+            if (FindName("UpdateBanner") is Border banner)
+                banner.Visibility = Visibility.Visible;
+
+            if (ConfirmDialog.Show(
+                    this,
+                    "アップデートがあります",
+                    $"新しいバージョン {latestTag} が公開されています。\nリリースページを開きますか？",
+                    "開く", "閉じる") == true)
+            {
+                Process.Start(new ProcessStartInfo(AppConstants.GitHubReleasesPageUrl) { UseShellExecute = true });
+            }
+        });
+    }
+
+    private void UpdateOpenBtn_Click(object sender, RoutedEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo(AppConstants.GitHubReleasesPageUrl) { UseShellExecute = true });
     }
 
     private void InitChannelListDragDrop()
@@ -296,11 +342,20 @@ public partial class MainWindow : System.Windows.Window
         ChannelList.Drop      += ChannelList_Drop;
     }
 
+    private void InitDormantChannelListDragDrop()
+    {
+        DormantChannelList.AllowDrop  = true;
+        DormantChannelList.Background = Brushes.Transparent;
+        DormantChannelList.DragOver  += DormantChannelList_DragOver;
+        DormantChannelList.Drop      += DormantChannelList_Drop;
+    }
+
     private void InitMonitor()
     {
         try
         {
-            if (!string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKey))
+            var initApiKeys = SettingsService.Instance.Settings.ApiKeys;
+            if (initApiKeys.Count > 0 && !string.IsNullOrEmpty(initApiKeys[0]))
                 MonitorService.Instance.Start();
             else
             {
@@ -374,14 +429,15 @@ public partial class MainWindow : System.Windows.Window
     private void LoadSettings()
     {
         var s = SettingsService.Instance.Settings;
-        _actualApiKey                     = s.ApiKey;
-        ApiKeyBox.Text                    = s.ApiKey;
-        UpdateApiKeyState(!string.IsNullOrEmpty(s.ApiKey));
+        InitApiKeySlotComboBox();
+        var apiKeys = s.ApiKeys;
+        _actualApiKey                     = apiKeys.Count > 0 ? apiKeys[0] : string.Empty;
+        ApiKeyBox.Text                    = _actualApiKey;
+        UpdateApiKeyState(!string.IsNullOrEmpty(_actualApiKey));
         _loadingSettings = true;
         DarkModeToggle.IsChecked               = s.IsDarkMode;
         NoCategoryModeToggle.IsChecked         = s.NoCategoryMode;
         NotificationToggle.IsChecked           = s.ShowDesktopNotification;
-        GlobalNotifyUpcomingToggle.IsChecked   = s.GlobalNotifyUpcoming;
         TrayToggle.IsChecked                   = s.MinimizeToTray;
         StartupToggle.IsChecked                = s.StartWithWindows;
         AlwaysOnTopToggle.IsChecked            = s.AlwaysOnTop;
@@ -406,11 +462,11 @@ public partial class MainWindow : System.Windows.Window
         // サイドバー状態を設定から復元
         if (s.SidebarCollapsed)
         {
-            CollapseSidebar();
+            CollapseSidebar(skipSave: true);
         }
         else
         {
-            ExpandSidebar();
+            ExpandSidebar(skipSave: true);
         }
         UpdateMinWidth();
         SyncWindowWidth();

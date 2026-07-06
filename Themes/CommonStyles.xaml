@@ -3,11 +3,10 @@
 
     <!-- フラットUI: シャドウなし・角丸最小・罫線のみで区切る -->
 
-    <!-- ダミーシャドウ（コードから参照されるため残す・効果なし） -->
-    <DropShadowEffect x:Key="CardShadow"   BlurRadius="0" ShadowDepth="0" Opacity="0"/>
-    <DropShadowEffect x:Key="SmallShadow"  BlurRadius="0" ShadowDepth="0" Opacity="0"/>
-    <DropShadowEffect x:Key="GlowPrimary"  BlurRadius="0" ShadowDepth="0" Opacity="0"/>
-    <DropShadowEffect x:Key="GlowAccent"   BlurRadius="0" ShadowDepth="0" Opacity="0"/>
+    <DropShadowEffect x:Key="CardShadow"   BlurRadius="12" ShadowDepth="2" Opacity="0.08" Direction="270"/>
+    <DropShadowEffect x:Key="SmallShadow"  BlurRadius="6"  ShadowDepth="1" Opacity="0.06" Direction="270"/>
+    <DropShadowEffect x:Key="GlowPrimary"  BlurRadius="8"  ShadowDepth="0" Opacity="0.30" Color="#3B82F6"/>
+    <DropShadowEffect x:Key="GlowAccent"   BlurRadius="8"  ShadowDepth="0" Opacity="0.30" Color="#EF4444"/>
 
     <!-- ===== プライマリボタン ===== -->
     <Style x:Key="PrimaryButton" TargetType="Button">
@@ -23,7 +22,7 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Bd"
                             Background="{TemplateBinding Background}"
-                            CornerRadius="4"
+                            CornerRadius="12"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center"
                                           VerticalAlignment="Center"/>
@@ -62,7 +61,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="4"
+                            CornerRadius="12"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center"
                                           VerticalAlignment="Center"/>
@@ -92,7 +91,7 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Bd"
                             Background="{TemplateBinding Background}"
-                            CornerRadius="4"
+                            CornerRadius="12"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center"
                                           VerticalAlignment="Center"/>
@@ -127,7 +126,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="4">
+                            CornerRadius="12">
                         <ScrollViewer x:Name="PART_ContentHost"
                                       Margin="{TemplateBinding Padding}"
                                       VerticalAlignment="Center"/>
@@ -143,12 +142,12 @@
         </Setter>
     </Style>
 
-    <!-- ===== カード: フラットは罫線のみ、シャドウなし ===== -->
+    <!-- ===== カード ===== -->
     <Style x:Key="Card" TargetType="Border">
         <Setter Property="Background"      Value="{DynamicResource SurfaceBrush}"/>
         <Setter Property="BorderBrush"     Value="{DynamicResource BorderBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="CornerRadius"    Value="4"/>
+        <Setter Property="CornerRadius"    Value="8"/>
         <Setter Property="Padding"         Value="20"/>
     </Style>
 
@@ -281,7 +280,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="4">
+                                CornerRadius="12">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>

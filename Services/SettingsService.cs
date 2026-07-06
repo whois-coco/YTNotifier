@@ -13,8 +13,11 @@ public class SettingsService
     private const string FileConfig     = "config.json";
     private const string FileChannels   = "channels.json";
     private const string FileCategories = "categories.json";
+    private const string FileState      = "state.json";
     private const string FileAutoBackup = "auto_backup.ytbk";
     private const string SoundsZipPrefix = "Sounds/";
+    private const int    AllDaysMask     = 0b1111111; // 全曜日ビットマスク（bit0=日〜bit6=土）
+    private const int    StateWriteIntervalMs = 60 * 60 * 1000; // 1時間
 
     private static readonly Lazy<SettingsService> _lazy = new(() => new SettingsService());
     public static SettingsService Instance => _lazy.Value;
@@ -23,17 +26,25 @@ public class SettingsService
     private readonly string _configPath;
     private readonly string _channelsPath;
     private readonly string _categoriesPath;
+    private readonly string _dormantCategoriesPath;
+    private readonly string _statePath;
     private readonly string _apiKeyPath;
     private readonly string _confDir;
+
+    public string ConfDir => _confDir;
 
     public AppSettings Settings { get; private set; } = new();
     public List<ChannelInfo> Channels { get; private set; } = new();
     public List<CategoryInfo> Categories { get; private set; } = new();
+    public List<CategoryInfo> DormantCategories { get; private set; } = new();
+    public AppState AppState { get; private set; } = new();
 
     // Channels/Categories への並行アクセスを直列化するロック
     private readonly object _persistLock = new();
     // AddApiUnits の並行呼び出しを直列化するロック
     private readonly object _apiUnitsLock = new();
+
+    private System.Threading.Timer _stateTimer;
 
     /// <summary>保存系エラーをクラッシュログへ直接書き込む（LoggerService に依存しない）</summary>
     private void WriteSaveError(string context, string message)
@@ -70,11 +81,13 @@ public class SettingsService
         Directory.CreateDirectory(bkupDir);
         Directory.CreateDirectory(Path.Combine(_appDataDir, AppConstants.DirLogs));
         Directory.CreateDirectory(Path.Combine(_appDataDir, AppConstants.DirIcons));
-        _configPath      = Path.Combine(confDir, FileConfig);
-        _channelsPath    = Path.Combine(confDir, FileChannels);
-        _categoriesPath  = Path.Combine(confDir, FileCategories);
-        _apiKeyPath      = Path.Combine(confDir, AppConstants.FileApiKey);
-        _confDir         = confDir;
+        _configPath             = Path.Combine(confDir, FileConfig);
+        _channelsPath           = Path.Combine(confDir, FileChannels);
+        _categoriesPath         = Path.Combine(confDir, FileCategories);
+        _dormantCategoriesPath  = Path.Combine(confDir, AppConstants.FileDormantCategories);
+        _statePath              = Path.Combine(confDir, FileState);
+        _apiKeyPath             = Path.Combine(confDir, AppConstants.FileApiKey);
+        _confDir                = confDir;
 
         // 旧パス（フラット構造）からの移行
         foreach (var fname in new[] { FileConfig, FileChannels, FileCategories, AppConstants.FileApiKey })
@@ -84,6 +97,9 @@ public class SettingsService
             if (File.Exists(oldPath) && !File.Exists(newPath))
                 File.Move(oldPath, newPath);
         }
+
+        _stateTimer = new System.Threading.Timer(
+            _ => SaveStateInternal(), null, StateWriteIntervalMs, StateWriteIntervalMs);
     }
 
     public string AppDataDir => _appDataDir;
@@ -97,7 +113,7 @@ public class SettingsService
                 ?? System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "",
             AppConstants.DirSounds);
 
-    public string ExportBackup(string destPath)
+    public string ExportBackup(string destPath, bool includeState = false)
     {
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
@@ -112,8 +128,10 @@ public class SettingsService
             System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
         {
             // 設定ファイル群
-            foreach (var file in new[] { _configPath, _channelsPath, _categoriesPath, _apiKeyPath })
+            foreach (var file in new[] { _configPath, _channelsPath, _categoriesPath, _dormantCategoriesPath, _apiKeyPath })
                 if (File.Exists(file)) zip.CreateEntryFromFile(file, Path.GetFileName(file));
+            if (includeState && File.Exists(_statePath))
+                zip.CreateEntryFromFile(_statePath, Path.GetFileName(_statePath));
 
             // Sounds フォルダ（フォルダごと・全ファイル再帰）
             var soundsDir = SoundsDir;
@@ -161,7 +179,7 @@ public class SettingsService
             using var zip   = new System.IO.Compression.ZipArchive(zipMs,
                 System.IO.Compression.ZipArchiveMode.Read);
 
-            var allowedFiles = new[] { FileConfig, FileChannels, FileCategories, AppConstants.FileApiKey };
+            var allowedFiles = new[] { FileConfig, FileChannels, FileCategories, AppConstants.FileDormantCategories, AppConstants.FileApiKey, FileState };
 
             foreach (var entry in zip.Entries)
             {
@@ -198,7 +216,7 @@ public class SettingsService
 
                     // Zip Slip 防止：展開先が想定ディレクトリ配下であることを確認
                     var fullDest    = Path.GetFullPath(destPath);
-                    var allowedRoot = Path.GetFullPath(exeDir) + Path.DirectorySeparatorChar;
+                    var allowedRoot = Path.GetFullPath(Path.Combine(exeDir, AppConstants.DirSounds)) + Path.DirectorySeparatorChar;
                     if (!fullDest.StartsWith(allowedRoot, StringComparison.OrdinalIgnoreCase))
                         continue;
 
@@ -227,6 +245,34 @@ public class SettingsService
             }
         }
         catch { Categories = new(); }
+    }
+
+    private void LoadDormantCategories()
+    {
+        try
+        {
+            if (File.Exists(_dormantCategoriesPath))
+            {
+                var json = File.ReadAllText(_dormantCategoriesPath);
+                DormantCategories = JsonConvert.DeserializeObject<List<CategoryInfo>>(json) ?? new();
+            }
+        }
+        catch { DormantCategories = new(); }
+    }
+
+    public void SaveDormantCategories() => SaveDormantCategoriesInternal(markDirty: true);
+
+    private void SaveDormantCategoriesInternal(bool markDirty)
+    {
+        try
+        {
+            string json;
+            lock (_persistLock)
+                json = JsonConvert.SerializeObject(DormantCategories, Formatting.Indented);
+            WriteAtomic(_dormantCategoriesPath, json);
+            if (markDirty) MarkDirty();
+        }
+        catch (Exception ex) { WriteSaveError("SaveDormantCategories", ex.Message); }
     }
 
     // ===== 自動バックアップ用ダーティフラグ =====
@@ -355,26 +401,22 @@ public class SettingsService
     /// <summary>API使用ユニットを加算（日付をまたいだらリセット）</summary>
     public void AddApiUnits(int units)
     {
-        try
+        lock (_apiUnitsLock)
         {
-            lock (_apiUnitsLock)
+            var quotaKey = AppConstants.GetQuotaDayKey();
+            if (AppState.TodayApiDate != quotaKey)
             {
-                var quotaKey = AppConstants.GetQuotaDayKey();
-                if (Settings.TodayApiDate != quotaKey)
-                {
-                    Settings.TodayApiUnits = 0;
-                    Settings.TodayApiDate  = quotaKey;
-                }
-                Settings.TodayApiUnits += units;
-                var json = JsonConvert.SerializeObject(Settings, Formatting.Indented);
-                WriteAtomic(_configPath, json);
+                AppState.TodayApiUnits = 0;
+                AppState.TodayApiDate  = quotaKey;
             }
+            AppState.TodayApiUnits += units;
         }
-        catch (Exception ex) { WriteSaveError("AddApiUnits", ex.Message); }
         MonitorService.Instance.NotifyQuotaUpdated();
     }
 
-    public void SaveCategories()
+    public void SaveCategories() => SaveCategoriesInternal();
+
+    private void SaveCategoriesInternal()
     {
         try
         {
@@ -386,7 +428,11 @@ public class SettingsService
         catch (Exception ex) { WriteSaveError("SaveCategories", ex.Message); }
     }
 
-    public CategoryInfo AddCategory(string name)
+    // ===== カテゴリ操作の共通処理（監視カテゴリ・休眠カテゴリで共用） =====
+    // save には SaveCategories / SaveDormantCategories を渡す
+    //（ダーティフラグの扱いの差は各保存メソッド側で維持される）
+
+    private CategoryInfo AddCategoryCore(List<CategoryInfo> categories, Action save, string name)
     {
         CategoryInfo cat;
         lock (_persistLock)
@@ -395,18 +441,77 @@ public class SettingsService
             {
                 CategoryId   = Guid.NewGuid().ToString(),
                 CategoryName = name,
-                SortOrder    = Categories.Count
+                SortOrder    = categories.Count
             };
-            Categories.Add(cat);
+            categories.Add(cat);
         }
-        MarkDirty();
-        SaveCategories();
+        save();
         return cat;
     }
 
+    private void EnsureCategoryCore(List<CategoryInfo> categories, Action save, string categoryId, string categoryName)
+    {
+        lock (_persistLock)
+        {
+            if (categories.Any(c => c.CategoryId == categoryId)) return;
+            categories.Add(new CategoryInfo
+            {
+                CategoryId   = categoryId,
+                CategoryName = categoryName,
+                SortOrder    = categories.Count
+            });
+        }
+        save();
+    }
+
+    private void RemoveCategoryCore(List<CategoryInfo> categories, Action save, string categoryId)
+    {
+        lock (_persistLock)
+        {
+            // カテゴリ削除時は所属チャンネルを未分類に
+            foreach (var ch in Channels.Where(c => c.CategoryId == categoryId))
+                ch.CategoryId = null;
+            categories.RemoveAll(c => c.CategoryId == categoryId);
+        }
+        save();
+        SaveChannels();
+    }
+
+    private void RenameCategoryCore(List<CategoryInfo> categories, Action save, string categoryId, string newName)
+    {
+        lock (_persistLock)
+        {
+            var cat = categories.FirstOrDefault(c => c.CategoryId == categoryId);
+            if (cat == null) return;
+            cat.CategoryName = newName;
+        }
+        save();
+    }
+
+    public CategoryInfo AddCategory(string name)        => AddCategoryCore(Categories,        SaveCategories,        name);
+
+    public CategoryInfo AddDormantCategory(string name) => AddCategoryCore(DormantCategories, SaveDormantCategories, name);
+
+    /// <summary>指定した categoryId の監視カテゴリがなければ同じID・名前で作成する</summary>
+    public void EnsureCategory(string categoryId, string categoryName)
+        => EnsureCategoryCore(Categories, SaveCategories, categoryId, categoryName);
+
+    /// <summary>指定した categoryId の休眠カテゴリがなければ同じID・名前で作成する</summary>
+    public void EnsureDormantCategory(string categoryId, string categoryName)
+        => EnsureCategoryCore(DormantCategories, SaveDormantCategories, categoryId, categoryName);
+
+    public void SetDormantChannelCategory(string channelId, string? categoryId)
+        => SetChannelCategory(channelId, categoryId);
+
+    public void RemoveDormantCategory(string categoryId)
+        => RemoveCategoryCore(DormantCategories, SaveDormantCategories, categoryId);
+
+    public void RenameDormantCategory(string categoryId, string newName)
+        => RenameCategoryCore(DormantCategories, SaveDormantCategories, categoryId, newName);
+
     public List<ChannelInfo> GetEnabledChannelsSnapshot()
     {
-        lock (_persistLock) return Channels.Where(c => c.IsEnabled).ToList();
+        lock (_persistLock) return Channels.Where(c => c.IsEnabled && !c.IsDormant).ToList();
     }
 
     public List<ChannelInfo> GetChannelsSnapshot()
@@ -415,37 +520,17 @@ public class SettingsService
     }
 
     public void RemoveCategory(string categoryId)
-    {
-        lock (_persistLock)
-        {
-            // カテゴリ削除時は所属チャンネルを未分類に
-            foreach (var ch in Channels.Where(c => c.CategoryId == categoryId))
-                ch.CategoryId = null;
-            Categories.RemoveAll(c => c.CategoryId == categoryId);
-        }
-        MarkDirty();
-        SaveCategories();
-        SaveChannels();
-    }
+        => RemoveCategoryCore(Categories, SaveCategories, categoryId);
 
     public void RenameCategory(string categoryId, string newName)
-    {
-        lock (_persistLock)
-        {
-            var cat = Categories.FirstOrDefault(c => c.CategoryId == categoryId);
-            if (cat == null) return;
-            cat.CategoryName = newName;
-        }
-        MarkDirty();
-        SaveCategories();
-    }
+        => RenameCategoryCore(Categories, SaveCategories, categoryId, newName);
 
     public void SetChannelCategory(string channelId, string? categoryId)
     {
         var ch = Channels.FirstOrDefault(c => c.ChannelId == channelId);
         if (ch == null) return;
         ch.CategoryId = categoryId;
-        SaveChannels();
+        MarkDirty();
     }
 
     public void Load()
@@ -453,6 +538,8 @@ public class SettingsService
         LoadSettings();
         LoadChannels();
         LoadCategories();
+        LoadDormantCategories();
+        LoadState();
     }
 
     private void LoadSettings()
@@ -479,20 +566,27 @@ public class SettingsService
         catch { Settings = new AppSettings(); }
 
         // APIキーは別ファイルから復号して読み込む
-        Settings.ApiKey = ApiKeyService.Load(_confDir);
+        Settings.ApiKeys = ApiKeyService.Load(_confDir);
+
+        // スロット3種化に伴う移行: ApiKeys は常に最大2件（プライマリー・セカンダリー）とする
+        if (Settings.ApiKeys.Count > 2)
+        {
+            Settings.ApiKeys = Settings.ApiKeys.Take(2).ToList();
+            ApiKeyService.Save(_confDir, Settings.ApiKeys);
+        }
 
         // 旧バージョン移行: config.json に平文 ApiKey が残っていれば api_key.dat に移行して除去
         try
         {
-            if (File.Exists(_configPath) && string.IsNullOrEmpty(Settings.ApiKey))
+            if (File.Exists(_configPath) && Settings.ApiKeys.Count == 0)
             {
                 var raw = File.ReadAllText(_configPath);
                 var legacy = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(raw);
                 var legacyKey = legacy?["ApiKey"]?.ToString();
                 if (!string.IsNullOrEmpty(legacyKey))
                 {
-                    Settings.ApiKey = legacyKey;
-                    ApiKeyService.Save(_confDir, legacyKey);
+                    Settings.ApiKeys = new List<string> { legacyKey };
+                    ApiKeyService.Save(_confDir, Settings.ApiKeys);
                     // config.json から ApiKey キーを除去して上書き
                     legacy!.Remove("ApiKey");
                     WriteAtomic(_configPath, legacy.ToString(Newtonsoft.Json.Formatting.Indented));
@@ -517,7 +611,20 @@ public class SettingsService
 
         bool migrated = MigrateChannelsToFocusSlots();
         migrated |= MigrateNotifyUpcomingToNullable();
+        migrated |= MigrateUpcomingNotifyMode();
+        migrated |= CleanupExpiredGraceEntries();
         if (migrated) { SaveChannelsSilent(); MarkDirty(); }
+    }
+
+    private bool CleanupExpiredGraceEntries()
+    {
+        bool cleaned = false;
+        foreach (var ch in Channels)
+        {
+            if (ch.PendingLives.RemoveAll(p => p.GraceRemaining == -1) > 0) cleaned = true;
+            if (ch.PendingPremieres.RemoveAll(p => p.GraceRemaining == -1) > 0) cleaned = true;
+        }
+        return cleaned;
     }
 
     /// <summary>
@@ -532,6 +639,29 @@ public class SettingsService
             migrated = true;
         }
         return migrated;
+    }
+
+    /// <summary>
+    /// NotifyUpcoming（bool?）→ UpcomingNotifyMode への移行。
+    /// Settings.UpcomingMigrated が false の場合のみ実行する。
+    /// </summary>
+    private bool MigrateUpcomingNotifyMode()
+    {
+        if (Settings.UpcomingMigrated) return false;
+
+        bool globalUpcoming = Settings.GlobalNotifyUpcoming;
+        foreach (var ch in Channels)
+        {
+            var effective = ch.NotifyUpcoming ?? globalUpcoming;
+            ch.UpcomingNotifyMode       = effective
+                ? Models.UpcomingNotifyMode.WaitingRoomOnly
+                : Models.UpcomingNotifyMode.LiveStartOnly;
+            ch.UpcomingNotifyLeadMinutes = 0;
+            ch.NotifyUpcoming            = null;
+        }
+        Settings.UpcomingMigrated = true;
+        SaveSettings();
+        return true;
     }
 
     /// <summary>
@@ -620,7 +750,6 @@ public class SettingsService
     {
         try
         {
-            ApiKeyService.Save(_confDir, Settings.ApiKey);
             var json = JsonConvert.SerializeObject(Settings, Formatting.Indented);
             WriteAtomic(_configPath, json);
         }
@@ -656,7 +785,7 @@ public class SettingsService
             if (Channels.Any(c => c.ChannelId == channel.ChannelId)) return;
             Channels.Add(channel);
         }
-        SaveChannels(); // SaveChannels内でMarkDirty
+        SaveChannels();
     }
 
     public void RemoveChannel(string channelId)
@@ -670,27 +799,21 @@ public class SettingsService
         SaveChannels();
     }
 
+    /// <summary>チャンネル詳細設定の保存ボタンなど即時保存が必要な場合に使う</summary>
     public void UpdateChannel(ChannelInfo channel)
     {
         ReplaceChannel(channel);
         SaveChannels();
     }
 
-    /// <summary>監視系の状態更新（LastCheckedAt/VideoId/NextCheckAt等）。ダーティフラグを立てない</summary>
+    /// <summary>監視系の状態更新（LastCheckedAt/VideoId/NextCheckAt等）。終了時のみ保存</summary>
     public void UpdateChannelSilent(ChannelInfo channel)
     {
-        try
+        lock (_persistLock)
         {
-            lock (_persistLock)
-            {
-                var idx = Channels.FindIndex(c => c.ChannelId == channel.ChannelId);
-                if (idx < 0) return;
-                Channels[idx] = channel;
-                var json = JsonConvert.SerializeObject(Channels, Formatting.Indented);
-                WriteAtomic(_channelsPath, json);
-            }
+            var idx = Channels.FindIndex(c => c.ChannelId == channel.ChannelId);
+            if (idx >= 0) Channels[idx] = channel;
         }
-        catch (Exception ex) { WriteSaveError("UpdateChannelSilent", ex.Message); }
     }
 
     private void ReplaceChannel(ChannelInfo channel)
@@ -703,25 +826,201 @@ public class SettingsService
         }
     }
 
-    public void MoveChannelUp(string channelId)
+    /// <summary>アプリ終了時に呼ぶ。全ファイルを保存し、監視状態も保存する</summary>
+    public void FlushAll()
     {
-        lock (_persistLock)
-        {
-            var idx = Channels.FindIndex(c => c.ChannelId == channelId);
-            if (idx <= 0) return;
-            (Channels[idx], Channels[idx - 1]) = (Channels[idx - 1], Channels[idx]);
-        }
-        SaveChannels();
+        _stateTimer.Change(Timeout.Infinite, Timeout.Infinite);
+        SaveSettingsInternal();
+        SaveChannelsInternal();
+        SaveCategoriesInternal();
+        SaveDormantCategoriesInternal(markDirty: false);
+        SaveStateInternal();
+        SaveStateToBackup();
     }
 
-    public void MoveChannelDown(string channelId)
+    // ===== state.json 管理 =====
+
+    private static ChannelState ExtractStateFromChannel(ChannelInfo ch) => new()
     {
-        lock (_persistLock)
+        LastCheckedVideoId     = ch.LastCheckedVideoId,
+        LastVideoId            = ch.LastVideoId,
+        NextCheckAt            = ch.NextCheckAt,
+        LastCheckedAt          = ch.LastCheckedAt,
+        UploadsPlaylistId      = ch.UploadsPlaylistId,
+        PendingLives           = ch.PendingLives,
+        PendingPremieres       = ch.PendingPremieres,
+        ActiveLives            = ch.ActiveLives,
+        ActivePremieres        = ch.ActivePremieres,
+        LastLiveNotifiedId     = ch.LastLiveNotifiedId,
+        LastPremiereNotifiedId = ch.LastPremiereNotifiedId,
+        LastLiveId             = ch.LastLiveId,
+        LastPremiereId         = ch.LastPremiereId,
+        NextLiveCheckAt        = ch.NextLiveCheckAt,
+        NextPremiereCheckAt    = ch.NextPremiereCheckAt,
+        LiveGraceRemaining     = ch.LiveGraceRemaining,
+        LastVideoTitle         = ch.LastVideoTitle,
+        LastVideoNotifiedAt    = ch.LastVideoNotifiedAt,
+        LastShortNotifiedId    = ch.LastShortNotifiedId,
+        LastShortTitle         = ch.LastShortTitle,
+        LastShortNotifiedAt    = ch.LastShortNotifiedAt,
+        LastLiveNotifiedTitle  = ch.LastLiveNotifiedTitle,
+        LastLiveNotifiedAt     = ch.LastLiveNotifiedAt,
+        LastPremiereNotifiedTitle = ch.LastPremiereNotifiedTitle,
+        LastPremiereNotifiedAt = ch.LastPremiereNotifiedAt,
+        LatestTitle            = ch.LatestTitle,
+        LatestKind             = ch.LatestKind,
+        LatestVideoId          = ch.LatestVideoId,
+        LatestDuration         = ch.LatestDuration,
+    };
+
+    private static void ApplyStateToChannel(ChannelInfo ch, ChannelState state)
+    {
+        ch.LastCheckedVideoId     = state.LastCheckedVideoId;
+        ch.LastVideoId            = state.LastVideoId;
+        ch.NextCheckAt            = state.NextCheckAt;
+        ch.LastCheckedAt          = state.LastCheckedAt;
+        ch.UploadsPlaylistId      = state.UploadsPlaylistId;
+        ch.PendingLives           = state.PendingLives;
+        ch.PendingPremieres       = state.PendingPremieres;
+        ch.ActiveLives            = state.ActiveLives ?? new();
+        ch.ActivePremieres        = state.ActivePremieres ?? new();
+        ch.LastLiveNotifiedId     = state.LastLiveNotifiedId;
+        ch.LastPremiereNotifiedId = state.LastPremiereNotifiedId;
+        ch.LastLiveId             = state.LastLiveId;
+        ch.LastPremiereId         = state.LastPremiereId;
+        ch.NextLiveCheckAt        = state.NextLiveCheckAt;
+        ch.NextPremiereCheckAt    = state.NextPremiereCheckAt;
+        ch.LiveGraceRemaining     = state.LiveGraceRemaining;
+        ch.LastVideoTitle         = state.LastVideoTitle;
+        ch.LastVideoNotifiedAt    = state.LastVideoNotifiedAt;
+        ch.LastShortNotifiedId    = state.LastShortNotifiedId;
+        ch.LastShortTitle         = state.LastShortTitle;
+        ch.LastShortNotifiedAt    = state.LastShortNotifiedAt;
+        ch.LastLiveNotifiedTitle  = state.LastLiveNotifiedTitle;
+        ch.LastLiveNotifiedAt     = state.LastLiveNotifiedAt;
+        ch.LastPremiereNotifiedTitle = state.LastPremiereNotifiedTitle;
+        ch.LastPremiereNotifiedAt = state.LastPremiereNotifiedAt;
+        ch.LatestTitle            = state.LatestTitle;
+        ch.LatestKind             = state.LatestKind;
+        ch.LatestVideoId          = state.LatestVideoId;
+        ch.LatestDuration         = state.LatestDuration;
+    }
+
+    private void LoadState()
+    {
+        if (!File.Exists(_statePath))
         {
-            var idx = Channels.FindIndex(c => c.ChannelId == channelId);
-            if (idx < 0 || idx >= Channels.Count - 1) return;
-            (Channels[idx], Channels[idx + 1]) = (Channels[idx + 1], Channels[idx]);
+            MigrateStateFromChannels();
+            return;
         }
-        SaveChannels();
+        try
+        {
+            var json = File.ReadAllText(_statePath);
+            if (string.IsNullOrWhiteSpace(json))
+                throw new Exception();
+            AppState = JsonConvert.DeserializeObject<AppState>(json) ?? throw new Exception();
+        }
+        catch
+        {
+            TryRestoreStateFromBackup();
+            try
+            {
+                var json = File.ReadAllText(_statePath);
+                AppState = JsonConvert.DeserializeObject<AppState>(json) ?? new AppState();
+            }
+            catch { AppState = new AppState(); }
+        }
+        var validIds = new HashSet<string>(Channels.Select(c => c.ChannelId));
+        foreach (var id in AppState.Channels.Keys.Where(id => !validIds.Contains(id)).ToList())
+            AppState.Channels.Remove(id);
+        foreach (var ch in Channels)
+        {
+            if (AppState.Channels.TryGetValue(ch.ChannelId, out var state))
+                ApplyStateToChannel(ch, state);
+        }
+        CleanupExpiredGraceEntries();
+    }
+
+    private void MigrateStateFromChannels()
+    {
+        AppState = new AppState
+        {
+            TodayApiUnits = Settings.TodayApiUnits,
+            TodayApiDate  = Settings.TodayApiDate,
+        };
+        try
+        {
+            if (File.Exists(_channelsPath))
+            {
+                var arr = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JArray>(
+                    File.ReadAllText(_channelsPath));
+                if (arr != null)
+                {
+                    foreach (var item in arr)
+                    {
+                        var channelId = item["channelId"]?.ToString();
+                        if (string.IsNullOrEmpty(channelId)) continue;
+                        AppState.Channels[channelId] = new ChannelState
+                        {
+                            LastCheckedVideoId     = item["lastCheckedVideoId"]?.ToString() ?? "",
+                            LastVideoId            = item["lastVideoId"]?.ToString() ?? "",
+                            NextCheckAt            = item["nextCheckAt"]?.ToObject<DateTime>() ?? DateTime.MinValue,
+                            LastCheckedAt          = item["lastCheckedAt"]?.ToObject<DateTime>() ?? DateTime.MinValue,
+                            UploadsPlaylistId      = item["uploadsPlaylistId"]?.ToString() ?? "",
+                            PendingLives           = item["pendingLives"]?.ToObject<List<PendingVideoEntry>>() ?? new(),
+                            PendingPremieres       = item["pendingPremieres"]?.ToObject<List<PendingVideoEntry>>() ?? new(),
+                            LastLiveNotifiedId     = item["lastLiveNotifiedId"]?.ToString() ?? "",
+                            LastPremiereNotifiedId = item["lastPremiereNotifiedId"]?.ToString() ?? "",
+                            LastLiveId             = item["lastLiveId"]?.ToString() ?? "",
+                            LastPremiereId         = item["lastPremiereId"]?.ToString() ?? "",
+                            NextLiveCheckAt        = item["nextLiveCheckAt"]?.ToObject<DateTime?>(),
+                            NextPremiereCheckAt    = item["nextPremiereCheckAt"]?.ToObject<DateTime?>(),
+                            LiveGraceRemaining     = item["liveGraceRemaining"]?.ToObject<int>() ?? 0,
+                        };
+                    }
+                }
+            }
+        }
+        catch { }
+        foreach (var ch in Channels)
+        {
+            if (AppState.Channels.TryGetValue(ch.ChannelId, out var state))
+                ApplyStateToChannel(ch, state);
+        }
+        CleanupExpiredGraceEntries();
+        SaveStateInternal();
+    }
+
+    public void SaveStateInternal()
+    {
+        try
+        {
+            lock (_persistLock)
+            {
+                foreach (var ch in Channels)
+                    AppState.Channels[ch.ChannelId] = ExtractStateFromChannel(ch);
+            }
+            var json = JsonConvert.SerializeObject(AppState, Formatting.Indented);
+            WriteAtomic(_statePath, json);
+        }
+        catch (Exception ex) { WriteSaveError("SaveState", ex.Message); }
+    }
+
+    private void SaveStateToBackup()
+    {
+        try
+        {
+            if (File.Exists(_statePath))
+                File.Copy(_statePath, Path.Combine(_appDataDir, DirBackup, FileState), overwrite: true);
+        }
+        catch { }
+    }
+
+    private void TryRestoreStateFromBackup()
+    {
+        var backupStatePath = Path.Combine(_appDataDir, DirBackup, FileState);
+        if (!File.Exists(backupStatePath)) return;
+        try { File.Copy(backupStatePath, _statePath, overwrite: true); }
+        catch { }
     }
 }

@@ -54,6 +54,8 @@ public enum LogMsg
     UushFallbackFailed        = 4018,  // {0}=videoId {1}=message
     PlaylistFailed            = 4019,  // {0}=playlistId {1}=message
     ApiFallback               = 4008,
+    // Gemini要約
+    GeminiSummaryFailed       = 4021,  // {0}=videoId {1}=message
     // 通知
     NotifyFailed              = 4013,  // {0}=message
     TestNotifyFailed          = 4009,  // {0}=message  (MainWindow.Settings)
@@ -91,6 +93,12 @@ public enum LogMsg
     OldPremiereDiscarded      = 5023,  // {0}=title
     OldPremiereDiscardedNew   = 5024,  // {0}=title
     OldPremiereDiscardedTrans = 5025,  // {0}=title
+    UpcomingQueued            = 5084,  // {0}=time {1}=title
+    UpcomingQueueUpdated      = 5087,  // {0}=time {1}=title
+    UpcomingQueueFull         = 5085,  // {0}=title
+    SchedulerWaitingRoomNotify  = 5088,  // {0}=kind {1}=title
+    SchedulerGracePeriodStarted = 5089,  // {0}=videoId
+    SchedulerWakeUp             = 5090,
     // 動画検索・表示
     SearchingVideo            = 5005,
     OpenChannelPage           = 5006,
@@ -135,6 +143,16 @@ public enum LogMsg
     CategoryContextCollapseAll = 5055,
     CategoryDeleted            = 5056,  // {0}=categoryName
     CategoryRenamed            = 5072,  // {0}=oldName {1}=newName
+    CategoryAdded                   = 5097,  // {0}=categoryName
+    AddChannelPasteClicked          = 5098,
+    AddChannelDetailTabSwitched     = 5099,  // {0}=tabName
+    AddChannelWindowClosed          = 5100,
+    AddChannelNewCategoryPanelOpened= 5101,
+    MovedToDormant                  = 5102,  // {0}=channelName
+    MovedToActive                   = 5103,  // {0}=channelName
+    DormantChannelMovedToCategory   = 5104,  // {0}=channelName {1}=categoryName
+    DormantSearchExecuted           = 5105,  // {0}=query
+    DormantSearchCleared            = 5106,
     // ナビゲーション・サイドバー
     NavPageSwitched            = 5057,  // {0}=page
     SettingsSubNavSwitched     = 5058,  // {0}=page
@@ -157,11 +175,29 @@ public enum LogMsg
     QuotaWarningOnSave         = 5073,  // {0}=channelName {1}=pct
     QuotaExceededOnSave        = 5074,  // {0}=channelName {1}=pct
     // チャンネル詳細ウィンドウ（間隔）
-    ChannelDetailSlotInterval  = 5075,  // {0}=kindLabel {1}=intervalDesc
+    ChannelDetailSlotInterval         = 5075,  // {0}=kindLabel {1}=intervalDesc
+    ChannelDetailUpcomingModeChanged  = 5091,  // {0}=modeLabel
+    ChannelDetailUpcomingLeadChanged  = 5092,  // {0}=minutes
+    ChannelDetailCancelled            = 5093,
+    AddChannelDialogOpened            = 5094,
+    ChannelSearchExecuted             = 5095,  // {0}=query
+    ChannelSearchCleared              = 5096,
+    ChannelFilterApplied              = 5107,  // {0}=filterLabel
+    ChannelFilterCleared              = 5108,
+    // 動画要約ポップアップ
+    VideoSummaryPopupOpened           = 5109,  // {0}=channelName
+    GeminiSummaryRequested            = 5110,  // {0}=videoId
+    GeminiSummaryCacheHit             = 5111,  // {0}=videoId
+    GeminiSummarySucceeded            = 5112,  // {0}=videoId
     // APIキーウィンドウ
     ApiKeyEditStarted          = 5067,
     ApiKeyChanged              = 5068,
     ApiKeyUnchanged            = 5069,
+    // 要約用APIキー
+    GeminiApiKeyEditStarted    = 5113,
+    GeminiApiKeyChanged        = 5114,
+    GeminiApiKeyUnchanged      = 5115,
+    GeminiApiKeySaved          = 5116,
     // アクティビティログウィンドウ
     ActivityLogWindowOpened    = 5062,
     ActivityLogCleared         = 5063,
@@ -170,7 +206,7 @@ public enum LogMsg
     DebugWindowNotFound       = 5012,
     DevToolError              = 5013,  // {0}=message
     DebugDllFailed            = 5014,  // {0}=message
-    UiUpdateFailed            = 5015,  // {0}=methodName {1}=message
+    UiUpdateFailed            = 5086,  // {0}=methodName {1}=message
 }
 
 public static class AppLogger
@@ -181,7 +217,7 @@ public static class AppLogger
     {
         // SYSTEM ─────────────────────────────────────────────────────
         // 監視
-        [LogMsg.MonitorStarted]            = new(LogLevel.System,  "監視を開始しました"),
+        [LogMsg.MonitorStarted]            = new(LogLevel.System,  "監視を開始しました({0})"),
         [LogMsg.MonitorStopped]            = new(LogLevel.System,  "監視を停止しました"),
         [LogMsg.NetworkRestored]           = new(LogLevel.System,  "インターネット接続が回復しました。監視を再開します。"),
         // ログ
@@ -204,6 +240,8 @@ public static class AppLogger
         // APIキー
         [LogMsg.ApiKeySaved]               = new(LogLevel.Info,    "APIキーを保存しました"),
         [LogMsg.ApiKeyChanged]              = new(LogLevel.Info,    "APIキーを変更しました"),
+        [LogMsg.GeminiApiKeySaved]          = new(LogLevel.Info,    "要約用APIキーを保存しました"),
+        [LogMsg.GeminiApiKeyChanged]        = new(LogLevel.Info,    "要約用APIキーを変更しました"),
         // ログ
         [LogMsg.LogManualDeleted]          = new(LogLevel.Info,    "ログ手動削除: {0}件 ({1})"),
 
@@ -219,6 +257,8 @@ public static class AppLogger
         // その他
         [LogMsg.AutoRestored]              = new(LogLevel.Warning, "自動復元を実行しました（理由: {0}）"),
         [LogMsg.InvalidChannelId]          = new(LogLevel.Warning, "不正なチャンネルID: '{0}'"),
+        // API呼び出し（フォールバックあり）
+        [LogMsg.ShortHeadFailed]           = new(LogLevel.Warning, "Short判定 HEAD リクエスト失敗({0}): {1}"),
 
         // ERROR ───────────────────────────────────────────────────────
         // ネットワーク
@@ -230,10 +270,11 @@ public static class AppLogger
         [LogMsg.LatestVideoFailed]         = new(LogLevel.Error,   "最新動画取得失敗: {0}"),
         [LogMsg.UploadsPlaylistFailed]     = new(LogLevel.Error,   "UploadsPlaylistId 取得失敗({0}): {1}"),
         [LogMsg.VideoKindFailed]           = new(LogLevel.Error,   "動画種別一括取得失敗: {0}"),
-        [LogMsg.ShortHeadFailed]           = new(LogLevel.Error,   "Short判定 HEAD リクエスト失敗({0}): {1}"),
         [LogMsg.UushFallbackFailed]        = new(LogLevel.Error,   "UUSH フォールバック失敗({0}): {1}"),
         [LogMsg.PlaylistFailed]            = new(LogLevel.Error,   "プレイリスト取得失敗({0}): {1}"),
         [LogMsg.ApiFallback]               = new(LogLevel.Error,   "API失敗、フォールバック"),
+        // Gemini要約
+        [LogMsg.GeminiSummaryFailed]       = new(LogLevel.Error,   "Gemini要約失敗({0}): {1}"),
         // 通知
         [LogMsg.NotifyFailed]              = new(LogLevel.Error,   "通知送信失敗: {0}"),
         [LogMsg.TestNotifyFailed]          = new(LogLevel.Error,   "テスト通知失敗: {0}"),
@@ -271,6 +312,12 @@ public static class AppLogger
         [LogMsg.OldPremiereDiscarded]      = new(LogLevel.Debug,   "古いプレミア破棄: {0}"),
         [LogMsg.OldPremiereDiscardedNew]   = new(LogLevel.Debug,   "古いプレミア破棄（新着プレミア優先）: {0}"),
         [LogMsg.OldPremiereDiscardedTrans] = new(LogLevel.Debug,   "古いプレミア破棄（遷移済）: {0}"),
+        [LogMsg.UpcomingQueued]             = new(LogLevel.Debug,   "待機所キュー追加 → {0}: {1}"),
+        [LogMsg.UpcomingQueueUpdated]       = new(LogLevel.Debug,   "待機所キュー更新 → {0}: {1}"),
+        [LogMsg.UpcomingQueueFull]          = new(LogLevel.Debug,   "待機所キュー満杯スキップ: {0}"),
+        [LogMsg.SchedulerWaitingRoomNotify]  = new(LogLevel.Debug,   "スケジューラー待機所通知 [{0}]: {1}"),
+        [LogMsg.SchedulerGracePeriodStarted] = new(LogLevel.Debug,   "スケジューラー集中監視起動: {0}"),
+        [LogMsg.SchedulerWakeUp]             = new(LogLevel.Debug,   "スケジューラー再計算"),
         // 動画検索・表示
         [LogMsg.SearchingVideo]            = new(LogLevel.Debug,   "最新動画を検索中..."),
         [LogMsg.OpenChannelPage]           = new(LogLevel.Debug,   "チャンネルページを開きます（全種別オフ）"),
@@ -315,6 +362,16 @@ public static class AppLogger
         [LogMsg.CategoryContextCollapseAll] = new(LogLevel.Debug,   "全カテゴリ折り畳み"),
         [LogMsg.CategoryDeleted]            = new(LogLevel.Debug,   "カテゴリ削除: {0}"),
         [LogMsg.CategoryRenamed]            = new(LogLevel.Debug,   "カテゴリ名変更: {0} → {1}"),
+        [LogMsg.CategoryAdded]                   = new(LogLevel.Debug,   "カテゴリ作成: {0}"),
+        [LogMsg.AddChannelPasteClicked]          = new(LogLevel.Debug,   "チャンネル追加: クリップボードからペースト"),
+        [LogMsg.AddChannelDetailTabSwitched]     = new(LogLevel.Debug,   "チャンネル追加: 詳細タブ切替: {0}"),
+        [LogMsg.AddChannelWindowClosed]          = new(LogLevel.Debug,   "チャンネル追加ウィンドウを閉じた"),
+        [LogMsg.AddChannelNewCategoryPanelOpened]= new(LogLevel.Debug,   "チャンネル追加: 新規カテゴリ入力パネルを開いた"),
+        [LogMsg.MovedToDormant]                  = new(LogLevel.Debug,   "{0} を休眠リストへ移動しました"),
+        [LogMsg.MovedToActive]                   = new(LogLevel.Debug,   "{0} を監視リストへ移動しました"),
+        [LogMsg.DormantChannelMovedToCategory]   = new(LogLevel.Debug,   "カテゴリ移動(休眠): {0} → {1}"),
+        [LogMsg.DormantSearchExecuted]           = new(LogLevel.Debug,   "休眠検索: {0}"),
+        [LogMsg.DormantSearchCleared]            = new(LogLevel.Debug,   "休眠検索クリア"),
         // ナビゲーション・サイドバー
         [LogMsg.NavPageSwitched]            = new(LogLevel.Debug,   "ページ切替: {0}"),
         [LogMsg.SettingsSubNavSwitched]     = new(LogLevel.Debug,   "設定サブナビ切替: {0}"),
@@ -332,12 +389,28 @@ public static class AppLogger
         [LogMsg.ContinuousAddModeChanged]   = new(LogLevel.Debug,   "連続追加モード: {0}"),
         // チャンネル詳細ウィンドウ
         [LogMsg.ChannelDetailSaved]         = new(LogLevel.Debug,   "チャンネル詳細保存: {0}"),
-        [LogMsg.ChannelDetailSlotInterval]  = new(LogLevel.Debug,   "監視間隔設定: {0}: {1}"),
+        [LogMsg.ChannelDetailSlotInterval]         = new(LogLevel.Debug,   "監視間隔設定: {0}: {1}"),
+        [LogMsg.ChannelDetailUpcomingModeChanged]  = new(LogLevel.Debug,   "通知方法変更: {0}"),
+        [LogMsg.ChannelDetailUpcomingLeadChanged]  = new(LogLevel.Debug,   "通知タイミング変更: {0}分前"),
+        [LogMsg.ChannelDetailCancelled]            = new(LogLevel.Debug,   "詳細設定キャンセル"),
+        [LogMsg.AddChannelDialogOpened]            = new(LogLevel.Debug,   "チャンネル追加ダイアログを開いた"),
+        [LogMsg.ChannelSearchExecuted]             = new(LogLevel.Debug,   "チャンネル検索: {0}"),
+        [LogMsg.ChannelSearchCleared]              = new(LogLevel.Debug,   "チャンネル検索クリア"),
+        [LogMsg.ChannelFilterApplied]              = new(LogLevel.Debug,   "チャンネルフィルター: {0}"),
+        [LogMsg.ChannelFilterCleared]              = new(LogLevel.Debug,   "チャンネルフィルタークリア"),
+        // 動画要約ポップアップ
+        [LogMsg.VideoSummaryPopupOpened]           = new(LogLevel.Debug,   "動画情報ポップアップを開きました: {0}"),
+        [LogMsg.GeminiSummaryRequested]            = new(LogLevel.Debug,   "Gemini要約リクエスト送信: {0}"),
+        [LogMsg.GeminiSummaryCacheHit]              = new(LogLevel.Debug,   "Gemini要約キャッシュヒット: {0}"),
+        [LogMsg.GeminiSummarySucceeded]             = new(LogLevel.Debug,   "Gemini要約成功: {0}"),
         [LogMsg.ChannelDetailTabSwitched]   = new(LogLevel.Debug,   "詳細設定タブ切替: {0}"),
         [LogMsg.ChannelDetailEnabledChanged]= new(LogLevel.Debug,   "詳細設定 有効/無効: {1} → {2}"),
         // APIキーウィンドウ
         [LogMsg.ApiKeyEditStarted]          = new(LogLevel.Debug,   "APIキー変更モード開始"),
         [LogMsg.ApiKeyUnchanged]            = new(LogLevel.Debug,   "APIキー変更なし"),
+        // 要約用APIキー
+        [LogMsg.GeminiApiKeyEditStarted]    = new(LogLevel.Debug,   "要約用APIキー変更モード開始"),
+        [LogMsg.GeminiApiKeyUnchanged]      = new(LogLevel.Debug,   "要約用APIキー変更なし"),
         // アクティビティログウィンドウ
         [LogMsg.ActivityLogWindowOpened]    = new(LogLevel.Debug,   "アクティビティログウィンドウを開きました"),
         [LogMsg.ActivityLogCleared]         = new(LogLevel.Debug,   "アクティビティログをクリアしました"),

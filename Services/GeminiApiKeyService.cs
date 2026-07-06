@@ -7,44 +7,45 @@ using YTNotifier.Constants;
 namespace YTNotifier.Services;
 
 /// <summary>
-/// APIキーを AES-256 で難読化して api_key.dat に保存/読み込みするサービス。
+/// Gemini APIキーを AES-256 で難読化して gemini_api_key.dat に保存/読み込みするサービス。
 /// 鍵は固定パスワード・固定ソルトから PBKDF2 で導出する（難読化目的）。
+/// YouTube 用の ApiKeyService と異なり、単一キーのみを扱う。
 /// </summary>
-public static class ApiKeyService
+public static class GeminiApiKeyService
 {
-    // 固定ソルト（難読化目的。変更するとexisting api_key.datが読めなくなるため変更禁止）
+    // 固定ソルト（難読化目的。変更するとexisting gemini_api_key.datが読めなくなるため変更禁止）
     private static readonly byte[] Salt = new byte[]
     {
-        0x59, 0x54, 0x4E, 0x6F, 0x74, 0x69, 0x66, 0x69,
-        0x65, 0x72, 0x41, 0x70, 0x70, 0x4B, 0x65, 0x79
+        0x47, 0x65, 0x6D, 0x69, 0x6E, 0x69, 0x41, 0x70,
+        0x69, 0x4B, 0x65, 0x79, 0x53, 0x61, 0x6C, 0x74
     };
     private const int Iterations = 10000;
     private const int KeySize    = 32; // AES-256
     private const int IvSize     = 16;
 
-    private static string GetPath(string appDataDir)
-        => Path.Combine(appDataDir, AppConstants.FileApiKey);
+    private static string GetPath(string confDir)
+        => Path.Combine(confDir, AppConstants.FileGeminiApiKey);
 
     private static byte[] DeriveKey()
     {
         using var kdf = new Rfc2898DeriveBytes(
-            "YTNotifier_v1_ApiKey_Secret",
+            "YTNotifier_v1_GeminiApiKey_Secret",
             Salt, Iterations,
             HashAlgorithmName.SHA256);
         return kdf.GetBytes(KeySize);
     }
 
-    /// <summary>APIキーリストを暗号化して api_key.dat に保存する</summary>
-    public static void Save(string appDataDir, List<string> apiKeys)
+    /// <summary>Gemini APIキーを暗号化して gemini_api_key.dat に保存する</summary>
+    public static void Save(string confDir, string? apiKey)
     {
-        if (apiKeys.Count == 0)
+        if (string.IsNullOrEmpty(apiKey))
         {
-            var path = GetPath(appDataDir);
+            var path = GetPath(confDir);
             if (File.Exists(path)) File.Delete(path);
             return;
         }
 
-        var plainText  = Newtonsoft.Json.JsonConvert.SerializeObject(apiKeys);
+        var plainText  = JsonConvert.SerializeObject(apiKey);
         var key        = DeriveKey();
         using var aes  = Aes.Create();
         aes.Key        = key;
@@ -59,19 +60,19 @@ public static class ApiKeyService
         cs.Write(plainBytes, 0, plainBytes.Length);
         cs.FlushFinalBlock();
 
-        File.WriteAllBytes(GetPath(appDataDir), ms.ToArray());
+        File.WriteAllBytes(GetPath(confDir), ms.ToArray());
     }
 
-    /// <summary>api_key.dat を復号してAPIキーリストを返す。失敗時は空リスト</summary>
-    public static List<string> Load(string appDataDir)
+    /// <summary>gemini_api_key.dat を復号して Gemini APIキーを返す。未設定・失敗時は null</summary>
+    public static string? Load(string confDir)
     {
         try
         {
-            var path = GetPath(appDataDir);
-            if (!File.Exists(path)) return new List<string>();
+            var path = GetPath(confDir);
+            if (!File.Exists(path)) return null;
 
             var data = File.ReadAllBytes(path);
-            if (data.Length <= IvSize) return new List<string>();
+            if (data.Length <= IvSize) return null;
 
             var iv         = data[..IvSize];
             var cipher     = data[IvSize..];
@@ -87,22 +88,11 @@ public static class ApiKeyService
             using var sr   = new StreamReader(cs, Encoding.UTF8);
             var decrypted  = sr.ReadToEnd();
 
-            try
-            {
-                var list = Newtonsoft.Json.JsonConvert.DeserializeObject<List<string>>(decrypted);
-                if (list != null) return list;
-            }
-            catch { }
-
-            // 旧フォーマット（単一文字列）の互換処理
-            return string.IsNullOrEmpty(decrypted)
-                ? new List<string>()
-                : new List<string> { decrypted };
+            return JsonConvert.DeserializeObject<string>(decrypted);
         }
         catch
         {
-            return new List<string>();
+            return null;
         }
     }
-
 }

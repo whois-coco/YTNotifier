@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -39,9 +39,11 @@ public partial class MainWindow : System.Windows.Window
     // ===== 設定ハンドラ =====
     private void SaveApiKey_Click(object sender, RoutedEventArgs e)
     {
+        var isSummaryKeySlot = _selectedApiKeySlotIndex == 2;
+
         if (SaveApiKeyButton.Content?.ToString() == "変更")
         {
-            AppLogger.Log(LogMsg.ApiKeyEditStarted);
+            AppLogger.Log(isSummaryKeySlot ? LogMsg.GeminiApiKeyEditStarted : LogMsg.ApiKeyEditStarted);
             UpdateApiKeyState(false);
             ApiKeyBox.Text = "";
             return;
@@ -50,10 +52,10 @@ public partial class MainWindow : System.Windows.Window
         var key = ApiKeyBox.IsReadOnly ? _actualApiKey : ApiKeyBox.Text.Trim();
         if (string.IsNullOrEmpty(key))
         {
-            // 未入力のまま保存 → APIキーを変更しないオペレーションとして扱う
             if (!string.IsNullOrEmpty(_actualApiKey))
             {
-                AppLogger.Log(LogMsg.ApiKeyUnchanged);
+                // 既存キーがある状態で未入力のまま保存 → 変更なしとしてマスク表示に戻す
+                AppLogger.Log(isSummaryKeySlot ? LogMsg.GeminiApiKeyUnchanged : LogMsg.ApiKeyUnchanged);
                 ApiKeyBox.Text          = new string('●', Math.Min(_actualApiKey.Length, 32));
                 ApiKeyBox.IsReadOnly    = true;
                 ApiKeyBox.TextAlignment = System.Windows.TextAlignment.Center;
@@ -62,13 +64,26 @@ public partial class MainWindow : System.Windows.Window
                 SaveApiKeyButton.Content = "変更";
                 SetDynamicBrush(SaveApiKeyButton, Button.BackgroundProperty, "SurfaceElevatedBrush");
                 SetDynamicBrush(SaveApiKeyButton, Button.ForegroundProperty, "TextPrimaryBrush");
+                return;
             }
-            return;
+            // 未設定のまま保存 → 空文字として保存処理に続行
         }
-        _actualApiKey                            = key;
-        SettingsService.Instance.Settings.ApiKey = key;
-        SettingsService.Instance.SaveSettings();
-        AppLogger.Log(LogMsg.ApiKeyChanged);
+        _actualApiKey = key;
+
+        if (isSummaryKeySlot)
+        {
+            GeminiApiKeyService.Save(SettingsService.Instance.ConfDir, key);
+            AppLogger.Log(string.IsNullOrEmpty(key) ? LogMsg.GeminiApiKeyChanged : LogMsg.GeminiApiKeySaved);
+        }
+        else
+        {
+            var keys = SettingsService.Instance.Settings.ApiKeys;
+            while (keys.Count <= _selectedApiKeySlotIndex) keys.Add(string.Empty);
+            keys[_selectedApiKeySlotIndex] = key;
+            ApiKeyService.Save(SettingsService.Instance.ConfDir, keys);
+            SettingsService.Instance.SaveSettings();
+            AppLogger.Log(string.IsNullOrEmpty(key) ? LogMsg.ApiKeyChanged : LogMsg.ApiKeySaved);
+        }
         UpdateApiKeyState(true);
     }
 
@@ -76,7 +91,6 @@ public partial class MainWindow : System.Windows.Window
     {
         if (saved)
         {
-            _actualApiKey           = ApiKeyBox.Text.Trim();
             ApiKeyBox.Text          = new string('●', Math.Min(_actualApiKey.Length, 32));
             ApiKeyBox.IsReadOnly    = true;
             ApiKeyBox.TextAlignment = System.Windows.TextAlignment.Center;
@@ -103,7 +117,7 @@ public partial class MainWindow : System.Windows.Window
         if (_loadingSettings) return;
         var isDark = DarkModeToggle.IsChecked == true;
         SettingsService.Instance.Settings.IsDarkMode = isDark;
-        SettingsService.Instance.SaveSettings();
+        SettingsService.Instance.MarkDirty();
         AppLogger.Log(LogMsg.SettingDarkMode, null, isDark ? "ON" : "OFF");
         App.ApplyTheme(isDark);
         RefreshChannelList(); InvalidateVisual(); UpdateLayout();
@@ -114,9 +128,10 @@ public partial class MainWindow : System.Windows.Window
         if (_loadingSettings) return;
         var enabled = NoCategoryModeToggle.IsChecked == true;
         SettingsService.Instance.Settings.NoCategoryMode = enabled;
-        SettingsService.Instance.SaveSettings();
+        SettingsService.Instance.MarkDirty();
         AppLogger.Log(LogMsg.SettingNoCategoryMode, null, enabled ? "ON" : "OFF");
         RefreshChannelList();
+        RefreshDormantChannelList();
     }
 
     private void NotificationToggle_Changed(object sender, RoutedEventArgs e)
@@ -124,7 +139,7 @@ public partial class MainWindow : System.Windows.Window
         if (_loadingSettings) return;
         var enabled = NotificationToggle.IsChecked == true;
         SettingsService.Instance.Settings.ShowDesktopNotification = enabled;
-        SettingsService.Instance.SaveSettings();
+        SettingsService.Instance.MarkDirty();
         AppLogger.Log(LogMsg.SettingDesktopNotification, null, enabled ? "ON" : "OFF");
     }
 
@@ -135,19 +150,9 @@ public partial class MainWindow : System.Windows.Window
         if (Enum.TryParse<YTNotifier.Models.ToastStyle>(item.Tag?.ToString(), out var style))
         {
             SettingsService.Instance.Settings.ToastStyle = style;
-            SettingsService.Instance.SaveSettings();
+            SettingsService.Instance.MarkDirty();
             AppLogger.Log(LogMsg.SettingToastStyle, null, item.Content?.ToString() ?? style.ToString());
         }
-    }
-
-    private void GlobalNotifyUpcomingToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_loadingSettings) return;
-        var svc  = SettingsService.Instance;
-        var val  = GlobalNotifyUpcomingToggle.IsChecked == true;
-        svc.Settings.GlobalNotifyUpcoming = val;
-        svc.SaveSettings();
-        AppLogger.Log(LogMsg.SettingGlobalNotifyUpcoming, null, val ? "ON" : "OFF");
     }
 
     private void NotificationSoundToggle_Changed(object sender, RoutedEventArgs e)
@@ -155,7 +160,7 @@ public partial class MainWindow : System.Windows.Window
         if (_loadingSettings) return;
         var enabled = NotificationSoundToggle.IsChecked == true;
         SettingsService.Instance.Settings.NotificationSound = enabled;
-        SettingsService.Instance.SaveSettings();
+        SettingsService.Instance.MarkDirty();
         AppLogger.Log(LogMsg.SettingNotificationSound, null, enabled ? "ON" : "OFF");
     }
 
@@ -164,7 +169,7 @@ public partial class MainWindow : System.Windows.Window
         if (_loadingSettings) return;
         var enabled = FlashTaskbarToggle.IsChecked == true;
         SettingsService.Instance.Settings.FlashTaskbar = enabled;
-        SettingsService.Instance.SaveSettings();
+        SettingsService.Instance.MarkDirty();
         AppLogger.Log(LogMsg.SettingFlashTaskbar, null, enabled ? "ON" : "OFF");
     }
 
@@ -173,96 +178,34 @@ public partial class MainWindow : System.Windows.Window
         if (_loadingSettings) return;
         var enabled = TrayToggle.IsChecked == true;
         SettingsService.Instance.Settings.MinimizeToTray = enabled;
-        SettingsService.Instance.SaveSettings();
+        SettingsService.Instance.MarkDirty();
         AppLogger.Log(LogMsg.SettingMinimizeToTray, null, enabled ? "ON" : "OFF");
     }
 
-    // ===== ミュートボタン =====
-    private void MuteButton_Click(object sender, RoutedEventArgs e)
-    {
-        _isMuted = !_isMuted;
-        var s = SettingsService.Instance.Settings;
-
-        if (_isMuted)
-        {
-            _preMuteDesktopNotification      = s.ShowDesktopNotification;
-            _preMuteNotificationSound        = s.NotificationSound;
-            _preMuteFlashTaskbar             = s.FlashTaskbar;
-            s.PreMuteDesktopNotification     = _preMuteDesktopNotification;
-            s.PreMuteNotificationSound       = _preMuteNotificationSound;
-            s.PreMuteFlashTaskbar            = _preMuteFlashTaskbar;
-            s.IsMuted                        = true;
-            s.ShowDesktopNotification        = false;
-            s.NotificationSound              = false;
-            s.FlashTaskbar                   = false;
-        }
-        else
-        {
-            s.ShowDesktopNotification = _preMuteDesktopNotification;
-            s.NotificationSound       = _preMuteNotificationSound;
-            s.FlashTaskbar            = _preMuteFlashTaskbar;
-            s.IsMuted                 = false;
-        }
-
-        SettingsService.Instance.SaveSettings();
-        AppLogger.Log(LogMsg.SettingMute, null, _isMuted ? "ON" : "OFF");
-        NotificationToggle.IsChecked      = s.ShowDesktopNotification;
-        NotificationSoundToggle.IsChecked = s.NotificationSound;
-        FlashTaskbarToggle.IsChecked      = s.FlashTaskbar;
-        UpdateMuteButton(_isMuted);
-    }
-
-    private void UpdateMuteButton(bool muted)
-    {
-        var template = MuteButton.Template;
-        if (template == null) return;
-
-        // bell（OFF時）表示切替
-        foreach (var n in new[] { "BellIcon", "BellIcon2" })
-            if (template.FindName(n, MuteButton) is System.Windows.Shapes.Path p)
-                p.Visibility = muted ? Visibility.Collapsed : Visibility.Visible;
-
-        // bell-off（ON時・赤）表示切替
-        foreach (var n in new[] { "BellOffIcon", "BellOffIcon2", "BellOffIcon3", "BellOffIcon4" })
-            if (template.FindName(n, MuteButton) is System.Windows.Shapes.Path p)
-                p.Visibility = muted ? Visibility.Visible : Visibility.Collapsed;
-
-        MuteButton.ToolTip = muted ? "通知ミュート: ON（クリックで解除）" : "通知ミュート: OFF";
-    }
-
-    // ===== コンパクトモード =====
+    // ===== コンパクトモード（設定タブのトグル）=====
     private void CompactModeToggle_Changed(object sender, RoutedEventArgs e)
     {
         if (_loadingSettings || _applyingCompactMode) return;
         var enabled = CompactModeToggle.IsChecked == true;
         SettingsService.Instance.Settings.CompactMode = enabled;
-        SettingsService.Instance.SaveSettings();
         AppLogger.Log(LogMsg.SettingCompactMode, null, enabled ? "ON" : "OFF");
         ApplyCompactMode(enabled);
     }
 
-    private void CompactModeButton_Click(object sender, RoutedEventArgs e)
-    {
-        var enabled = !SettingsService.Instance.Settings.CompactMode;
-        AppLogger.Log(LogMsg.SettingCompactMode, null, enabled ? "ON" : "OFF");
-        ApplyCompactMode(enabled);
-    }
-
-    private void ApplyCompactMode(bool enabled, bool skipRefresh = false)
+    private void ApplyCompactMode(bool enabled, bool skipRefresh = false, bool skipSave = false)
     {
         if (_applyingCompactMode) return;
         _applyingCompactMode = true;
         try
         {
             SettingsService.Instance.Settings.CompactMode = enabled;
-            SettingsService.Instance.SaveSettings();
             CompactModeToggle.IsChecked = enabled;
 
             if (enabled)
             {
                 _preCompactSidebarCollapsed = _sidebarCollapsed;
                 // 強制折り畳み
-                if (!_sidebarCollapsed) CollapseSidebar();
+                if (!_sidebarCollapsed) CollapseSidebar(skipSave: true);
                 // アイコン20pxに縮小
                 SetSidebarIconSize(20);
                 // 折り畳みボタンをグレーアウト・無効化
@@ -288,8 +231,8 @@ public partial class MainWindow : System.Windows.Window
 
                 if (_sidebarCollapsed != _preCompactSidebarCollapsed)
                 {
-                    if (_preCompactSidebarCollapsed) CollapseSidebar();
-                    else                             ExpandSidebar();
+                    if (_preCompactSidebarCollapsed) CollapseSidebar(skipSave: true);
+                    else                             ExpandSidebar(skipSave: true);
                 }
                 Dispatcher.Invoke(SyncWindowWidth, System.Windows.Threading.DispatcherPriority.Render);
             }
@@ -297,7 +240,11 @@ public partial class MainWindow : System.Windows.Window
             UpdateCompactModeButton(enabled);
             if (!skipRefresh) RefreshChannelList();
         }
-        finally { _applyingCompactMode = false; }
+        finally
+        {
+            _applyingCompactMode = false;
+            if (!skipSave) SettingsService.Instance.MarkDirty();
+        }
     }
 
     private void SetSidebarIconSize(int size)
@@ -343,7 +290,7 @@ public partial class MainWindow : System.Windows.Window
         // テンプレート適用後に実行（起動直後はまだ適用されていない場合があるため遅延）
         Dispatcher.BeginInvoke(() =>
         {
-            foreach (var name in new[] { "LblNavWatch", "LblNavSettings", "LblMuteButton",
+            foreach (var name in new[] { "LblNavWatch", "LblNavDormant", "LblNavSettings", "LblMuteButton",
                                          "LblCompactModeButton", "LblPinButton", "LblSidebarToggleButton" })
             {
                 var btnName = name[3..];
@@ -358,6 +305,7 @@ public partial class MainWindow : System.Windows.Window
     private Button? FindSidebarButton(string name) => name switch
     {
         "NavWatch"            => NavWatch,
+        "NavDormant"          => NavDormant,
         "NavSettings"         => NavSettings,
         "MuteButton"          => MuteButton,
         "CompactModeButton"   => CompactModeButton,
@@ -366,7 +314,7 @@ public partial class MainWindow : System.Windows.Window
         _                     => null
     };
 
-    private void CollapseSidebar()
+    private void CollapseSidebar(bool skipSave = false)
     {
         _sidebarCollapsed       = true;
         SidebarColumn.Width     = new GridLength(SidebarCollapsedWidth);
@@ -377,13 +325,14 @@ public partial class MainWindow : System.Windows.Window
         SetStatusTextVisibility(Visibility.Collapsed);
         UpdateToggleIcon("▶");
         UpdateToggleIconColor(MonitorService.Instance.IsRunning);
+        UpdateNavWatchBadge();
         SettingsService.Instance.Settings.SidebarCollapsed = true;
-        SettingsService.Instance.SaveSettingsSilent();
         UpdateMinWidth();
         SyncWindowWidth();
+        if (!skipSave) SettingsService.Instance.MarkDirty();
     }
 
-    private void ExpandSidebar()
+    private void ExpandSidebar(bool skipSave = false)
     {
         _sidebarCollapsed       = false;
         SidebarColumn.Width     = new GridLength(SidebarExpandedWidth);
@@ -396,19 +345,11 @@ public partial class MainWindow : System.Windows.Window
         UpdateToggleIcon("◀");
         UpdateToggleIconColor(false);
         UpdateMonitorStatus(MonitorService.Instance.IsRunning);
+        UpdateNavWatchBadge();
         SettingsService.Instance.Settings.SidebarCollapsed = false;
-        SettingsService.Instance.SaveSettingsSilent();
         UpdateMinWidth();
         SyncWindowWidth();
-    }
-
-    private void UpdateCompactModeButton(bool enabled)
-    {
-        if (CompactModeButton.Template?.FindName("ShrinkIcon", CompactModeButton) is System.Windows.Shapes.Path shrink)
-            shrink.Visibility = enabled ? Visibility.Visible   : Visibility.Collapsed;
-        if (CompactModeButton.Template?.FindName("ExpandIcon", CompactModeButton) is System.Windows.Shapes.Path expand)
-            expand.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
-        CompactModeButton.ToolTip = enabled ? "コンパクトモード: ON（クリックで解除）" : "コンパクトモード: OFF";
+        if (!skipSave) SettingsService.Instance.MarkDirty();
     }
 
     // ===== バックアップ / インポート =====
@@ -425,7 +366,7 @@ public partial class MainWindow : System.Windows.Window
         if (dlg.ShowDialog() != true) return;
         try
         {
-            var path = SettingsService.Instance.ExportBackup(dlg.FileName);
+            var path = SettingsService.Instance.ExportBackup(dlg.FileName, includeState: true);
             BackupStatusText.Text = $"✅ エクスポート完了: {System.IO.Path.GetFileName(path)}";
             SetDynamicBrush(BackupStatusText, TextBlock.ForegroundProperty, "SuccessBrush");
             AppLogger.Log(LogMsg.SettingBackupExported, null, System.IO.Path.GetFileName(path));
@@ -456,43 +397,23 @@ public partial class MainWindow : System.Windows.Window
         if (success)
         {
             SettingsService.Instance.Settings.LogLevel = currentLogLevel;
+            SettingsService.Instance.SaveSettings();
             AppLogger.Log(LogMsg.SettingBackupImported, null, System.IO.Path.GetFileName(dlg.FileName));
             LoadSettings(); RefreshChannelList();
+            App.ApplyTheme(SettingsService.Instance.Settings.IsDarkMode);
         }
     }
 
-    // ===== ピンボタン / 常に前面 =====
+    // ===== 常に前面（設定タブのトグル）=====
     private void AlwaysOnTopToggle_Changed(object sender, RoutedEventArgs e)
     {
         if (_loadingSettings) return;
         var enabled = AlwaysOnTopToggle.IsChecked == true;
         Topmost = enabled;
         SettingsService.Instance.Settings.AlwaysOnTop = enabled;
-        SettingsService.Instance.SaveSettings();
         AppLogger.Log(LogMsg.SettingAlwaysOnTop, null, enabled ? "ON" : "OFF");
         UpdatePinButton(enabled);
-    }
-
-    private void PinButton_Click(object sender, RoutedEventArgs e)
-    {
-        var enabled = !SettingsService.Instance.Settings.AlwaysOnTop;
-        Topmost = enabled;
-        SettingsService.Instance.Settings.AlwaysOnTop = enabled;
-        SettingsService.Instance.SaveSettings();
-        AppLogger.Log(LogMsg.SettingAlwaysOnTop, null, enabled ? "ON" : "OFF");
-        _loadingSettings = true;
-        AlwaysOnTopToggle.IsChecked = enabled;
-        _loadingSettings = false;
-        UpdatePinButton(enabled);
-    }
-
-    private void UpdatePinButton(bool pinned)
-    {
-        if (PinButton.Template?.FindName("PinIcon", PinButton) is System.Windows.Shapes.Path icon)
-            icon.Stroke = pinned
-                ? (Brush)Application.Current.Resources["ErrorBrush"]
-                : (Brush)Application.Current.Resources["SidebarTextBrush"];
-        PinButton.ToolTip = pinned ? "常に前面に表示: ON（クリックで解除）" : "常に前面に表示: OFF";
+        SettingsService.Instance.MarkDirty();
     }
 
     private void StartupToggle_Changed(object sender, RoutedEventArgs e)
@@ -500,7 +421,7 @@ public partial class MainWindow : System.Windows.Window
         if (_loadingSettings) return;
         var enabled = StartupToggle.IsChecked == true;
         SettingsService.Instance.Settings.StartWithWindows = enabled;
-        SettingsService.Instance.SaveSettings();
+        SettingsService.Instance.MarkDirty();
         AppLogger.Log(LogMsg.SettingStartWithWindows, null, enabled ? "ON" : "OFF");
         SetStartup(enabled);
     }
@@ -539,10 +460,11 @@ public partial class MainWindow : System.Windows.Window
         }
 
         SettingsService.Instance.Settings.CheckIntervalMinutes = minutes;
-        SettingsService.Instance.SaveSettings();
+        SettingsService.Instance.MarkDirty();
         AppLogger.Log(LogMsg.SettingCheckInterval, null, minutes);
         MonitorService.Instance.ResetNormalChannels(minutes);
         MonitorService.Instance.RestartWithNewInterval();
+        LoggerService.Instance.UpdateFlushInterval();
         UpdateQuotaInfo();
     }
 
@@ -610,7 +532,7 @@ public partial class MainWindow : System.Windows.Window
         {
             var level = item.Tag?.ToString() ?? "Info";
             SettingsService.Instance.Settings.LogLevel = level;
-            SettingsService.Instance.SaveSettings();
+            SettingsService.Instance.MarkDirty();
             AppLogger.Log(LogMsg.SettingLogLevel, null, item.Content?.ToString() ?? level);
         }
     }
@@ -620,7 +542,7 @@ public partial class MainWindow : System.Windows.Window
         if (_loadingSettings) return;
         var enabled = AutoCleanLogsToggle.IsChecked == true;
         SettingsService.Instance.Settings.AutoCleanLogs = enabled;
-        SettingsService.Instance.SaveSettings();
+        SettingsService.Instance.MarkDirty();
         AppLogger.Log(LogMsg.SettingAutoCleanLogs, null, enabled ? "ON" : "OFF");
     }
 
@@ -630,7 +552,7 @@ public partial class MainWindow : System.Windows.Window
         if (LogRetentionComboBox.SelectedItem is ComboBoxItem item && int.TryParse(item.Tag?.ToString(), out var days))
         {
             SettingsService.Instance.Settings.LogRetentionDays = days;
-            SettingsService.Instance.SaveSettings();
+            SettingsService.Instance.MarkDirty();
             AppLogger.Log(LogMsg.SettingLogRetention, null, days == -1 ? "無制限" : days.ToString());
         }
     }
@@ -652,4 +574,36 @@ public partial class MainWindow : System.Windows.Window
         OpenUrl(e.Uri.AbsoluteUri); e.Handled = true;
     }
 
+    // ===== APIキースロット管理 =====
+
+    private void InitApiKeySlotComboBox()
+    {
+        _loadingSettings = true;
+        ApiKeySlotComboBox.Items.Clear();
+        ApiKeySlotComboBox.Items.Add("プライマリーキー");
+        ApiKeySlotComboBox.Items.Add("セカンダリーキー");
+        ApiKeySlotComboBox.Items.Add("要約キー");
+        _selectedApiKeySlotIndex = 0;
+        ApiKeySlotComboBox.SelectedIndex = 0;
+        _loadingSettings = false;
+    }
+
+    private void ApiKeySlotComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        var idx = ApiKeySlotComboBox.SelectedIndex;
+        if (idx < 0) return;
+        _selectedApiKeySlotIndex = idx;
+
+        if (idx == 2)
+        {
+            _actualApiKey = GeminiApiKeyService.Load(SettingsService.Instance.ConfDir) ?? string.Empty;
+        }
+        else
+        {
+            var keys = SettingsService.Instance.Settings.ApiKeys;
+            _actualApiKey = idx < keys.Count ? keys[idx] : string.Empty;
+        }
+        UpdateApiKeyState(!string.IsNullOrEmpty(_actualApiKey));
+    }
 }

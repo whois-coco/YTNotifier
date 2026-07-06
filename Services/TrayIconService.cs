@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Forms;
+using YTNotifier.Constants;
 using YTNotifier.Services;
 
 namespace YTNotifier.Services;
@@ -12,9 +13,15 @@ namespace YTNotifier.Services;
 /// </summary>
 public class TrayIconService : IDisposable
 {
-    private NotifyIcon? _notifyIcon;
-    private readonly Action _showMainWindow;
-    private readonly Action _exitApp;
+    private static readonly System.Drawing.Color ColorBackground  = System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
+    private static readonly System.Drawing.Color ColorForeground  = System.Drawing.Color.FromArgb(0xE2, 0xE8, 0xF0);
+    private static readonly System.Drawing.Color ColorBorder      = System.Drawing.Color.FromArgb(0x2D, 0x34, 0x4F);
+    private static readonly System.Drawing.Color ColorHover       = System.Drawing.Color.FromArgb(0x2D, 0x3A, 0x5A);
+
+    private NotifyIcon?      _notifyIcon;
+    private ToolStripItem?   _checkMenuItem;
+    private readonly Action  _showMainWindow;
+    private readonly Action  _exitApp;
 
     public TrayIconService(Action showMainWindow, Action exitApp)
     {
@@ -37,7 +44,7 @@ public class TrayIconService : IDisposable
             var menu = new ContextMenuStrip();
             ApplyTrayMenuTheme(menu);
             menu.Items.Add("🖥  ウィンドウを開く",  null, (_, _) => { AppLogger.Log(LogMsg.TrayWindowOpened); _showMainWindow(); });
-            menu.Items.Add("🔄  今すぐチェック",    null, async (_, _) =>
+            _checkMenuItem = menu.Items.Add("🔄  今すぐチェック",    null, async (_, _) =>
             {
                 AppLogger.Log(LogMsg.TrayManualCheckTriggered);
                 try { await MonitorService.Instance.ManualCheckAsync(); }
@@ -55,12 +62,23 @@ public class TrayIconService : IDisposable
             _notifyIcon.ContextMenuStrip = menu;
             _notifyIcon.DoubleClick     += (_, _) => _showMainWindow();
 
-            MonitorService.Instance.StatusChanged += OnMonitorStatusChanged;
+            MonitorService.Instance.StatusChanged  += OnMonitorStatusChanged;
+            MonitorService.Instance.QuotaUpdated   += OnQuotaUpdated;
         }
         catch (Exception ex)
         {
             AppLogger.Log(LogMsg.TrayIconInitFailed, null, ex.Message);
         }
+    }
+
+    private void OnQuotaUpdated()
+    {
+        if (_checkMenuItem == null) return;
+        var appState    = SettingsService.Instance.AppState;
+        var quotaKey    = AppConstants.GetQuotaDayKey();
+        var actualUnits = appState.TodayApiDate == quotaKey ? appState.TodayApiUnits : 0;
+        var actualPct   = actualUnits * 100.0 / ApiQuotaHelper.DailyLimit;
+        _checkMenuItem.Enabled = actualPct <= ApiQuotaHelper.QuotaDisableThresholdPct;
     }
 
     private void OnMonitorStatusChanged(bool isRunning)
@@ -81,8 +99,8 @@ public class TrayIconService : IDisposable
 
     private static void ApplyTrayMenuTheme(ContextMenuStrip menu)
     {
-        menu.BackColor       = System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
-        menu.ForeColor       = System.Drawing.Color.FromArgb(0xE2, 0xE8, 0xF0);
+        menu.BackColor       = ColorBackground;
+        menu.ForeColor       = ColorForeground;
         menu.Font            = new System.Drawing.Font("Yu Gothic UI", 9.5f);
         menu.ShowImageMargin = false;
         menu.ShowCheckMargin = false;
@@ -99,14 +117,14 @@ public class TrayIconService : IDisposable
     {
         if (item is ToolStripMenuItem mi)
         {
-            mi.BackColor = System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
-            mi.ForeColor = System.Drawing.Color.FromArgb(0xE2, 0xE8, 0xF0);
+            mi.BackColor = ColorBackground;
+            mi.ForeColor = ColorForeground;
             mi.Padding   = new Padding(8, 4, 8, 4);
         }
         else if (item is ToolStripSeparator sep)
         {
-            sep.BackColor = System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
-            sep.ForeColor = System.Drawing.Color.FromArgb(0x2D, 0x34, 0x4F);
+            sep.BackColor = ColorBackground;
+            sep.ForeColor = ColorBorder;
         }
     }
 
@@ -125,7 +143,8 @@ public class TrayIconService : IDisposable
 
     public void Dispose()
     {
-        MonitorService.Instance.StatusChanged -= OnMonitorStatusChanged;
+        MonitorService.Instance.StatusChanged  -= OnMonitorStatusChanged;
+        MonitorService.Instance.QuotaUpdated   -= OnQuotaUpdated;
         _notifyIcon?.Dispose();
     }
 
@@ -139,8 +158,7 @@ public class TrayIconService : IDisposable
         {
             var g = e.Graphics;
             var y = e.Item.Height / 2;
-            using var pen = new System.Drawing.Pen(
-                System.Drawing.Color.FromArgb(0x2D, 0x34, 0x4F));
+            using var pen = new System.Drawing.Pen(ColorBorder);
             g.DrawLine(pen, 8, y, e.Item.Width - 8, y);
         }
 
@@ -148,15 +166,13 @@ public class TrayIconService : IDisposable
         {
             if (e.Item.Selected)
             {
-                using var brush = new System.Drawing.SolidBrush(
-                    System.Drawing.Color.FromArgb(0x2D, 0x3A, 0x5A));
+                using var brush = new System.Drawing.SolidBrush(ColorHover);
                 var rc = new System.Drawing.Rectangle(2, 1, e.Item.Width - 4, e.Item.Height - 2);
                 e.Graphics.FillRectangle(brush, rc);
             }
             else
             {
-                using var brush = new System.Drawing.SolidBrush(
-                    System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30));
+                using var brush = new System.Drawing.SolidBrush(ColorBackground);
                 e.Graphics.FillRectangle(brush, e.Item.Bounds);
             }
         }
@@ -165,14 +181,14 @@ public class TrayIconService : IDisposable
     private class TrayMenuColorTable : ProfessionalColorTable
     {
         public override System.Drawing.Color MenuBorder
-            => System.Drawing.Color.FromArgb(0x2D, 0x34, 0x4F);
+            => ColorBorder;
         public override System.Drawing.Color ToolStripDropDownBackground
-            => System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
+            => ColorBackground;
         public override System.Drawing.Color ImageMarginGradientBegin
-            => System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
+            => ColorBackground;
         public override System.Drawing.Color ImageMarginGradientMiddle
-            => System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
+            => ColorBackground;
         public override System.Drawing.Color ImageMarginGradientEnd
-            => System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
+            => ColorBackground;
     }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -17,6 +17,8 @@ public static class NotificationService
     private const string BaseUrl     = "https://www.youtube.com";
     private const string DirResources = "Resources";
     private const string FileAppIcon  = "app.png";
+
+    private static string ToFileUri(string path) => "file:///" + path.Replace("\\", "/");
 
     private static readonly string ExeDir =
         Path.GetDirectoryName(Environment.ProcessPath
@@ -125,17 +127,17 @@ public static class NotificationService
                 // ─── サムネイル通知 ──────────────────────────────────────
                 if (!string.IsNullOrEmpty(videoThumbnailUrl))
                 {
-                    var heroPath = await ImageCacheService.GetOrDownloadThumbnailAsync(videoThumbnailUrl).ConfigureAwait(false);
+                    var heroPath = await ImageCacheService.GetOrDownloadThumbnailAsync(videoThumbnailUrl, channelId, kind).ConfigureAwait(false);
                     if (!string.IsNullOrEmpty(heroPath))
-                        try { builder.AddHeroImage(new Uri("file:///" + heroPath.Replace("\\", "/"))); }
+                        try { builder.AddHeroImage(new Uri(ToFileUri(heroPath))); }
                         catch { }
                 }
                 if (!string.IsNullOrEmpty(channelThumbnailUrl))
                 {
-                    var iconPath = ImageCacheService.GetIconDiskPath(channelThumbnailUrl);
+                    var iconPath = ImageCacheService.GetIconDiskPath(channelThumbnailUrl, channelId);
                     if (File.Exists(iconPath))
                         builder.AddAppLogoOverride(
-                            new Uri("file:///" + iconPath.Replace("\\", "/")),
+                            new Uri(ToFileUri(iconPath)),
                             ToastGenericAppLogoCrop.Circle);
                 }
                 builder.AddAttributionText(channelName);
@@ -147,10 +149,10 @@ public static class NotificationService
                 // ─── デフォルト通知 ──────────────────────────────────────
                 if (!string.IsNullOrEmpty(channelThumbnailUrl))
                 {
-                    var iconPath = ImageCacheService.GetIconDiskPath(channelThumbnailUrl);
+                    var iconPath = ImageCacheService.GetIconDiskPath(channelThumbnailUrl, channelId);
                     if (File.Exists(iconPath))
                         builder.AddAppLogoOverride(
-                            new Uri("file:///" + iconPath.Replace("\\", "/")),
+                            new Uri(ToFileUri(iconPath)),
                             ToastGenericAppLogoCrop.Circle);
                 }
                 builder.AddText($"{channelName}  [{kindLabel}]");
@@ -209,10 +211,10 @@ public static class NotificationService
                 {
                     if (File.Exists(iconPath))
                     {
-                        try { builder.AddHeroImage(new Uri("file:///" + iconPath.Replace("\\", "/"))); }
+                        try { builder.AddHeroImage(new Uri(ToFileUri(iconPath))); }
                         catch { }
                         builder.AddAppLogoOverride(
-                            new Uri("file:///" + iconPath.Replace("\\", "/")),
+                            new Uri(ToFileUri(iconPath)),
                             ToastGenericAppLogoCrop.Circle);
                     }
                     builder.AddAttributionText(AppConstants.AppName);
@@ -223,7 +225,7 @@ public static class NotificationService
                 {
                     if (File.Exists(iconPath))
                         builder.AddAppLogoOverride(
-                            new Uri("file:///" + iconPath.Replace("\\", "/")),
+                            new Uri(ToFileUri(iconPath)),
                             ToastGenericAppLogoCrop.Circle);
                     builder.AddText($"{AppConstants.AppName}  [テスト]");
                     builder.AddText("通知テスト：正常に動作しています");

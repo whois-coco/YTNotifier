@@ -195,8 +195,88 @@
                                 <TextBlock Text="カテゴリ" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{DynamicResource TextSecondaryBrush}"
                                            Margin="0,0,0,6"/>
-                                <ComboBox x:Name="CategoryComboBox"
-                                          Style="{StaticResource ModernComboBox}"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="CategoryComboBox"
+                                              Grid.Column="0"
+                                              Style="{StaticResource ModernComboBox}"/>
+                                    <Button x:Name="NewCategoryButton"
+                                            Grid.Column="1"
+                                            Style="{StaticResource IconButton}"
+                                            Width="28" Height="28"
+                                            Margin="4,0,0,0"
+                                            Foreground="{DynamicResource TextMutedBrush}"
+                                            ToolTip="新しいカテゴリを作成"
+                                            Click="NewCategoryButton_Click">
+                                        <Viewbox Width="13" Height="13">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Data="M12 5v14"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                      StrokeThickness="2" StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                <Path Data="M5 12h14"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                      StrokeThickness="2" StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round" Fill="Transparent"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Button>
+                                </Grid>
+                                <!-- 新規カテゴリ入力エリア -->
+                                <Grid x:Name="NewCategoryPanel" Visibility="Collapsed" Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="NewCategoryInput"
+                                             Grid.Column="0"
+                                             Style="{StaticResource ModernTextBox}"
+                                             Padding="8,5"
+                                             FontSize="12"
+                                             MaxLength="40"
+                                             KeyDown="NewCategoryInput_KeyDown"/>
+                                    <Button Grid.Column="1"
+                                            Style="{StaticResource IconButton}"
+                                            Width="28" Height="28"
+                                            Margin="4,0,0,0"
+                                            Foreground="{DynamicResource SuccessBrush}"
+                                            ToolTip="作成"
+                                            Click="NewCategoryConfirm_Click">
+                                        <Viewbox Width="13" Height="13">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Data="M20 6 9 17l-5-5"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                      StrokeThickness="2.5" StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                      Fill="Transparent"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Button>
+                                    <Button Grid.Column="2"
+                                            Style="{StaticResource IconButton}"
+                                            Width="28" Height="28"
+                                            Margin="2,0,0,0"
+                                            Foreground="{DynamicResource TextMutedBrush}"
+                                            ToolTip="キャンセル"
+                                            Click="NewCategoryCancel_Click">
+                                        <Viewbox Width="11" Height="11">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Data="M18 6 6 18"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                      StrokeThickness="2" StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                <Path Data="M6 6l12 12"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                      StrokeThickness="2" StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round" Fill="Transparent"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Button>
+                                </Grid>
                             </StackPanel>
 
                             <!-- チェック対象 -->
@@ -204,25 +284,7 @@
                                 <TextBlock Text="チェック対象" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{DynamicResource TextSecondaryBrush}"
                                            Margin="0,0,0,6"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                    <CheckBox x:Name="CheckVideo" Content="動画"
-                                              IsChecked="True" FontSize="11"
-                                              Foreground="{DynamicResource TextPrimaryBrush}"
-                                              Style="{StaticResource ModernCheckBox}"
-                                              Margin="0,0,12,0"
-                                              Checked="CheckKind_Changed" Unchecked="CheckKind_Changed"/>
-                                    <CheckBox x:Name="CheckShort" Content="Short"
-                                              IsChecked="True" FontSize="11"
-                                              Foreground="{DynamicResource TextPrimaryBrush}"
-                                              Style="{StaticResource ModernCheckBox}"
-                                              Margin="0,0,12,0"
-                                              Checked="CheckKind_Changed" Unchecked="CheckKind_Changed"/>
-                                    <CheckBox x:Name="CheckLive" Content="ライブ"
-                                              IsChecked="True" FontSize="11"
-                                              Foreground="{DynamicResource TextPrimaryBrush}"
-                                              Style="{StaticResource ModernCheckBox}"
-                                              Checked="CheckKind_Changed" Unchecked="CheckKind_Changed"/>
-                                </StackPanel>
+                                <StackPanel x:Name="KindToggleRow" Orientation="Horizontal" Margin="0,2,0,0"/>
                             </StackPanel>
                         </Grid>
 
