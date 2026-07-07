@@ -53,6 +53,9 @@ public partial class App : System.Windows.Application
                 SettingsService.Instance.Load();
             else
                 AppLogger.Log(LogMsg.AutoRestored, null, restoreReason);
+
+            // 画像ディスクキャッシュ廃止（指示書053）に伴う旧キャッシュの一時クリーンアップ
+            ImageCacheService.CleanupLegacyDiskCache(SettingsService.Instance.AppDataDir);
         }
         catch (Exception ex) { ShowFatalError("設定ファイルの読み込みに失敗しました", ex); Shutdown(); return; }
 
@@ -64,8 +67,7 @@ public partial class App : System.Windows.Application
         _trayIconService.Initialize();
 
         // APIキー未設定の初回起動時はセットアップウィンドウを先に表示
-        if (SettingsService.Instance.Settings.ApiKeys.Count == 0 ||
-            string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKeys[0]))
+        if (string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKey))
         {
             var setup = new ApiKeySetupWindow();
             setup.ShowDialog();

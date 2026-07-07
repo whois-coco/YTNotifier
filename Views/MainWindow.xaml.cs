@@ -43,6 +43,7 @@ public partial class MainWindow : System.Windows.Window
     private const int    ChannelRowHeightCompact    = 36;
     private const int    CategoryRowHeight          = 36;
     private const int    CategoryRowHeightCompact   = 24;
+    private const int    CategoryBadgeSize          = 18;
     private const double ChannelRowMarginBottom  = 2;
     private const int    ContentWidthNormal      = 400;
     private const int    ContentWidthCompact     = 286;
@@ -70,11 +71,9 @@ public partial class MainWindow : System.Windows.Window
     private bool _uncategorizedCollapsed         = false;
     private bool _dormantUncategorizedCollapsed  = false;
 
-    // アイコンキャッシュ（URL → BitmapImage）。コレクション操作は全て UI スレッドに集約しスレッド安全を担保
-    private const int IconCacheMaxEntries = 300;
-    private static readonly Dictionary<string, BitmapImage> _iconCache      = new();
-    private static readonly HashSet<string>                  _iconDownloading = new();
-    // HttpClient はソケット枯渇を避けるため使い回す
+    // アイコンダウンロード中フラグ（多重ダウンロード防止）。コレクション操作は全て UI スレッドに集約しスレッド安全を担保
+    private static readonly HashSet<string> _iconDownloading = new();
+    // HttpClient はソケット枯渇を避けるため使い回す（ネットワーク疎通確認用。アイコン取得は ImageCacheService 側で使用）
     private static readonly System.Net.Http.HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     // D&D
@@ -122,77 +121,25 @@ public partial class MainWindow : System.Windows.Window
     private const int HTCAPTION        = 2;
 
     // ===== アイコンキャッシュ =====
-    private static string GetIconCacheDir() =>
-        System.IO.Path.Combine(SettingsService.Instance.AppDataDir, AppConstants.DirIcons);
-
-    private static BitmapImage? LoadBitmapFromFile(string filePath)
-    {
-        try
-        {
-            using var stream = System.IO.File.OpenRead(filePath);
-            var bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.StreamSource = stream;
-            bmp.CacheOption  = BitmapCacheOption.OnLoad;
-            bmp.EndInit();
-            bmp.Freeze();
-            return bmp;
-        }
-        catch { return null; }
-    }
-
-    private static void AddToIconCache(string url, BitmapImage bmp)
-    {
-        if (_iconCache.Count >= IconCacheMaxEntries)
-            _iconCache.Remove(_iconCache.Keys.First());
-        _iconCache[url] = bmp;
-    }
-
     private static BitmapImage? GetCachedIcon(string url, string channelId)
     {
         if (string.IsNullOrEmpty(url)) return null;
-        if (_iconCache.TryGetValue(url, out var cached)) return cached;
-
-        var cacheDir = GetIconCacheDir();
-        try { System.IO.Directory.CreateDirectory(cacheDir); }
-        catch { return null; }
-
-        var diskPath = ImageCacheService.GetIconDiskPath(url, channelId);
-        if (System.IO.File.Exists(diskPath))
-        {
-            var bmp = LoadBitmapFromFile(diskPath);
-            if (bmp != null) { AddToIconCache(url, bmp); return bmp; }
-        }
+        if (ImageCacheService.TryGetCachedIcon(url, out var cached)) return cached;
 
         if (_iconDownloading.Contains(url)) return null;
         _iconDownloading.Add(url);
 
         Task.Run(async () =>
         {
-            try
-            {
-                var bytes = await _httpClient.GetByteArrayAsync(url);
-                await System.IO.File.WriteAllBytesAsync(diskPath, bytes);
+            var bmp = await ImageCacheService.GetOrDownloadIconAsync(url);
+            if (bmp == null)
+                AppLogger.Log(LogMsg.IconLoadFailed, null, url);
 
-                var bmp = LoadBitmapFromFile(diskPath);
-                if (bmp == null)
-                {
-                    AppLogger.Log(LogMsg.IconLoadFailed, null, diskPath);
-                    await Application.Current.Dispatcher.InvokeAsync(() => _iconDownloading.Remove(url));
-                    return;
-                }
-                await Application.Current.Dispatcher.InvokeAsync(() =>
-                {
-                    AddToIconCache(url, bmp);
-                    _iconDownloading.Remove(url);
-                    UpdateIconsInList(url);
-                });
-            }
-            catch (Exception ex)
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                AppLogger.Log(LogMsg.IconDownloadFailed, null, ex.Message);
-                await Application.Current.Dispatcher.InvokeAsync(() => _iconDownloading.Remove(url));
-            }
+                _iconDownloading.Remove(url);
+                if (bmp != null) UpdateIconsInList(url);
+            });
         });
         return null;
     }
@@ -200,7 +147,7 @@ public partial class MainWindow : System.Windows.Window
     private static void UpdateIconsInList(string url)
     {
         if (Application.Current.MainWindow is not MainWindow win) return;
-        if (!_iconCache.TryGetValue(url, out var bmp)) return;
+        if (!ImageCacheService.TryGetCachedIcon(url, out var bmp) || bmp == null) return;
 
         foreach (var list in new[] { win.ChannelList, win.DormantChannelList })
         {
@@ -354,8 +301,8 @@ public partial class MainWindow : System.Windows.Window
     {
         try
         {
-            var initApiKeys = SettingsService.Instance.Settings.ApiKeys;
-            if (initApiKeys.Count > 0 && !string.IsNullOrEmpty(initApiKeys[0]))
+            var initApiKey = SettingsService.Instance.Settings.ApiKey;
+            if (!string.IsNullOrEmpty(initApiKey))
                 MonitorService.Instance.Start();
             else
             {
@@ -430,8 +377,7 @@ public partial class MainWindow : System.Windows.Window
     {
         var s = SettingsService.Instance.Settings;
         InitApiKeySlotComboBox();
-        var apiKeys = s.ApiKeys;
-        _actualApiKey                     = apiKeys.Count > 0 ? apiKeys[0] : string.Empty;
+        _actualApiKey                     = s.ApiKey;
         ApiKeyBox.Text                    = _actualApiKey;
         UpdateApiKeyState(!string.IsNullOrEmpty(_actualApiKey));
         _loadingSettings = true;

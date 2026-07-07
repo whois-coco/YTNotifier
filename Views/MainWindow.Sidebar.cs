@@ -131,7 +131,7 @@ public partial class MainWindow : System.Windows.Window
         else
         {
             AppLogger.Log(LogMsg.NetworkRestored);
-            if (SettingsService.Instance.Settings.ApiKeys.Count > 0 && !string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKeys[0]))
+            if (!string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKey))
             {
                 MonitorService.Instance.Start();
                 UpdateMonitorStatus(true);

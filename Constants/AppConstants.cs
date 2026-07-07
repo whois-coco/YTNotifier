@@ -3,12 +3,24 @@
 internal static class AppConstants
 {
     public const string AppName          = "YTNotifier";
-    public const string AppVersion       = "0.8.4";
+    public const string AppVersion       = "0.8.5";
     public const string GitHubReleasesApiUrl = "https://api.github.com/repos/whois-coco/YTNotifier/releases/latest";
     public const string GitHubReleasesPageUrl = "https://github.com/whois-coco/YTNotifier/releases/latest";
     public const string DirLogs          = "logs";
     public const string DirIcons         = "icons";
     public const string DirSounds        = "Sounds";
+
+    /// <summary>トースト通知用画像の一時保存先ディレクトリ名（%TEMP% 配下）</summary>
+    public const string DirToastTempImages = "YTNotifier_ToastImages";
+
+    /// <summary>トースト通知用サムネイル一時ファイルの拡張子</summary>
+    public const string ToastThumbnailTempExtension = ".jpg";
+
+    /// <summary>トースト通知用アイコン一時ファイルの拡張子</summary>
+    public const string ToastIconTempExtension = ".png";
+
+    /// <summary>トースト通知用一時画像ファイルの削除待機時間（ミリ秒）。通知プラットフォームの画像読込猶予</summary>
+    public const int ToastTempImageCleanupDelayMs = 10000;
     public const string FileApiKey              = "api_key.dat";
     public const string FileDormantCategories   = "dormant_categories.json";
     public const string FileGeminiApiKey        = "gemini_api_key.dat";
@@ -64,7 +76,14 @@ internal static class AppConstants
 
     /// <summary>Gemini 要約リクエストのプロンプト（1行目=主題、2行目以降=詳細要約）</summary>
     public const string GeminiSummaryPromptText =
-        "この動画の内容を要約してください。1行目に動画の主題を一言で、2行目以降に数行程度の詳細な要約を記載してください。";
+        "この動画の内容を要約してください。1行目に「ざっくり言うとどんな動画か」が一言でわかる見出しを、" +
+        "2行目以降に箇条書き（「・」始まり）で3〜5行程度の要約を記載してください。";
+
+    /// <summary>Gemini 要約リクエストの thinking トークン予算（0=思考無効化で高速化）</summary>
+    public const int GeminiThinkingBudget = 0;
+
+    /// <summary>音声中心の要約実験用：動画フレームのサンプリング頻度（fps）を極小化</summary>
+    public const double GeminiAudioOnlyFps = 0.1;
 
     private static readonly TimeZoneInfo _pacificTz =
         TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");

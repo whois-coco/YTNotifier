@@ -50,10 +50,10 @@ public enum LogMsg
     LatestVideoFailed         = 4012,  // {0}=message
     UploadsPlaylistFailed     = 4015,  // {0}=channelId {1}=message
     VideoKindFailed           = 4016,  // {0}=message
-    ShortHeadFailed           = 4017,  // {0}=videoId {1}=message
-    UushFallbackFailed        = 4018,  // {0}=videoId {1}=message
+    UuFallbackFailed          = 4018,  // {0}=videoId {1}=message
     PlaylistFailed            = 4019,  // {0}=playlistId {1}=message
     ApiFallback               = 4008,
+    ChannelBanCheckFailed     = 4022,  // {0}=channelId {1}=message
     // Gemini要約
     GeminiSummaryFailed       = 4021,  // {0}=videoId {1}=message
     // 通知
@@ -99,6 +99,7 @@ public enum LogMsg
     SchedulerWaitingRoomNotify  = 5088,  // {0}=kind {1}=title
     SchedulerGracePeriodStarted = 5089,  // {0}=videoId
     SchedulerWakeUp             = 5090,
+    PendingWindowExpired        = 5117,  // {0}=videoId
     // 動画検索・表示
     SearchingVideo            = 5005,
     OpenChannelPage           = 5006,
@@ -184,6 +185,11 @@ public enum LogMsg
     ChannelSearchCleared              = 5096,
     ChannelFilterApplied              = 5107,  // {0}=filterLabel
     ChannelFilterCleared              = 5108,
+    FavoriteToggleChanged              = 5118,  // {0}=ON/OFF
+    // チャンネルBAN・動画削除検知
+    ChannelBanned                      = 5119,
+    ChannelBanRecovered                = 5120,
+    LatestVideoDeletedDetected         = 5121,  // {0}=videoId
     // 動画要約ポップアップ
     VideoSummaryPopupOpened           = 5109,  // {0}=channelName
     GeminiSummaryRequested            = 5110,  // {0}=videoId
@@ -257,8 +263,6 @@ public static class AppLogger
         // その他
         [LogMsg.AutoRestored]              = new(LogLevel.Warning, "自動復元を実行しました（理由: {0}）"),
         [LogMsg.InvalidChannelId]          = new(LogLevel.Warning, "不正なチャンネルID: '{0}'"),
-        // API呼び出し（フォールバックあり）
-        [LogMsg.ShortHeadFailed]           = new(LogLevel.Warning, "Short判定 HEAD リクエスト失敗({0}): {1}"),
 
         // ERROR ───────────────────────────────────────────────────────
         // ネットワーク
@@ -270,9 +274,10 @@ public static class AppLogger
         [LogMsg.LatestVideoFailed]         = new(LogLevel.Error,   "最新動画取得失敗: {0}"),
         [LogMsg.UploadsPlaylistFailed]     = new(LogLevel.Error,   "UploadsPlaylistId 取得失敗({0}): {1}"),
         [LogMsg.VideoKindFailed]           = new(LogLevel.Error,   "動画種別一括取得失敗: {0}"),
-        [LogMsg.UushFallbackFailed]        = new(LogLevel.Error,   "UUSH フォールバック失敗({0}): {1}"),
+        [LogMsg.UuFallbackFailed]          = new(LogLevel.Error,   "UU プレイリスト確認失敗({0}): {1}"),
         [LogMsg.PlaylistFailed]            = new(LogLevel.Error,   "プレイリスト取得失敗({0}): {1}"),
         [LogMsg.ApiFallback]               = new(LogLevel.Error,   "API失敗、フォールバック"),
+        [LogMsg.ChannelBanCheckFailed]     = new(LogLevel.Error,   "チャンネルBAN確認失敗({0}): {1}"),
         // Gemini要約
         [LogMsg.GeminiSummaryFailed]       = new(LogLevel.Error,   "Gemini要約失敗({0}): {1}"),
         // 通知
@@ -318,6 +323,7 @@ public static class AppLogger
         [LogMsg.SchedulerWaitingRoomNotify]  = new(LogLevel.Debug,   "スケジューラー待機所通知 [{0}]: {1}"),
         [LogMsg.SchedulerGracePeriodStarted] = new(LogLevel.Debug,   "スケジューラー集中監視起動: {0}"),
         [LogMsg.SchedulerWakeUp]             = new(LogLevel.Debug,   "スケジューラー再計算"),
+        [LogMsg.PendingWindowExpired]        = new(LogLevel.Debug,   "監視ウィンドウ終了により予約状態解除: {0}"),
         // 動画検索・表示
         [LogMsg.SearchingVideo]            = new(LogLevel.Debug,   "最新動画を検索中..."),
         [LogMsg.OpenChannelPage]           = new(LogLevel.Debug,   "チャンネルページを開きます（全種別オフ）"),
@@ -398,6 +404,10 @@ public static class AppLogger
         [LogMsg.ChannelSearchCleared]              = new(LogLevel.Debug,   "チャンネル検索クリア"),
         [LogMsg.ChannelFilterApplied]              = new(LogLevel.Debug,   "チャンネルフィルター: {0}"),
         [LogMsg.ChannelFilterCleared]              = new(LogLevel.Debug,   "チャンネルフィルタークリア"),
+        [LogMsg.FavoriteToggleChanged]              = new(LogLevel.Debug,   "お気に入り変更: {0}"),
+        [LogMsg.ChannelBanned]                       = new(LogLevel.Info,    "チャンネルBAN／削除を検知しました"),
+        [LogMsg.ChannelBanRecovered]                 = new(LogLevel.Info,    "チャンネルの利用停止状態が解除されました"),
+        [LogMsg.LatestVideoDeletedDetected]          = new(LogLevel.Debug,   "表示中の動画が削除されたことを検知しました: {0}"),
         // 動画要約ポップアップ
         [LogMsg.VideoSummaryPopupOpened]           = new(LogLevel.Debug,   "動画情報ポップアップを開きました: {0}"),
         [LogMsg.GeminiSummaryRequested]            = new(LogLevel.Debug,   "Gemini要約リクエスト送信: {0}"),

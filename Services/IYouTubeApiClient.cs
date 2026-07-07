@@ -14,4 +14,5 @@ public interface IYouTubeApiClient
         string channelId, bool allowVideo, bool allowShort, bool allowLive,
         string uploadsPlaylistId = "");
     Task<Dictionary<string, DateTime?>> GetActualEndTimesAsync(IEnumerable<string> videoIds);
+    Task<bool?> CheckChannelBannedAsync(string channelId);
 }

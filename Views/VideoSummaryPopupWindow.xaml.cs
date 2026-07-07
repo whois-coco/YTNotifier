@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -46,41 +45,46 @@ public partial class VideoSummaryPopupWindow : Window
 
     private void LoadChannelIcon(ChannelInfo channel)
     {
-        try
+        if (ImageCacheService.TryGetCachedIcon(channel.ThumbnailUrl, out var cached) && cached != null)
         {
-            var diskPath = ImageCacheService.GetIconDiskPath(channel.ThumbnailUrl, channel.ChannelId);
-            if (!File.Exists(diskPath)) return;
-
-            var bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.UriSource   = new Uri(diskPath);
-            bmp.CacheOption = BitmapCacheOption.OnLoad;
-            bmp.EndInit();
-
-            ChannelIconBorder.Background = new ImageBrush(bmp) { Stretch = Stretch.UniformToFill };
+            ChannelIconBorder.Background = new ImageBrush(cached) { Stretch = Stretch.UniformToFill };
+            return;
         }
-        catch { }
+
+        if (string.IsNullOrEmpty(channel.ThumbnailUrl)) return;
+
+        Task.Run(async () =>
+        {
+            var bmp = await ImageCacheService.GetOrDownloadIconAsync(channel.ThumbnailUrl);
+            if (bmp == null) return;
+            await Dispatcher.InvokeAsync(() =>
+                ChannelIconBorder.Background = new ImageBrush(bmp) { Stretch = Stretch.UniformToFill });
+        });
     }
 
     private void LoadThumbnailIfAvailable(ChannelInfo channel, VideoKind kind)
     {
         if (SettingsService.Instance.Settings.ToastStyle != ToastStyle.Thumbnail) return;
 
-        var path = ImageCacheService.GetThumbnailDiskPathIfExists(channel.ChannelId, kind);
-        if (path == null) return;
-
-        try
+        if (ImageCacheService.TryGetCachedThumbnail(channel.ChannelId, kind, out var cached) && cached != null)
         {
-            var bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.UriSource   = new Uri(path);
-            bmp.CacheOption = BitmapCacheOption.OnLoad;
-            bmp.EndInit();
-
-            ThumbnailImage.Source        = bmp;
-            ThumbnailBorder.Visibility   = Visibility.Visible;
+            ThumbnailImage.Source      = cached;
+            ThumbnailBorder.Visibility = Visibility.Visible;
+            return;
         }
-        catch { }
+
+        if (string.IsNullOrEmpty(channel.LatestThumbnailUrl)) return;
+
+        Task.Run(async () =>
+        {
+            var bmp = await ImageCacheService.GetOrDownloadThumbnailAsync(channel.LatestThumbnailUrl, channel.ChannelId, kind);
+            if (bmp == null) return;
+            await Dispatcher.InvokeAsync(() =>
+            {
+                ThumbnailImage.Source      = bmp;
+                ThumbnailBorder.Visibility = Visibility.Visible;
+            });
+        });
     }
 
     private void SetKindPill(VideoKind kind)
@@ -137,7 +141,8 @@ public partial class VideoSummaryPopupWindow : Window
         SummaryStatusText.Text       = "要約中...";
         SummaryStatusText.Visibility = Visibility.Visible;
 
-        var result = await GeminiSummaryService.SummarizeVideoAsync(apiKey, _videoId);
+        var result = await GeminiSummaryService.SummarizeVideoAsync(apiKey, _videoId,
+            onChunk: partialText => SummaryStatusText.Text = "要約中...\n" + partialText);
 
         if (result.Success && result.Headline != null && result.Detail != null)
         {

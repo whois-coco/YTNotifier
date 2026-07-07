@@ -27,6 +27,7 @@
   <ItemGroup>
     <Resource Include="Resources\app.ico" />
     <Resource Include="Resources\app_warn.ico" />
+    <Resource Include="Resources\SourceHanSansJP-Normal.otf" />
     <Content Include="Resources\app.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

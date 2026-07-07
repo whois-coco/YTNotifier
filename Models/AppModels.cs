@@ -6,7 +6,7 @@ namespace YTNotifier.Models;
 public class AppSettings
 {
     [Newtonsoft.Json.JsonIgnore]
-    public List<string> ApiKeys { get; set; } = new();
+    public string ApiKey { get; set; } = string.Empty;
 
     [JsonProperty("isDarkMode")]
     public bool IsDarkMode { get; set; } = false;
@@ -123,6 +123,9 @@ public class ChannelInfo
     [JsonProperty("subscriberCount")]
     public string SubscriberCount { get; set; } = string.Empty;
 
+    [JsonProperty("isFavorite")]
+    public bool IsFavorite { get; set; } = false;
+
     /// <summary>プレイリスト走査カーソル（全種別共通）。state.json で管理</summary>
     [JsonIgnore]
     public string LastCheckedVideoId { get; set; } = string.Empty;
@@ -231,6 +234,17 @@ public class ChannelInfo
 
     [JsonIgnore]
     public TimeSpan?  LatestDuration { get; set; }
+
+    [JsonIgnore]
+    public string?    LatestThumbnailUrl { get; set; }
+
+    /// <summary>チャンネルBAN／自主削除が確定した場合 true。state.json で管理</summary>
+    [JsonIgnore]
+    public bool IsBanned { get; set; } = false;
+
+    /// <summary>表示中の最新動画（LatestVideoId）が削除されたことが確定した場合 true。state.json で管理</summary>
+    [JsonIgnore]
+    public bool LatestVideoDeleted { get; set; } = false;
 
     [JsonProperty("isEnabled")]
     public bool IsEnabled { get; set; } = true;
@@ -569,6 +583,15 @@ public class ChannelState
 
     [JsonProperty("latestDuration")]
     public TimeSpan?  LatestDuration { get; set; }
+
+    [JsonProperty("latestThumbnailUrl")]
+    public string?    LatestThumbnailUrl { get; set; }
+
+    [JsonProperty("isBanned")]
+    public bool IsBanned { get; set; } = false;
+
+    [JsonProperty("latestVideoDeleted")]
+    public bool LatestVideoDeleted { get; set; } = false;
 }
 
 /// <summary>Gemini 要約結果1件分（gemini_summary_cache.json で管理）</summary>

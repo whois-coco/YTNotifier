@@ -277,6 +277,7 @@ public partial class MainWindow : System.Windows.Window
     // BuildStatusRow がカードに表示するステータスと1:1で対応する絞り込み項目
     private enum ChannelStatusFilter
     {
+        Favorite,
         LiveNow,
         PremiereNow,
         LiveScheduled,
@@ -297,6 +298,7 @@ public partial class MainWindow : System.Windows.Window
         ChannelStatusFilter.Video             => "動画",
         ChannelStatusFilter.Short             => "Short",
         ChannelStatusFilter.Archive           => "アーカイブ",
+        ChannelStatusFilter.Favorite          => "お気に入り",
         _                                     => string.Empty,
     };
 
@@ -432,9 +434,11 @@ public partial class MainWindow : System.Windows.Window
         // フィルターモード: カテゴリなしで該当ステータスのチャンネルのみ表示
         if (_channelStatusFilter.HasValue)
         {
-            var matched = channels.Where(c =>
-                !c.IsDormant &&
-                GetChannelStatusFilter(c) == _channelStatusFilter.Value).ToList();
+            var matched = _channelStatusFilter.Value == ChannelStatusFilter.Favorite
+                ? channels.Where(c => !c.IsDormant && c.IsFavorite == true).ToList()
+                : channels.Where(c =>
+                    !c.IsDormant &&
+                    GetChannelStatusFilter(c) == _channelStatusFilter.Value).ToList();
             EmptyState.Visibility = matched.Count == 0 && channels.Count > 0
                 ? Visibility.Visible : Visibility.Collapsed;
             foreach (var ch in matched) ChannelList.Children.Add(CreateChannelRow(ch));
@@ -539,12 +543,25 @@ public partial class MainWindow : System.Windows.Window
 
         var badge = new Border
         {
-            CornerRadius      = new CornerRadius(6),
-            Padding           = new Thickness(5, 0, 5, 0),
-            Margin            = new Thickness(6, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Visibility        = unreadCount > 0 ? Visibility.Visible : Visibility.Collapsed,
-            Child             = new TextBlock { Text = unreadCount.ToString(), FontSize = 13, FontWeight = FontWeights.Bold, Foreground = Brushes.White }
+            CornerRadius        = new CornerRadius(CategoryBadgeSize / 2),
+            Height              = CategoryBadgeSize,
+            MinWidth            = CategoryBadgeSize,
+            Padding             = new Thickness(5, 0, 5, 0),
+            Margin              = new Thickness(6, 0, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment   = VerticalAlignment.Center,
+            Visibility          = unreadCount > 0 ? Visibility.Visible : Visibility.Collapsed,
+            Child               = new TextBlock
+            {
+                Text                = unreadCount.ToString(),
+                FontSize            = 13,
+                FontWeight          = FontWeights.Bold,
+                Foreground          = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment   = VerticalAlignment.Center,
+                TextAlignment       = TextAlignment.Center,
+                Margin              = new Thickness(0, 0, 0, 5)
+            }
         };
         SetDynamicBrush(badge, Border.BackgroundProperty, "AccentBrush");
 
@@ -1366,8 +1383,17 @@ public partial class MainWindow : System.Windows.Window
             Width = 44, Height = 44, CornerRadius = new CornerRadius(22),
             Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center,
             Clip   = new EllipseGeometry(new System.Windows.Point(22, 22), 22, 22),
-            Cursor = Cursors.Hand, ToolTip = "クリックして最新動画を開く", Tag = "IconBorder"
+            Tag = "IconBorder"
         };
+
+        if (ch.IsBanned)
+        {
+            SetDynamicBrush(b, Border.BackgroundProperty, "BorderBrush");
+            return b;
+        }
+
+        b.Cursor = Cursors.Hand;
+        b.ToolTip = "クリックして最新動画を開く";
         b.PreviewMouseLeftButtonDown += (_, e) => e.Handled = true;
         b.MouseLeftButtonUp += async (_, _) => { AppLogger.Log(LogMsg.ChannelRowClicked, null, ch.ChannelName); await OpenChannelLatestVideoAsync(ch); };
         var img = GetCachedIcon(ch.ThumbnailUrl, ch.ChannelId);
@@ -1378,6 +1404,19 @@ public partial class MainWindow : System.Windows.Window
     private StackPanel BuildInfoPanelCore(ChannelInfo ch, bool editMode, bool isDormant)
     {
         var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+
+        if (ch.IsBanned)
+        {
+            var bannedText = new TextBlock
+            {
+                Text = "チャンネルは利用できません", FontSize = 13, FontWeight = FontWeights.SemiBold,
+                TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            SetDynamicBrush(bannedText, TextBlock.ForegroundProperty, "TextMutedBrush");
+            info.Children.Add(bannedText);
+            return info;
+        }
 
         var nameText = new TextBlock
         {
@@ -1397,6 +1436,7 @@ public partial class MainWindow : System.Windows.Window
                 kindRow.Children.Add(MakeKindToggle("動画",  ch.NotifyVideo, ch.GetEffectiveModeForKind(YTNotifier.Services.VideoKind.Video),  YTNotifier.Services.VideoKind.Video,  v => { ch.NotifyVideo = v; SettingsService.Instance.UpdateChannelSilent(ch); SettingsService.Instance.MarkDirty(); AppLogger.Log(LogMsg.KindToggleChanged, ch.ChannelName, "動画",  v ? "ON" : "OFF"); }));
                 kindRow.Children.Add(MakeKindToggle("Short", ch.NotifyShort, ch.GetEffectiveModeForKind(YTNotifier.Services.VideoKind.Short),  YTNotifier.Services.VideoKind.Short,  v => { ch.NotifyShort = v; SettingsService.Instance.UpdateChannelSilent(ch); SettingsService.Instance.MarkDirty(); AppLogger.Log(LogMsg.KindToggleChanged, ch.ChannelName, "Short", v ? "ON" : "OFF"); }));
                 kindRow.Children.Add(MakeKindToggle("ライブ", ch.NotifyLive,  ch.GetEffectiveModeForKind(YTNotifier.Services.VideoKind.Live),   YTNotifier.Services.VideoKind.Live,   v => { ch.NotifyLive  = v; SettingsService.Instance.UpdateChannelSilent(ch); SettingsService.Instance.MarkDirty(); AppLogger.Log(LogMsg.KindToggleChanged, ch.ChannelName, "ライブ", v ? "ON" : "OFF"); }));
+                kindRow.Children.Add(MakeFavoriteToggle(ch));
                 info.Children.Add(kindRow);
             }
         }
@@ -1469,6 +1509,14 @@ public partial class MainWindow : System.Windows.Window
             };
             SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "WarningBrush");
             row.Children.Add(bullet);
+            return row;
+        }
+
+        if (ch.LatestVideoDeleted)
+        {
+            var deletedText = new TextBlock { Text = "動画は削除されました", FontSize = 11 };
+            SetDynamicBrush(deletedText, TextBlock.ForegroundProperty, "TextMutedBrush");
+            row.Children.Add(deletedText);
             return row;
         }
 
@@ -1716,6 +1764,40 @@ public partial class MainWindow : System.Windows.Window
         return new Viewbox { Width = 18, Height = 18, Child = vc };
     }
 
+    private static UIElement MakeFavoriteToggle(ChannelInfo ch)
+    {
+        var border = new Border
+        {
+            Padding = new Thickness(4), Cursor = Cursors.Arrow, ToolTip = "お気に入り"
+        };
+        border.Child = BuildFavoriteIcon(ch.IsFavorite);
+
+        border.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (Application.Current.MainWindow is not MainWindow win || !win._editMode) return;
+            e.Handled = true;
+            ch.IsFavorite = !ch.IsFavorite;
+            SettingsService.Instance.UpdateChannelSilent(ch);
+            SettingsService.Instance.MarkDirty();
+            AppLogger.Log(LogMsg.FavoriteToggleChanged, ch.ChannelName, ch.IsFavorite ? "ON" : "OFF");
+            border.Child = BuildFavoriteIcon(ch.IsFavorite);
+        };
+        return border;
+    }
+
+    private static UIElement BuildFavoriteIcon(bool active)
+    {
+        var color = active
+            ? (System.Windows.Media.Brush)Application.Current.Resources["QuotaWarnLowBrush"]
+            : (System.Windows.Media.Brush)Application.Current.Resources["TextMutedBrush"];
+        var text = new TextBlock
+        {
+            Text = active ? "★" : "☆", FontSize = 14, Foreground = color,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+        };
+        return new Viewbox { Width = 24, Height = 24, Margin = new Thickness(12, 0, 0, 0), Child = text };
+    }
+
     // ===== チャンネル操作 =====
     public static async Task OpenChannelLatestVideoFromToastAsync(ChannelInfo ch, string? toastUrl = null)
         => await OpenChannelLatestVideoAsync(ch, toastUrl);
@@ -1747,8 +1829,7 @@ public partial class MainWindow : System.Windows.Window
 
         // toastUrl がない場合（チャンネル行クリック等）は API で最新動画を取得
         string url = ch.ChannelUrl;
-        var apiKeys = SettingsService.Instance.Settings.ApiKeys;
-        var apiKey = apiKeys.Count > 0 ? apiKeys[0] : string.Empty;
+        var apiKey = SettingsService.Instance.Settings.ApiKey;
 
         if (!string.IsNullOrEmpty(apiKey))
         {

@@ -55,8 +55,6 @@ public partial class YouTubeApiClient : IYouTubeApiClient
 {
     private const string ChannelIdPrefix      = "UC";
     private const string UploadPlaylistPrefix = "UU";
-    private const string ShortsPlaylistPrefix = "UUSH";
-    private const string ShortsUrlBase        = "https://www.youtube.com/shorts/";
     private const string LbcLive              = "live";
     private const string LbcUpcoming          = "upcoming";
     private const string StatusProcessed      = "processed";
@@ -90,20 +88,9 @@ public partial class YouTubeApiClient : IYouTubeApiClient
     private GoogleYouTubeService? _ytService;
     private string _currentApiKey = string.Empty;
 
-    // Short 判定の HEAD リクエスト専用クライアント（ソケット枯渇防止のため static 共有）
-    private static readonly System.Net.Http.HttpClient _shortCheckClient = CreateShortCheckClient();
-    private static System.Net.Http.HttpClient CreateShortCheckClient()
-    {
-        var handler = new System.Net.Http.HttpClientHandler { AllowAutoRedirect = false };
-        var client  = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
-        client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-        return client;
-    }
-
     private GoogleYouTubeService GetService()
     {
-        var apiKeys = SettingsService.Instance.Settings.ApiKeys;
-        var apiKey = apiKeys.Count > 0 ? apiKeys[0] : string.Empty;
+        var apiKey = SettingsService.Instance.Settings.ApiKey;
         if (_ytService == null || _currentApiKey != apiKey)
         {
             _ytService = new GoogleYouTubeService(new BaseClientService.Initializer
@@ -316,7 +303,7 @@ public partial class YouTubeApiClient : IYouTubeApiClient
     ///
     /// フェーズ3: duration > 180秒 → 通常動画
     ///
-    /// フェーズ4: HEAD リクエスト → Short or 通常動画（フォールバック: UUSHプレイリスト）
+    /// フェーズ4: サムネイルのアスペクト比判定 → 該当時のみ UU プレイリストへの存在確認
     /// </summary>
     private static async Task<VideoKind> ClassifyVideoAsync(
         Google.Apis.YouTube.v3.Data.Video v,
@@ -326,51 +313,65 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         var (kind, complete) = ClassifyVideoPhase123(v);
         if (complete) return kind!.Value;
 
-        // ── フェーズ4: HEAD リクエスト ────────────────────────────────
+        // ── フェーズ4: サムネイルのアスペクト比判定 ──────────────────
         var videoId = v.Id;
-        try
+        var ratio = GetThumbnailAspectRatio(v.Snippet?.Thumbnails);
+        if (ratio.HasValue)
         {
-            var url = ShortsUrlBase + videoId;
-            using var res = await _shortCheckClient.SendAsync(
-                new System.Net.Http.HttpRequestMessage(
-                    System.Net.Http.HttpMethod.Head, url));
-            var status = (int)res.StatusCode;
-            if (status == YouTubeApiConstants.HttpStatusOk) return VideoKind.Short;
-            if (status is 302 or 303) return VideoKind.Video;
-            // 4xx/5xx → フォールバックへ
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Log(LogMsg.ShortHeadFailed, channelName, videoId, ClassifyNetworkException(ex));
+            var isShortRatio =
+                Math.Abs(ratio.Value - YouTubeConstants.ShortAspectRatioVertical) <= YouTubeConstants.ShortAspectRatioVertical * YouTubeConstants.ShortAspectRatioTolerance ||
+                Math.Abs(ratio.Value - YouTubeConstants.ShortAspectRatioSquare)   <= YouTubeConstants.ShortAspectRatioSquare   * YouTubeConstants.ShortAspectRatioTolerance;
+            if (!isShortRatio) return VideoKind.Video;
         }
 
-        // ── フォールバック: UUSH プレイリスト ─────────────────────────
+        // ── UU プレイリストへの存在確認 ───────────────────────────────
         try
         {
             var channelId = v.Snippet?.ChannelId ?? "";
             if (channelId.Length > 2)
             {
-                var shortsId = ShortsPlaylistPrefix + channelId[2..];
+                var uploadsId = UploadPlaylistPrefix + channelId[2..];
                 var plReq    = svc.PlaylistItems.List("contentDetails");
-                plReq.PlaylistId = shortsId;
+                plReq.PlaylistId = uploadsId;
                 plReq.MaxResults  = 50;
                 plReq.VideoId     = videoId;
                 var plResp = await plReq.ExecuteAsync();
                 SettingsService.Instance.AddApiUnits(1);
-                if (plResp.Items?.Any(i => i.ContentDetails?.VideoId == videoId) == true)
-                    return VideoKind.Short;
+                return plResp.Items?.Any(i => i.ContentDetails?.VideoId == videoId) == true
+                    ? VideoKind.Short
+                    : VideoKind.Video;
             }
         }
         catch (Google.GoogleApiException gex)
         {
-            AppLogger.Log(LogMsg.UushFallbackFailed, null, videoId, ClassifyApiException(gex));
+            AppLogger.Log(LogMsg.UuFallbackFailed, null, videoId, ClassifyApiException(gex));
+            return VideoKind.Short;
         }
         catch (Exception ex)
         {
-            AppLogger.Log(LogMsg.UushFallbackFailed, null, videoId, ClassifyNetworkException(ex));
+            AppLogger.Log(LogMsg.UuFallbackFailed, null, videoId, ClassifyNetworkException(ex));
+            return VideoKind.Short;
         }
 
         return VideoKind.Video;
+    }
+
+    /// <summary>
+    /// サムネイルのアスペクト比（Width/Height）を算出する。
+    /// Maxres → Standard → High → Medium の順に、Width/Height が両方取得できる最初のものを使用する。
+    /// いずれも取得できない場合は null（判定不能）を返す。
+    /// </summary>
+    private static double? GetThumbnailAspectRatio(Google.Apis.YouTube.v3.Data.ThumbnailDetails? thumbnails)
+    {
+        if (thumbnails == null) return null;
+
+        var candidates = new[] { thumbnails.Maxres, thumbnails.Standard, thumbnails.High, thumbnails.Medium };
+        foreach (var t in candidates)
+        {
+            if (t?.Width != null && t.Height != null && t.Height.Value != 0)
+                return (double)t.Width.Value / t.Height.Value;
+        }
+        return null;
     }
 
     /// <summary>
@@ -687,6 +688,39 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         catch (Google.GoogleApiException gex) { AppLogger.Log(LogMsg.CheckFailed, null, "ActiveLives", ClassifyApiException(gex)); }
         catch (Exception ex)                  { AppLogger.Log(LogMsg.CheckFailed, null, "ActiveLives", ClassifyNetworkException(ex)); }
         return result;
+    }
+
+    // ===== チャンネルBAN／自主削除判定 =====
+    /// <summary>
+    /// channels.list(id) でチャンネルBAN／自主削除を判定する（1ユニット）
+    /// HTTP200 かつ items 0件 → true（BAN確定）、1件以上 → false（正常）
+    /// クォータ超過・APIキーエラー・その他エラーは null（確定させない）
+    /// </summary>
+    public async Task<bool?> CheckChannelBannedAsync(string channelId)
+    {
+        try
+        {
+            var svc = GetService();
+            var req = svc.Channels.List("id");
+            req.Id = channelId;
+            var resp = await req.ExecuteAsync();
+            SettingsService.Instance.AddApiUnits(1); // channels.list = 1unit
+            return resp.Items == null || resp.Items.Count == 0;
+        }
+        catch (Google.GoogleApiException gex)
+        {
+            if (IsQuotaExceededError(gex)) throw new QuotaExceededException();
+            var reason = gex.Error?.Errors?.FirstOrDefault()?.Reason ?? "";
+            if (reason is "keyInvalid" or "forbidden" || (int)gex.HttpStatusCode == 403)
+                return null;
+            AppLogger.Log(LogMsg.ChannelBanCheckFailed, null, channelId, ClassifyApiException(gex));
+            return null;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log(LogMsg.ChannelBanCheckFailed, null, channelId, ClassifyNetworkException(ex));
+            return null;
+        }
     }
 }
 

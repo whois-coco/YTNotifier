@@ -193,7 +193,7 @@ public partial class AddChannelWindow : Window
 
         try
         {
-            if (SettingsService.Instance.Settings.ApiKeys.Count == 0 || string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKeys[0]))
+            if (string.IsNullOrEmpty(SettingsService.Instance.Settings.ApiKey))
             {
                 PreviewStatusText.Text = "⚠ APIキーが設定されていません。";
                 return;

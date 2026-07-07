@@ -34,17 +34,17 @@ public static class ApiKeyService
         return kdf.GetBytes(KeySize);
     }
 
-    /// <summary>APIキーリストを暗号化して api_key.dat に保存する</summary>
-    public static void Save(string appDataDir, List<string> apiKeys)
+    /// <summary>APIキーを暗号化して api_key.dat に保存する</summary>
+    public static void Save(string appDataDir, string apiKey)
     {
-        if (apiKeys.Count == 0)
+        if (string.IsNullOrEmpty(apiKey))
         {
             var path = GetPath(appDataDir);
             if (File.Exists(path)) File.Delete(path);
             return;
         }
 
-        var plainText  = Newtonsoft.Json.JsonConvert.SerializeObject(apiKeys);
+        var plainText  = apiKey;
         var key        = DeriveKey();
         using var aes  = Aes.Create();
         aes.Key        = key;
@@ -62,16 +62,16 @@ public static class ApiKeyService
         File.WriteAllBytes(GetPath(appDataDir), ms.ToArray());
     }
 
-    /// <summary>api_key.dat を復号してAPIキーリストを返す。失敗時は空リスト</summary>
-    public static List<string> Load(string appDataDir)
+    /// <summary>api_key.dat を復号してAPIキーを返す。失敗時は空文字</summary>
+    public static string Load(string appDataDir)
     {
         try
         {
             var path = GetPath(appDataDir);
-            if (!File.Exists(path)) return new List<string>();
+            if (!File.Exists(path)) return string.Empty;
 
             var data = File.ReadAllBytes(path);
-            if (data.Length <= IvSize) return new List<string>();
+            if (data.Length <= IvSize) return string.Empty;
 
             var iv         = data[..IvSize];
             var cipher     = data[IvSize..];
@@ -87,21 +87,19 @@ public static class ApiKeyService
             using var sr   = new StreamReader(cs, Encoding.UTF8);
             var decrypted  = sr.ReadToEnd();
 
+            // 旧フォーマット（複数キーのJSONリスト）の互換処理: 先頭の1件のみ採用する
             try
             {
                 var list = Newtonsoft.Json.JsonConvert.DeserializeObject<List<string>>(decrypted);
-                if (list != null) return list;
+                if (list != null) return list.FirstOrDefault(k => !string.IsNullOrEmpty(k)) ?? string.Empty;
             }
             catch { }
 
-            // 旧フォーマット（単一文字列）の互換処理
-            return string.IsNullOrEmpty(decrypted)
-                ? new List<string>()
-                : new List<string> { decrypted };
+            return decrypted;
         }
         catch
         {
-            return new List<string>();
+            return string.Empty;
         }
     }
 

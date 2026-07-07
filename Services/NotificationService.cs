@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -23,6 +24,36 @@ public static class NotificationService
     private static readonly string ExeDir =
         Path.GetDirectoryName(Environment.ProcessPath
             ?? System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "";
+
+    // ===== トースト通知画像の一時ダウンロード =====
+    // ディスクへの永続保存（指示書053）を避けつつ、パッケージ化されていないアプリでは
+    // トースト通知が https:// のリモート画像を読み込めないため、表示直前だけ一時フォルダへ書き出す
+    private static readonly System.Net.Http.HttpClient _toastImageHttp =
+        new() { Timeout = TimeSpan.FromSeconds(5) };
+
+    private static readonly string ToastTempImageDir =
+        Path.Combine(Path.GetTempPath(), AppConstants.DirToastTempImages);
+
+    private static async Task<string?> DownloadToTempFileAsync(string url, string extension)
+    {
+        try
+        {
+            Directory.CreateDirectory(ToastTempImageDir);
+            var bytes = await _toastImageHttp.GetByteArrayAsync(url).ConfigureAwait(false);
+            var path  = Path.Combine(ToastTempImageDir, $"{Guid.NewGuid():N}{extension}");
+            await File.WriteAllBytesAsync(path, bytes).ConfigureAwait(false);
+            return path;
+        }
+        catch { return null; }
+    }
+
+    private static void ScheduleTempFileCleanup(string path)
+    {
+        _ = Task.Delay(AppConstants.ToastTempImageCleanupDelayMs).ContinueWith(_ =>
+        {
+            try { File.Delete(path); } catch { }
+        });
+    }
 
     // ===== タスクバー点滅 =====
     [StructLayout(LayoutKind.Sequential)]
@@ -108,6 +139,7 @@ public static class NotificationService
         string channelId = "", VideoKind kind = VideoKind.Video,
         string? channelThumbnailUrl = null, string? videoThumbnailUrl = null)
     {
+        var tempFiles = new List<string>();
         try
         {
             var settings = SettingsService.Instance.Settings;
@@ -125,20 +157,32 @@ public static class NotificationService
             if (settings.ToastStyle == ToastStyle.Thumbnail)
             {
                 // ─── サムネイル通知 ──────────────────────────────────────
+                // パッケージ化されていないアプリはリモート画像を直接読み込めないため、
+                // 表示直前だけ一時フォルダへダウンロードし、表示後に削除する
                 if (!string.IsNullOrEmpty(videoThumbnailUrl))
                 {
-                    var heroPath = await ImageCacheService.GetOrDownloadThumbnailAsync(videoThumbnailUrl, channelId, kind).ConfigureAwait(false);
-                    if (!string.IsNullOrEmpty(heroPath))
+                    var heroPath = await DownloadToTempFileAsync(videoThumbnailUrl, AppConstants.ToastThumbnailTempExtension).ConfigureAwait(false);
+                    if (heroPath != null)
+                    {
+                        tempFiles.Add(heroPath);
                         try { builder.AddHeroImage(new Uri(ToFileUri(heroPath))); }
                         catch { }
+                    }
                 }
                 if (!string.IsNullOrEmpty(channelThumbnailUrl))
                 {
-                    var iconPath = ImageCacheService.GetIconDiskPath(channelThumbnailUrl, channelId);
-                    if (File.Exists(iconPath))
-                        builder.AddAppLogoOverride(
-                            new Uri(ToFileUri(iconPath)),
-                            ToastGenericAppLogoCrop.Circle);
+                    var iconPath = await DownloadToTempFileAsync(channelThumbnailUrl, AppConstants.ToastIconTempExtension).ConfigureAwait(false);
+                    if (iconPath != null)
+                    {
+                        tempFiles.Add(iconPath);
+                        try
+                        {
+                            builder.AddAppLogoOverride(
+                                new Uri(ToFileUri(iconPath)),
+                                ToastGenericAppLogoCrop.Circle);
+                        }
+                        catch { }
+                    }
                 }
                 builder.AddAttributionText(channelName);
                 builder.AddText(kindLabel);
@@ -149,11 +193,18 @@ public static class NotificationService
                 // ─── デフォルト通知 ──────────────────────────────────────
                 if (!string.IsNullOrEmpty(channelThumbnailUrl))
                 {
-                    var iconPath = ImageCacheService.GetIconDiskPath(channelThumbnailUrl, channelId);
-                    if (File.Exists(iconPath))
-                        builder.AddAppLogoOverride(
-                            new Uri(ToFileUri(iconPath)),
-                            ToastGenericAppLogoCrop.Circle);
+                    var iconPath = await DownloadToTempFileAsync(channelThumbnailUrl, AppConstants.ToastIconTempExtension).ConfigureAwait(false);
+                    if (iconPath != null)
+                    {
+                        tempFiles.Add(iconPath);
+                        try
+                        {
+                            builder.AddAppLogoOverride(
+                                new Uri(ToFileUri(iconPath)),
+                                ToastGenericAppLogoCrop.Circle);
+                        }
+                        catch { }
+                    }
                 }
                 builder.AddText($"{channelName}  [{kindLabel}]");
                 builder.AddText(videoTitle);
@@ -173,6 +224,11 @@ public static class NotificationService
         catch (Exception ex)
         {
             AppLogger.Log(LogMsg.NotifyFailed, null, ex.Message);
+        }
+        finally
+        {
+            foreach (var path in tempFiles)
+                ScheduleTempFileCleanup(path);
         }
     }
 

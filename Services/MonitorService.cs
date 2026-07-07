@@ -312,7 +312,7 @@ public class MonitorService : IDisposable
             var label = isDailyFullScan ? "定時全チェック" : _isStartupCheck ? "起動時チェック" : "定期チェック";
             AppLogger.Log(LogMsg.CheckStarted, null, label, channels.Count, allChannels.Count);
 
-            var tasks = channels.Select(ch => CheckChannelAsync(ch)).ToList();
+            var tasks = channels.Select(ch => CheckChannelAsync(ch, isDailyFullScan)).ToList();
             await Task.WhenAll(tasks);
 
             _isStartupCheck = false;
@@ -334,7 +334,7 @@ public class MonitorService : IDisposable
         bool LatestLiveSeen,
         bool LatestPremiereSeen);
 
-    private async Task CheckChannelAsync(ChannelInfo channel)
+    private async Task CheckChannelAsync(ChannelInfo channel, bool isDailyFullScan)
     {
         bool quotaExceeded = false;
         try
@@ -369,6 +369,29 @@ public class MonitorService : IDisposable
                 (videos, pendingTransitioned, allScanned) = await _youtubeClient.CheckLatestVideosAsync(
                     channel.ChannelId, channel.LastCheckedVideoId,
                     channel.UploadsPlaylistId, pendingIds);
+            }
+
+            // 定時全チェックのみ: チャンネルBAN／自主削除の判定・回復判定
+            if (isDailyFullScan && debugSvc == null)
+            {
+                var banResult = await _youtubeClient.CheckChannelBannedAsync(channel.ChannelId);
+                if (banResult.HasValue && banResult.Value != channel.IsBanned)
+                {
+                    channel.IsBanned = banResult.Value;
+                    SettingsService.Instance.UpdateChannelSilent(channel);
+                    ChannelUpdated?.Invoke();
+                    AppLogger.Log(banResult.Value ? LogMsg.ChannelBanned : LogMsg.ChannelBanRecovered, channel.ChannelName);
+                }
+            }
+
+            // 定時全チェックのみ: 表示中の最新動画が削除されたかの判定
+            if (isDailyFullScan && !string.IsNullOrEmpty(channel.LatestVideoId) && allScanned.Count > 0
+                && !channel.LatestVideoDeleted && !allScanned.Any(v => v.VideoId == channel.LatestVideoId))
+            {
+                channel.LatestVideoDeleted = true;
+                SettingsService.Instance.UpdateChannelSilent(channel);
+                ChannelUpdated?.Invoke();
+                AppLogger.Log(LogMsg.LatestVideoDeletedDetected, channel.ChannelName, channel.LatestVideoId);
             }
 
             if (videos.Count == 0 && pendingTransitioned.Count == 0)
@@ -432,6 +455,8 @@ public class MonitorService : IDisposable
                 channel.LatestKind     = latestFound.Kind;
                 channel.LatestVideoId  = latestFound.VideoId;
                 channel.LatestDuration = latestFound.Duration;
+                channel.LatestThumbnailUrl = latestFound.ThumbnailUrl;
+                channel.LatestVideoDeleted = false;
             }
 
             var newCandidates = BuildNewVideoNotifyCandidates(channel, videos);
@@ -493,6 +518,7 @@ public class MonitorService : IDisposable
             // 次回リセット時刻まで待機させる（直前のリセット時刻はすでに過ぎているので +1日分を取得）
             if (quotaExceeded && !suspended.HasValue)
                 suspended = AppConstants.GetNextQuotaResetTime();
+            RevertExpiredPendingEntries(channel, channel.LastCheckedAt);
             channel.NextCheckAt = suspended
                 ?? (hadGrace ? channel.LastCheckedAt.AddSeconds(GracePeriodIntervalSeconds) : CalcNextCheckAt(channel, channel.LastCheckedAt));
             SettingsService.Instance.UpdateChannelSilent(channel);
@@ -843,6 +869,43 @@ public class MonitorService : IDisposable
             if (entry.GraceRemaining == 0) entry.GraceRemaining = -1;
         }
         return anyGrace;
+    }
+
+    /// <summary>
+    /// 時間指定スロットの監視ウィンドウが終了してもライブ/プレミア開始が確認できなかった
+    /// pending エントリ（猶予期間終了済み = GraceRemaining == -1）の予約状態を解除する。
+    /// </summary>
+    private static void RevertExpiredPendingEntries(ChannelInfo ch, DateTime now)
+    {
+        if (ch.MonitorMode != MonitorMode.Focus) return;
+        if (HasActiveTimeSlotWindow(ch, now)) return;
+
+        void Revert(List<PendingVideoEntry> entries)
+        {
+            var expired = entries.Where(e => e.GraceRemaining == -1).ToList();
+            foreach (var e in expired)
+            {
+                entries.Remove(e);
+                AppLogger.Log(LogMsg.PendingWindowExpired, ch.ChannelName, e.VideoId);
+            }
+        }
+
+        Revert(ch.PendingLives);
+        Revert(ch.PendingPremieres);
+    }
+
+    /// <summary>現在、有効な時間指定スロットの監視ウィンドウ内かどうかを判定する</summary>
+    private static bool HasActiveTimeSlotWindow(ChannelInfo ch, DateTime now)
+    {
+        foreach (var slot in ch.FocusSlots)
+        {
+            if (!slot.IsEnabled || slot.SlotMode != MonitorMode.Focus) continue;
+            var anchor    = now.Date.AddHours(slot.Hour).AddMinutes(slot.Minute);
+            var windowEnd = anchor.AddMinutes(slot.WindowMinutes);
+            if (now >= anchor && now <= windowEnd && IsSlotDayMatch(slot.Days, anchor.Date))
+                return true;
+        }
+        return false;
     }
 
     // ===== 次回チェック時刻を計算（副作用なし）=====

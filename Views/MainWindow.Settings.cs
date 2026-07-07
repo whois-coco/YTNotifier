@@ -39,7 +39,7 @@ public partial class MainWindow : System.Windows.Window
     // ===== 設定ハンドラ =====
     private void SaveApiKey_Click(object sender, RoutedEventArgs e)
     {
-        var isSummaryKeySlot = _selectedApiKeySlotIndex == 2;
+        var isSummaryKeySlot = _selectedApiKeySlotIndex == 1;
 
         if (SaveApiKeyButton.Content?.ToString() == "変更")
         {
@@ -77,10 +77,8 @@ public partial class MainWindow : System.Windows.Window
         }
         else
         {
-            var keys = SettingsService.Instance.Settings.ApiKeys;
-            while (keys.Count <= _selectedApiKeySlotIndex) keys.Add(string.Empty);
-            keys[_selectedApiKeySlotIndex] = key;
-            ApiKeyService.Save(SettingsService.Instance.ConfDir, keys);
+            SettingsService.Instance.Settings.ApiKey = key;
+            ApiKeyService.Save(SettingsService.Instance.ConfDir, key);
             SettingsService.Instance.SaveSettings();
             AppLogger.Log(string.IsNullOrEmpty(key) ? LogMsg.ApiKeyChanged : LogMsg.ApiKeySaved);
         }
@@ -580,8 +578,7 @@ public partial class MainWindow : System.Windows.Window
     {
         _loadingSettings = true;
         ApiKeySlotComboBox.Items.Clear();
-        ApiKeySlotComboBox.Items.Add("プライマリーキー");
-        ApiKeySlotComboBox.Items.Add("セカンダリーキー");
+        ApiKeySlotComboBox.Items.Add("チェック用キー");
         ApiKeySlotComboBox.Items.Add("要約キー");
         _selectedApiKeySlotIndex = 0;
         ApiKeySlotComboBox.SelectedIndex = 0;
@@ -595,14 +592,13 @@ public partial class MainWindow : System.Windows.Window
         if (idx < 0) return;
         _selectedApiKeySlotIndex = idx;
 
-        if (idx == 2)
+        if (idx == 1)
         {
             _actualApiKey = GeminiApiKeyService.Load(SettingsService.Instance.ConfDir) ?? string.Empty;
         }
         else
         {
-            var keys = SettingsService.Instance.Settings.ApiKeys;
-            _actualApiKey = idx < keys.Count ? keys[idx] : string.Empty;
+            _actualApiKey = SettingsService.Instance.Settings.ApiKey;
         }
         UpdateApiKeyState(!string.IsNullOrEmpty(_actualApiKey));
     }

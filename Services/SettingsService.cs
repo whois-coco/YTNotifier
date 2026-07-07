@@ -80,7 +80,6 @@ public class SettingsService
         Directory.CreateDirectory(confDir);
         Directory.CreateDirectory(bkupDir);
         Directory.CreateDirectory(Path.Combine(_appDataDir, AppConstants.DirLogs));
-        Directory.CreateDirectory(Path.Combine(_appDataDir, AppConstants.DirIcons));
         _configPath             = Path.Combine(confDir, FileConfig);
         _channelsPath           = Path.Combine(confDir, FileChannels);
         _categoriesPath         = Path.Combine(confDir, FileCategories);
@@ -464,12 +463,12 @@ public class SettingsService
         save();
     }
 
-    private void RemoveCategoryCore(List<CategoryInfo> categories, Action save, string categoryId)
+    private void RemoveCategoryCore(List<CategoryInfo> categories, Action save, string categoryId, bool isDormant)
     {
         lock (_persistLock)
         {
-            // カテゴリ削除時は所属チャンネルを未分類に
-            foreach (var ch in Channels.Where(c => c.CategoryId == categoryId))
+            // カテゴリ削除時は所属チャンネルを未分類に（同じページのチャンネルのみ対象）
+            foreach (var ch in Channels.Where(c => c.CategoryId == categoryId && c.IsDormant == isDormant))
                 ch.CategoryId = null;
             categories.RemoveAll(c => c.CategoryId == categoryId);
         }
@@ -504,7 +503,7 @@ public class SettingsService
         => SetChannelCategory(channelId, categoryId);
 
     public void RemoveDormantCategory(string categoryId)
-        => RemoveCategoryCore(DormantCategories, SaveDormantCategories, categoryId);
+        => RemoveCategoryCore(DormantCategories, SaveDormantCategories, categoryId, isDormant: true);
 
     public void RenameDormantCategory(string categoryId, string newName)
         => RenameCategoryCore(DormantCategories, SaveDormantCategories, categoryId, newName);
@@ -520,7 +519,7 @@ public class SettingsService
     }
 
     public void RemoveCategory(string categoryId)
-        => RemoveCategoryCore(Categories, SaveCategories, categoryId);
+        => RemoveCategoryCore(Categories, SaveCategories, categoryId, isDormant: false);
 
     public void RenameCategory(string categoryId, string newName)
         => RenameCategoryCore(Categories, SaveCategories, categoryId, newName);
@@ -566,27 +565,20 @@ public class SettingsService
         catch { Settings = new AppSettings(); }
 
         // APIキーは別ファイルから復号して読み込む
-        Settings.ApiKeys = ApiKeyService.Load(_confDir);
-
-        // スロット3種化に伴う移行: ApiKeys は常に最大2件（プライマリー・セカンダリー）とする
-        if (Settings.ApiKeys.Count > 2)
-        {
-            Settings.ApiKeys = Settings.ApiKeys.Take(2).ToList();
-            ApiKeyService.Save(_confDir, Settings.ApiKeys);
-        }
+        Settings.ApiKey = ApiKeyService.Load(_confDir);
 
         // 旧バージョン移行: config.json に平文 ApiKey が残っていれば api_key.dat に移行して除去
         try
         {
-            if (File.Exists(_configPath) && Settings.ApiKeys.Count == 0)
+            if (File.Exists(_configPath) && string.IsNullOrEmpty(Settings.ApiKey))
             {
                 var raw = File.ReadAllText(_configPath);
                 var legacy = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(raw);
                 var legacyKey = legacy?["ApiKey"]?.ToString();
                 if (!string.IsNullOrEmpty(legacyKey))
                 {
-                    Settings.ApiKeys = new List<string> { legacyKey };
-                    ApiKeyService.Save(_confDir, Settings.ApiKeys);
+                    Settings.ApiKey = legacyKey;
+                    ApiKeyService.Save(_confDir, Settings.ApiKey);
                     // config.json から ApiKey キーを除去して上書き
                     legacy!.Remove("ApiKey");
                     WriteAtomic(_configPath, legacy.ToString(Newtonsoft.Json.Formatting.Indented));
@@ -871,6 +863,9 @@ public class SettingsService
         LatestKind             = ch.LatestKind,
         LatestVideoId          = ch.LatestVideoId,
         LatestDuration         = ch.LatestDuration,
+        LatestThumbnailUrl     = ch.LatestThumbnailUrl,
+        IsBanned               = ch.IsBanned,
+        LatestVideoDeleted     = ch.LatestVideoDeleted,
     };
 
     private static void ApplyStateToChannel(ChannelInfo ch, ChannelState state)
@@ -904,6 +899,9 @@ public class SettingsService
         ch.LatestKind             = state.LatestKind;
         ch.LatestVideoId          = state.LatestVideoId;
         ch.LatestDuration         = state.LatestDuration;
+        ch.LatestThumbnailUrl     = state.LatestThumbnailUrl;
+        ch.IsBanned               = state.IsBanned;
+        ch.LatestVideoDeleted     = state.LatestVideoDeleted;
     }
 
     private void LoadState()

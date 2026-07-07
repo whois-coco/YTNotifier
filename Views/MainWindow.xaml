@@ -10,7 +10,8 @@
         Background="{DynamicResource BackgroundBrush}"
         WindowStyle="None"
         AllowsTransparency="False"
-        ResizeMode="CanResize">
+        ResizeMode="CanResize"
+        FontFamily="Resources/#Source Han Sans JP Normal">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0"
                       ResizeBorderThickness="5"
@@ -150,13 +151,8 @@
                 <StackPanel Grid.Column="0" Orientation="Horizontal"
                             VerticalAlignment="Center" Margin="12,0"
                             ClipToBounds="True">
-                    <Border Width="20" Height="20" CornerRadius="3"
-                            Background="{DynamicResource AccentBrush}"
-                            Margin="0,0,8,0">
-                        <TextBlock Text="▶" Foreground="White" FontSize="9"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
-                    </Border>
+                    <Image Source="/Resources/app.ico" Width="20" Height="20"
+                           Margin="0,0,8,0"/>
                     <TextBlock x:Name="TitleText" Text="YTNotifier" FontSize="13" FontWeight="Bold"
                                Foreground="{DynamicResource SidebarTitleBrush}"
                                VerticalAlignment="Center"
@@ -628,14 +624,16 @@
                                             </Viewbox>
                                             <Border x:Name="NavWatchCompactBadge"
                                                     Background="{DynamicResource AccentBrush}"
-                                                    CornerRadius="6" MinWidth="14" Height="14"
+                                                    CornerRadius="7" MinWidth="14" Height="14"
                                                     HorizontalAlignment="Right" VerticalAlignment="Top"
                                                     Padding="3,0" Margin="0,-4,-4,0"
                                                     Visibility="Collapsed">
                                                 <TextBlock x:Name="NavWatchCompactText" Text="0"
                                                            FontSize="9" FontWeight="Bold"
                                                            Foreground="White" TextAlignment="Center"
-                                                           VerticalAlignment="Center"/>
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           Margin="0,0,0,3"/>
                                             </Border>
                                         </Grid>
                                         <TextBlock x:Name="LblNavWatch" Text="チャンネル" FontSize="12"
@@ -645,13 +643,16 @@
                                     </StackPanel>
                                     <Border x:Name="NavWatchUnreadBadge"
                                             Grid.Column="1"
-                                            CornerRadius="6" Padding="5,0,5,0"
-                                            VerticalAlignment="Center"
+                                            CornerRadius="8" Height="16" MinWidth="16" Padding="5,0,5,0"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
                                             Margin="4,0,6,0" Visibility="Collapsed"
                                             Background="{DynamicResource AccentBrush}">
                                         <TextBlock x:Name="NavWatchUnreadText" Text="0"
                                                    FontSize="11" FontWeight="Bold"
-                                                   Foreground="White"/>
+                                                   Foreground="White" TextAlignment="Center"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,0,4"/>
                                     </Border>
                                 </Grid>
                                 <ControlTemplate.Triggers>
@@ -973,7 +974,7 @@
                                     Margin="0,40,0,0">
                             <TextBlock Text="📭" FontSize="40"
                                        HorizontalAlignment="Center" Margin="0,0,0,10"/>
-                            <TextBlock Text="監視チャンネルがありません"
+                            <TextBlock Text="チャンネルがありません"
                                        FontSize="15" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        HorizontalAlignment="Center"/>

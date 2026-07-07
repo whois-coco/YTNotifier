@@ -222,10 +222,8 @@ public partial class ApiKeySetupWindow : Window
                 return;
             }
 
-            var keys = SettingsService.Instance.Settings.ApiKeys;
-            if (keys.Count == 0) keys.Add(key);
-            else keys[0] = key;
-            ApiKeyService.Save(SettingsService.Instance.ConfDir, keys);
+            SettingsService.Instance.Settings.ApiKey = key;
+            ApiKeyService.Save(SettingsService.Instance.ConfDir, key);
             SettingsService.Instance.SaveSettings();
             AppLogger.Log(LogMsg.ApiKeyChanged);
             DiscardStepImages();
@@ -252,8 +250,7 @@ public partial class ApiKeySetupWindow : Window
         if (success)
         {
             AppLogger.Log(LogMsg.SettingBackupImported, null, System.IO.Path.GetFileName(dlg.FileName));
-            var apiKeys = Services.SettingsService.Instance.Settings.ApiKeys;
-            var apiKey = apiKeys.Count > 0 ? apiKeys[0] : string.Empty;
+            var apiKey = Services.SettingsService.Instance.Settings.ApiKey;
             if (!string.IsNullOrEmpty(apiKey))
             {
                 ApiKeySaved = true;

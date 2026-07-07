@@ -33,8 +33,8 @@ public static class GeminiSummaryService
         _                                      => ex.Message
     };
 
-    /// <summary>動画IDを元に Gemini API へ要約をリクエストする</summary>
-    public static async Task<GeminiSummaryResult> SummarizeVideoAsync(string apiKey, string videoId)
+    /// <summary>動画IDを元に Gemini API へ要約をリクエストする（onChunk が渡された場合、受信済みテキストを都度通知する）</summary>
+    public static async Task<GeminiSummaryResult> SummarizeVideoAsync(string apiKey, string videoId, Action<string>? onChunk = null)
     {
         try
         {
@@ -53,13 +53,26 @@ public static class GeminiSummaryService
                     {
                         FileUri  = $"{YouTubeConstants.WatchUrlBase}{videoId}",
                         MimeType = AppConstants.GeminiVideoMimeType
-                    }},
+                    }, VideoMetadata = new VideoMetadata { Fps = AppConstants.GeminiAudioOnlyFps } },
                     new() { Text = AppConstants.GeminiSummaryPromptText }
                 }
             };
 
-            var response = await client.Models.GenerateContentAsync(AppConstants.GeminiModelName, content);
-            var text = response.Text;
+            var config = new GenerateContentConfig
+            {
+                ThinkingConfig  = new ThinkingConfig { ThinkingBudget = AppConstants.GeminiThinkingBudget },
+                MediaResolution = MediaResolution.MediaResolutionLow
+            };
+
+            var textBuilder = new System.Text.StringBuilder();
+            await foreach (var chunk in client.Models.GenerateContentStreamAsync(AppConstants.GeminiModelName, content, config))
+            {
+                if (string.IsNullOrEmpty(chunk.Text)) continue;
+                textBuilder.Append(chunk.Text);
+                onChunk?.Invoke(textBuilder.ToString());
+            }
+
+            var text = textBuilder.ToString();
             if (string.IsNullOrWhiteSpace(text))
                 return new GeminiSummaryResult { Success = false, ErrorMessage = "要約結果が空でした" };
 
