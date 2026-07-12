@@ -97,8 +97,7 @@
                                            VerticalAlignment="Center"/>
                                 <ComboBox x:Name="UpcomingLeadCombo"
                                           Grid.Column="1" Width="110"
-                                          Style="{StaticResource ModernComboBox}"
-                                          SelectionChanged="UpcomingLeadCombo_Changed">
+                                          Style="{StaticResource ModernComboBox}">
                                     <ComboBoxItem Content="5分前"  Tag="5"  Style="{StaticResource ModernComboBoxItem}"/>
                                     <ComboBoxItem Content="10分前" Tag="10" Style="{StaticResource ModernComboBoxItem}"/>
                                     <ComboBoxItem Content="15分前" Tag="15" Style="{StaticResource ModernComboBoxItem}"/>

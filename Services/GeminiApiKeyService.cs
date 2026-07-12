@@ -22,9 +22,10 @@ public static class GeminiApiKeyService
     private const int Iterations = 10000;
     private const int KeySize    = 32; // AES-256
     private const int IvSize     = 16;
+    private const string FileGeminiApiKey = "gemini_api_key.dat";
 
     private static string GetPath(string confDir)
-        => Path.Combine(confDir, AppConstants.FileGeminiApiKey);
+        => Path.Combine(confDir, FileGeminiApiKey);
 
     private static byte[] DeriveKey()
     {

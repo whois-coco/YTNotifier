@@ -23,7 +23,22 @@ public partial class ApiKeySetupWindow : Window
 
     private const int IntroStepIndex      = 0;
     private const int FirstImageStepIndex = 1;
-    private const int KeyInputStepIndex   = AppConstants.ApiKeySetupStepCount - 1;
+
+    private const string GoogleCloudConsoleUrl = "https://console.cloud.google.com/";
+
+    /// <summary>初回APIキー設定ウィザードの手順画像取得元URL（step1.png〜step{StepByStepImageCount}.png）</summary>
+    private const string StepByStepImageBaseUrl = "https://raw.githubusercontent.com/whois-coco/YTNotifier/main/stepbystep/";
+
+    /// <summary>初回APIキー設定ウィザードの総ステップ数</summary>
+    private const int ApiKeySetupStepCount = 20;
+
+    /// <summary>初回APIキー設定ウィザードの手順画像枚数</summary>
+    private const int StepByStepImageCount = 18;
+
+    /// <summary>APIキー有効性テスト用の固定チャンネルID（日本のYouTube公式チャンネル）</summary>
+    private const string ApiKeyTestChannelId = "UCrXUsMBcfTVqwAS7DKg9C0Q";
+
+    private const int KeyInputStepIndex   = ApiKeySetupStepCount - 1;
 
     private static readonly string[] _stepDescriptions =
     {
@@ -73,7 +88,7 @@ public partial class ApiKeySetupWindow : Window
         new() { Timeout = TimeSpan.FromSeconds(10) };
 
     private int _currentStep = IntroStepIndex;
-    private readonly BitmapImage?[] _stepImages = new BitmapImage?[AppConstants.StepByStepImageCount];
+    private readonly BitmapImage?[] _stepImages = new BitmapImage?[StepByStepImageCount];
 
     public ApiKeySetupWindow()
     {
@@ -88,7 +103,7 @@ public partial class ApiKeySetupWindow : Window
 
     private async Task LoadStepImagesAsync()
     {
-        var tasks = Enumerable.Range(0, AppConstants.StepByStepImageCount)
+        var tasks = Enumerable.Range(0, StepByStepImageCount)
             .Select(LoadSingleStepImageAsync);
         await Task.WhenAll(tasks);
     }
@@ -97,7 +112,7 @@ public partial class ApiKeySetupWindow : Window
     {
         try
         {
-            var url   = $"{AppConstants.StepByStepImageBaseUrl}step{index + 1}.png";
+            var url   = $"{StepByStepImageBaseUrl}step{index + 1}.png";
             var bytes = await _http.GetByteArrayAsync(url);
             var bmp   = new BitmapImage();
             using (var stream = new MemoryStream(bytes))
@@ -141,14 +156,14 @@ public partial class ApiKeySetupWindow : Window
 
         BackButton.Visibility = _currentStep == IntroStepIndex    ? Visibility.Collapsed : Visibility.Visible;
         NextButton.Visibility = _currentStep == KeyInputStepIndex ? Visibility.Collapsed : Visibility.Visible;
-        ProgressText.Text = $"{_currentStep + 1}/{AppConstants.ApiKeySetupStepCount}";
+        ProgressText.Text = $"{_currentStep + 1}/{ApiKeySetupStepCount}";
 
         if (_currentStep == KeyInputStepIndex) ApiKeyBox.Focus();
     }
 
     private void NextButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentStep < AppConstants.ApiKeySetupStepCount - 1)
+        if (_currentStep < ApiKeySetupStepCount - 1)
         {
             _currentStep++;
             RenderStep();
@@ -172,7 +187,7 @@ public partial class ApiKeySetupWindow : Window
 
     private void OpenConsoleButton_Click(object sender, RoutedEventArgs e)
     {
-        Process.Start(new ProcessStartInfo(AppConstants.GoogleCloudConsoleUrl) { UseShellExecute = true });
+        Process.Start(new ProcessStartInfo(GoogleCloudConsoleUrl) { UseShellExecute = true });
     }
 
     private void DiscardStepImages()
@@ -209,7 +224,7 @@ public partial class ApiKeySetupWindow : Window
         SaveButton.IsEnabled = false;
         try
         {
-            var result = await new YouTubeApiClient().TestApiKeyAsync(key, YouTubeConstants.ApiKeyTestChannelId);
+            var result = await new YouTubeApiClient().TestApiKeyAsync(key, ApiKeyTestChannelId);
             if (result == ApiKeyTestResult.Invalid)
             {
                 System.Windows.MessageBox.Show("入力されたAPIキーは無効です。キーをご確認のうえ、再度入力してください。");

@@ -40,6 +40,19 @@ public partial class MainWindow : System.Windows.Window
     private const string ConnectTestUrl                  = "http://www.msftconnecttest.com/connecttest.txt";
     private const int    ConnectTestTimeoutMilliseconds  = 3000;
 
+    private const int    ExpandedTotalWidth      = SidebarExpandedWidth  + ContentWidthNormal;  // 500
+    private const int    WindowMinHeight         = 500;
+    private bool _isOffline             = false;
+
+    // HttpClient はソケット枯渇を避けるため使い回す（ネットワーク疎通確認用。アイコン取得は ImageCacheService 側で使用）
+    private static readonly System.Net.Http.HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
+
+    // Win32
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+    private const int WM_NCLBUTTONDOWN = 0xA1;
+    private const int HTCAPTION        = 2;
+
     // ===== 監視ステータス =====
     private void UpdateMonitorStatus(bool isRunning)
     {

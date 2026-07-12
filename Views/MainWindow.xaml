@@ -245,7 +245,7 @@
         <Grid Grid.Row="1">
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="SidebarColumn" Width="110" MinWidth="0"/>
-            <ColumnDefinition x:Name="ContentColumn" Width="400" MinWidth="400"/>
+            <ColumnDefinition x:Name="ContentColumn" Width="380" MinWidth="380"/>
         </Grid.ColumnDefinitions>
 
         <!-- ===== サイドバー ===== -->
@@ -344,7 +344,7 @@
                                             </Viewbox>
                                             <TextBlock x:Name="StatusText"
                                                        Text="停止中"
-                                                       FontSize="12" FontWeight="SemiBold"
+                                                       FontSize="12" FontWeight="Bold"
                                                        Foreground="{DynamicResource SidebarTextBrush}"
                                                        VerticalAlignment="Center"
                                                        Margin="6,0,0,0"
@@ -396,7 +396,7 @@
                                                           Data="m6 17 5-5-5-5 M13 17l5-5-5-5"/>
                                                 </Canvas>
                                             </Viewbox>
-                                            <TextBlock x:Name="LblSidebarToggleButton" Text="折り畳む" FontSize="12"
+                                            <TextBlock x:Name="LblSidebarToggleButton" Text="折り畳む" FontSize="12" FontWeight="Bold"
                                                        Foreground="{DynamicResource SidebarTextBrush}"
                                                        VerticalAlignment="Center" Margin="10,0,0,0"
                                                        Visibility="Collapsed"/>
@@ -432,7 +432,7 @@
                                                 <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent" Data="M 9 12 A 3 3 0 0 0 15 12 A 3 3 0 0 0 9 12"/>
                                                 </Canvas>
                                             </Viewbox>
-                                            <TextBlock x:Name="LblNavSettings" Text="設定" FontSize="12"
+                                            <TextBlock x:Name="LblNavSettings" Text="設定" FontSize="12" FontWeight="Bold"
                                                        Foreground="{DynamicResource SidebarTextBrush}"
                                                        VerticalAlignment="Center" Margin="10,0,0,0"
                                                        Visibility="Collapsed"/>
@@ -505,7 +505,7 @@
                                                           Data="m2 2 20 20"/>
                                                 </Canvas>
                                             </Viewbox>
-                                            <TextBlock x:Name="LblMuteButton" Text="通知ミュート" FontSize="12"
+                                            <TextBlock x:Name="LblMuteButton" Text="通知ミュート" FontSize="12" FontWeight="Bold"
                                                        Foreground="{DynamicResource SidebarTextBrush}"
                                                        VerticalAlignment="Center" Margin="10,0,0,0"
                                                        Visibility="Collapsed"/>
@@ -537,7 +537,7 @@
                                                 <Path x:Name="ShrinkIcon" Stroke="{DynamicResource ErrorBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent" Visibility="Collapsed" Data="M15 15 L21 21 M15 15 L15 19.8 M15 15 L19.8 15 M9 19.8 L9 15 M9 15 L4.2 15 M9 15 L3 21 M15 4.2 L15 9 M15 9 L19.8 9 M15 9 L21 3 M9 4.2 L9 9 M9 9 L4.2 9 M9 9 L3 3"/>
                                                 </Canvas>
                                             </Viewbox>
-                                            <TextBlock x:Name="LblCompactModeButton" Text="コンパクト" FontSize="12"
+                                            <TextBlock x:Name="LblCompactModeButton" Text="コンパクト" FontSize="12" FontWeight="Bold"
                                                        Foreground="{DynamicResource SidebarTextBrush}"
                                                        VerticalAlignment="Center" Margin="10,0,0,0"
                                                        Visibility="Collapsed"/>
@@ -567,7 +567,7 @@
                                                 <Path x:Name="PinIcon" Data="M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent"/>
                                                 </Canvas>
                                             </Viewbox>
-                                            <TextBlock x:Name="LblPinButton" Text="ピン留め" FontSize="12"
+                                            <TextBlock x:Name="LblPinButton" Text="ピン留め" FontSize="12" FontWeight="Bold"
                                                        Foreground="{DynamicResource SidebarTextBrush}"
                                                        VerticalAlignment="Center" Margin="10,0,0,0"
                                                        Visibility="Collapsed"/>
@@ -586,11 +586,6 @@
 
                 <!-- ナビゲーション -->
                 <StackPanel DockPanel.Dock="Top" Margin="0,8,0,0">
-                    <Border x:Name="MenuLabelWrap" Visibility="Visible">
-                        <TextBlock x:Name="MenuLabel" Text="MENU" FontSize="9" FontWeight="Bold"
-                                   Foreground="{DynamicResource SidebarSectionBrush}"
-                                   Margin="16,0,0,6"/>
-                    </Border>
                     <Button x:Name="NavWatch"
                             Height="44"
                             Background="Transparent"
@@ -632,11 +627,10 @@
                                                            FontSize="9" FontWeight="Bold"
                                                            Foreground="White" TextAlignment="Center"
                                                            HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center"
-                                                           Margin="0,0,0,3"/>
+                                                           VerticalAlignment="Center"/>
                                             </Border>
                                         </Grid>
-                                        <TextBlock x:Name="LblNavWatch" Text="チャンネル" FontSize="12"
+                                        <TextBlock x:Name="LblNavWatch" Text="チャンネル" FontSize="12" FontWeight="Bold"
                                                    Foreground="{DynamicResource SidebarTextBrush}"
                                                    VerticalAlignment="Center" Margin="10,0,0,0"
                                                    Visibility="Collapsed"/>
@@ -651,8 +645,7 @@
                                                    FontSize="11" FontWeight="Bold"
                                                    Foreground="White" TextAlignment="Center"
                                                    HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   Margin="0,0,0,4"/>
+                                                   VerticalAlignment="Center"/>
                                     </Border>
                                 </Grid>
                                 <ControlTemplate.Triggers>
@@ -688,7 +681,7 @@
                                                 <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent" Data="M12 3a6 6 0 0 0 9 9 9 9 0 0 1-9-9Z"/>
                                             </Canvas>
                                         </Viewbox>
-                                        <TextBlock x:Name="LblNavDormant" Text="休眠" FontSize="12"
+                                        <TextBlock x:Name="LblNavDormant" Text="休眠" FontSize="12" FontWeight="Bold"
                                                    Foreground="{DynamicResource SidebarTextBrush}"
                                                    VerticalAlignment="Center" Margin="10,0,0,0"
                                                    Visibility="Collapsed"/>
@@ -766,13 +759,13 @@
                 </Border>
 
                 <!-- チャンネル検索 + ボタン群 -->
-                <Grid x:Name="SearchAreaGrid" DockPanel.Dock="Top" Margin="0,0,0,10" Height="32">
+                <Grid x:Name="SearchAreaGrid" DockPanel.Dock="Top" Margin="0,0,0,10" Height="44">
                     <!-- ボタン行（通常時表示） -->
                     <DockPanel>
                         <!-- 右端：チャンネル追加 -->
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource IconButton}"
-                                Width="32" Height="32"
+                                Width="44" Height="44"
                                 VerticalAlignment="Center"
                                 Foreground="{DynamicResource TextSecondaryBrush}"
                                 ToolTip="チャンネルを追加"
@@ -794,8 +787,8 @@
                         <Button x:Name="FilterButton"
                                 DockPanel.Dock="Left"
                                 Style="{StaticResource IconButton}"
-                                Width="32" Height="32"
-                                Margin="36,0,0,0"
+                                Width="44" Height="44"
+                                Margin="48,0,0,0"
                                 VerticalAlignment="Center"
                                 Foreground="{DynamicResource TextSecondaryBrush}"
                                 ToolTip="ステータスで絞り込み"
@@ -821,7 +814,7 @@
                         <Button x:Name="InlineCheckButton"
                                 DockPanel.Dock="Left"
                                 Style="{StaticResource IconButton}"
-                                Width="32" Height="32"
+                                Width="44" Height="44"
                                 Margin="4,0,0,0"
                                 VerticalAlignment="Center"
                                 Foreground="{DynamicResource TextSecondaryBrush}"
@@ -856,7 +849,7 @@
                         <Button x:Name="EditModeButton"
                                 DockPanel.Dock="Left"
                                 Style="{StaticResource IconButton}"
-                                Width="32" Height="32"
+                                Width="44" Height="44"
                                 Margin="4,0,0,0"
                                 VerticalAlignment="Center"
                                 Foreground="{DynamicResource TextSecondaryBrush}"
@@ -877,14 +870,14 @@
                     <!-- 収縮・展開する検索バー（ボタン群の上にオーバーレイ） -->
                     <Border x:Name="SearchBorder"
                             Panel.ZIndex="1"
-                            Width="32" HorizontalAlignment="Left"
+                            Width="44" HorizontalAlignment="Left"
                             ClipToBounds="True"
                             Background="Transparent"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="0" CornerRadius="4">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="32"/>
+                                <ColumnDefinition Width="44"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
@@ -1065,12 +1058,12 @@
                 </Border>
 
                 <!-- 検索 + ボタン群 -->
-                <Grid x:Name="DormantSearchAreaGrid" DockPanel.Dock="Top" Margin="0,0,0,10" Height="32">
+                <Grid x:Name="DormantSearchAreaGrid" DockPanel.Dock="Top" Margin="0,0,0,10" Height="44">
                     <DockPanel>
                         <!-- 右端：チャンネル追加 -->
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource IconButton}"
-                                Width="32" Height="32"
+                                Width="44" Height="44"
                                 VerticalAlignment="Center"
                                 Foreground="{DynamicResource TextSecondaryBrush}"
                                 ToolTip="チャンネルを追加"
@@ -1092,8 +1085,8 @@
                         <Button x:Name="DormantEditModeButton"
                                 DockPanel.Dock="Left"
                                 Style="{StaticResource IconButton}"
-                                Width="32" Height="32"
-                                Margin="36,0,0,0"
+                                Width="44" Height="44"
+                                Margin="48,0,0,0"
                                 VerticalAlignment="Center"
                                 Foreground="{DynamicResource TextSecondaryBrush}"
                                 ToolTip="編集"
@@ -1113,14 +1106,14 @@
                     <!-- 収縮・展開する検索バー -->
                     <Border x:Name="DormantSearchBorder"
                             Panel.ZIndex="1"
-                            Width="32" HorizontalAlignment="Left"
+                            Width="44" HorizontalAlignment="Left"
                             ClipToBounds="True"
                             Background="Transparent"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="0" CornerRadius="4">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="32"/>
+                                <ColumnDefinition Width="44"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>

@@ -16,11 +16,54 @@ public class MonitorService : IDisposable
 
     private const int GracePeriodIntervalSeconds = 30;
 
+    /// <summary>ライブ/プレミア配信開始後に継続チェックする猶予回数</summary>
+    private const int GracePeriodAttempts = 10;
+
+    /// <summary>待機所通知タイミングのデフォルト（leadMinutes=0 の既存データ向けフォールバック）</summary>
+    private const int DefaultUpcomingLeadMinutes = 5;
+
+    /// <summary>チャンネルごとの upcoming キュー上限数</summary>
+    private const int MaxPendingQueueSize = 10;
+
+    /// <summary>チャンネルカードに「配信予定」を表示する開始予定時刻までの上限（分）</summary>
+    private const int UpcomingDisplayWindowMinutes = 30;
+
+    /// <summary>pending ライブ/プレミアエントリの破棄閾値（日数）。ScheduledAt がこの日数以上前のエントリは起動時に削除する</summary>
+    private const int StalePendingEntryDays = 14;
+
+    /// <summary>ライブ配信中・プレミア公開中の終了検知チェック間隔（分）</summary>
+    private const int ActiveLiveCheckIntervalMinutes = 15;
+
+    /// <summary>スケジューラーで想定外エラーが発生した際の再試行待機時間（秒）</summary>
+    private const int SchedulerErrorRetryDelaySeconds = 30;
+
+    private static readonly TimeZoneInfo _pacificTz =
+        TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
+
+    /// <summary>次回クォータリセット時刻をローカル時刻で返す（DST対応）</summary>
+    private static DateTime GetNextQuotaResetTime()
+    {
+        var nowPt          = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _pacificTz);
+        var nextMidnightPt = DateTime.SpecifyKind(nowPt.Date.AddDays(1), DateTimeKind.Unspecified);
+        var nextMidnightUtc = TimeZoneInfo.ConvertTimeToUtc(nextMidnightPt, _pacificTz);
+        return TimeZoneInfo.ConvertTimeFromUtc(nextMidnightUtc, TimeZoneInfo.Local);
+    }
+
+    /// <summary>本日の太平洋時間深夜0時（クォータリセット時刻）をローカル時刻で返す（DST対応）</summary>
+    private static DateTime GetTodayQuotaResetTime()
+    {
+        var nowPt           = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _pacificTz);
+        var todayMidnightPt = DateTime.SpecifyKind(nowPt.Date, DateTimeKind.Unspecified);
+        var todayMidnightUtc = TimeZoneInfo.ConvertTimeToUtc(todayMidnightPt, _pacificTz);
+        return TimeZoneInfo.ConvertTimeFromUtc(todayMidnightUtc, TimeZoneInfo.Local);
+    }
+
     private readonly IYouTubeApiClient _youtubeClient;
     private Timer? _timer;
     private volatile bool _isRunning      = false;
     private int           _isChecking     = 0;
     private volatile bool _isStartupCheck = true;
+    private volatile bool _startupIsNewDay = false;
     private readonly object _quotaLock = new();
     private DateTime?       _quotaSuspendedUntil = null;
 
@@ -29,9 +72,15 @@ public class MonitorService : IDisposable
     private CancellationTokenSource      _schedulerCts  = new();
     private Task?                        _schedulerTask;
 
+    // PendingLives/PendingPremieres/ActiveLives/ActivePremieres の構造変更（Add/Remove/Clear系）と、
+    // 監視スレッド外（スケジューラー・UI・状態保存）からの列挙・参照を直列化するロック。
+    // 注意: このロックを保持したまま SettingsService のロックを取るメソッド（Save系/UpdateChannel系）を呼ばないこと
+    internal static readonly object _pendingListLock = new();
+
     public event Action<bool>? StatusChanged;
     public event Action? ChannelUpdated;
     public event Action? QuotaUpdated;
+    public event Action? NetworkCheckRequested;
 
     public void NotifyQuotaUpdated() => QuotaUpdated?.Invoke();
     public bool IsRunning => _isRunning;
@@ -69,6 +118,7 @@ public class MonitorService : IDisposable
         var today    = now.ToString("yyyy-MM-dd");
         var settings = SettingsService.Instance.Settings;
         var isNewDay = settings.LastStartupCheckDate != today;
+        _startupIsNewDay = isNewDay;
 
         foreach (var ch in SettingsService.Instance.GetEnabledChannelsSnapshot())
         {
@@ -148,27 +198,36 @@ public class MonitorService : IDisposable
     {
         while (_isRunning)
         {
-            var action = FindNextSchedulerAction();
-
             CancellationToken token;
             lock (_schedulerLock) token = _schedulerCts.Token;
 
-            if (action == null)
+            try
             {
-                try { await Task.Delay(Timeout.Infinite, token); }
+                var action = FindNextSchedulerAction();
+
+                if (action == null)
+                {
+                    try { await Task.Delay(Timeout.Infinite, token); }
+                    catch (OperationCanceledException) { }
+                    continue;
+                }
+
+                var delay = action.ActionAt - DateTime.Now;
+                if (delay > TimeSpan.Zero)
+                {
+                    try { await Task.Delay(delay, token); }
+                    catch (OperationCanceledException) { continue; }
+                }
+
+                if (!_isRunning) break;
+                await ExecuteSchedulerActionAsync(action);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log(LogMsg.SchedulerError, null, ex.Message);
+                try { await Task.Delay(TimeSpan.FromSeconds(SchedulerErrorRetryDelaySeconds), token); }
                 catch (OperationCanceledException) { }
-                continue;
             }
-
-            var delay = action.ActionAt - DateTime.Now;
-            if (delay > TimeSpan.Zero)
-            {
-                try { await Task.Delay(delay, token); }
-                catch (OperationCanceledException) { continue; }
-            }
-
-            if (!_isRunning) break;
-            await ExecuteSchedulerActionAsync(action);
         }
     }
 
@@ -183,7 +242,10 @@ public class MonitorService : IDisposable
             var leadMin = ch.UpcomingNotifyLeadMinutes;
             var mode    = ch.UpcomingNotifyMode;
 
-            foreach (var entry in ch.PendingLives.Concat(ch.PendingPremieres).ToList())
+            List<PendingVideoEntry> entries;
+            lock (_pendingListLock)
+                entries = ch.PendingLives.Concat(ch.PendingPremieres).ToList();
+            foreach (var entry in entries)
             {
                 if (!entry.ScheduledAt.HasValue) continue;
                 if (entry.GraceRemaining != 0) continue; // 集中監視中は除外
@@ -193,7 +255,7 @@ public class MonitorService : IDisposable
                 // 待機所通知アクション（LiveStartOnly 以外）
                 if (!entry.UpcomingNotified && mode != UpcomingNotifyMode.LiveStartOnly)
                 {
-                    var effectiveLead = leadMin > 0 ? leadMin : AppConstants.DefaultUpcomingLeadMinutes;
+                    var effectiveLead = leadMin > 0 ? leadMin : DefaultUpcomingLeadMinutes;
                     var notifyAt = scheduledAt.AddMinutes(-effectiveLead);
                     if (notifyAt < now) notifyAt = now;
                     if (earliest == null || notifyAt < earliest.ActionAt)
@@ -218,8 +280,12 @@ public class MonitorService : IDisposable
 
         if (action.IsNotification)
         {
-            bool isPendingLive    = ch.PendingLives.Any(p => p.VideoId == entry.VideoId);
-            bool isPendingPremiere = ch.PendingPremieres.Any(p => p.VideoId == entry.VideoId);
+            bool isPendingLive, isPendingPremiere;
+            lock (_pendingListLock)
+            {
+                isPendingLive     = ch.PendingLives.Any(p => p.VideoId == entry.VideoId);
+                isPendingPremiere = ch.PendingPremieres.Any(p => p.VideoId == entry.VideoId);
+            }
             if (!isPendingLive && !isPendingPremiere) return;
             if (entry.UpcomingNotified) return;
 
@@ -251,12 +317,16 @@ public class MonitorService : IDisposable
         }
         else
         {
-            bool isPendingLive    = ch.PendingLives.Any(p => p.VideoId == entry.VideoId);
-            bool isPendingPremiere = ch.PendingPremieres.Any(p => p.VideoId == entry.VideoId);
+            bool isPendingLive, isPendingPremiere;
+            lock (_pendingListLock)
+            {
+                isPendingLive     = ch.PendingLives.Any(p => p.VideoId == entry.VideoId);
+                isPendingPremiere = ch.PendingPremieres.Any(p => p.VideoId == entry.VideoId);
+            }
             if (!isPendingLive && !isPendingPremiere) return;
             if (entry.GraceRemaining != 0) return;
 
-            entry.GraceRemaining = AppConstants.GracePeriodAttempts;
+            entry.GraceRemaining = GracePeriodAttempts;
             ch.NextCheckAt       = DateTime.Now;
             SettingsService.Instance.UpdateChannelSilent(ch);
             AppLogger.Log(LogMsg.SchedulerGracePeriodStarted, ch.ChannelName, entry.VideoId);
@@ -289,11 +359,12 @@ public class MonitorService : IDisposable
             }
             var allChannels = SettingsService.Instance.GetEnabledChannelsSnapshot();
 
-            // 定時全巡回（クォータリセット＋1分の1分間のみ、太平洋時間基準で1日1回）
+            // 定時全巡回（クォータリセット＋1分以降の最初のチェックで実行、起動時チェック中を除く、太平洋時間基準で1日1回）
             var pacificDayKey   = AppConstants.GetQuotaDayKey();
-            var triggerTime     = AppConstants.GetTodayQuotaResetTime().AddMinutes(1);
+            var triggerTime     = GetTodayQuotaResetTime().AddMinutes(1);
             var isDailyFullScan = false;
-            if (now.Hour == triggerTime.Hour && now.Minute == triggerTime.Minute
+            if (now >= triggerTime
+                && !_isStartupCheck
                 && SettingsService.Instance.Settings.LastDailyFullScanDate != pacificDayKey)
             {
                 SettingsService.Instance.Settings.LastDailyFullScanDate = pacificDayKey;
@@ -301,6 +372,21 @@ public class MonitorService : IDisposable
                 foreach (var ch in allChannels)
                     ch.NextCheckAt = DateTime.MinValue;
                 isDailyFullScan = true;
+            }
+
+            // BAN／自主削除判定のトリガー：定時全チェック、または当日初回の起動時チェック（どちらか早い方で1日1回）
+            var runBanScan = isDailyFullScan || (_isStartupCheck && _startupIsNewDay);
+            if (runBanScan && !isDailyFullScan)
+            {
+                // 起動時トリガー経由の場合、同日の定時全チェック（太平洋時間トリガー）での二重実行を防ぐ
+                SettingsService.Instance.Settings.LastDailyFullScanDate = pacificDayKey;
+                SettingsService.Instance.SaveSettings();
+            }
+
+            if (runBanScan)
+            {
+                await CheckChannelsAliveAsync(allChannels, LogMsg.ChannelListBanCheckStarted, LogMsg.ChannelListBanCheckCompleted, LogMsg.ChannelListAllAlive);
+                await CheckChannelsAliveAsync(SettingsService.Instance.Channels.Where(c => c.IsDormant).ToList(), LogMsg.DormantListBanCheckStarted, LogMsg.DormantListBanCheckCompleted, LogMsg.DormantListAllAlive);
             }
 
             var channels = forceAll
@@ -312,7 +398,7 @@ public class MonitorService : IDisposable
             var label = isDailyFullScan ? "定時全チェック" : _isStartupCheck ? "起動時チェック" : "定期チェック";
             AppLogger.Log(LogMsg.CheckStarted, null, label, channels.Count, allChannels.Count);
 
-            var tasks = channels.Select(ch => CheckChannelAsync(ch, isDailyFullScan)).ToList();
+            var tasks = channels.Select(ch => CheckChannelAsync(ch)).ToList();
             await Task.WhenAll(tasks);
 
             _isStartupCheck = false;
@@ -325,6 +411,46 @@ public class MonitorService : IDisposable
         return true;
     }
 
+    private async Task CheckChannelsAliveAsync(
+        List<ChannelInfo> channels,
+        LogMsg startedMsg, LogMsg completedMsg, LogMsg allAliveMsg)
+    {
+        // TestDataPath 設定済み（デバッグ用テストチャンネル）は実API呼び出し対象から除外する
+        var targets = channels.Where(c => string.IsNullOrEmpty(c.TestDataPath)).ToList();
+        if (targets.Count == 0) return;
+
+        AppLogger.Log(startedMsg);
+
+        Dictionary<string, bool> banResults;
+        try
+        {
+            banResults = await _youtubeClient.CheckChannelsBannedAsync(
+                targets.Select(c => c.ChannelId).ToList());
+        }
+        catch (QuotaExceededException)
+        {
+            HandleQuotaExceeded();
+            return;
+        }
+
+        var changed = false;
+        foreach (var channel in targets)
+        {
+            if (!banResults.TryGetValue(channel.ChannelId, out var isBanned)) continue;
+            if (isBanned == channel.IsBanned) continue;
+
+            changed = true;
+            channel.IsBanned = isBanned;
+            SettingsService.Instance.UpdateChannelSilent(channel);
+            ChannelUpdated?.Invoke();
+            AppLogger.Log(isBanned ? LogMsg.ChannelBanned : LogMsg.ChannelBanRecovered, channel.ChannelName);
+        }
+
+        if (!changed)
+            AppLogger.Log(allAliveMsg);
+        AppLogger.Log(completedMsg);
+    }
+
     // 新着ループの通知候補を1つのレコードにまとめる
     // Video にはプレミア公開後の動画も含む（NotifyVideo で一元管理）
     private record NewVideoNotifyCandidates(
@@ -334,7 +460,7 @@ public class MonitorService : IDisposable
         bool LatestLiveSeen,
         bool LatestPremiereSeen);
 
-    private async Task CheckChannelAsync(ChannelInfo channel, bool isDailyFullScan)
+    private async Task CheckChannelAsync(ChannelInfo channel)
     {
         bool quotaExceeded = false;
         try
@@ -344,6 +470,8 @@ public class MonitorService : IDisposable
             List<VideoInfo> videos;
             List<VideoInfo> pendingTransitioned;
             List<VideoInfo> allScanned;
+            List<VideoInfo> allScannedBasic;
+            bool playlistEmpty;
 
             var debugSvc = !string.IsNullOrEmpty(channel.TestDataPath)
                 ? DebugServiceLoader.GetService()
@@ -354,6 +482,8 @@ public class MonitorService : IDisposable
                 ActivateGracePeriods(channel);
                 (videos, pendingTransitioned) = debugSvc.GetNextCheckResult(channel);
                 allScanned = new List<VideoInfo>();
+                allScannedBasic = new List<VideoInfo>();
+                playlistEmpty = false;
             }
             else
             {
@@ -366,32 +496,59 @@ public class MonitorService : IDisposable
                     .Concat(channel.ActivePremieres.Select(p => p.VideoId))
                     .ToList();
 
-                (videos, pendingTransitioned, allScanned) = await _youtubeClient.CheckLatestVideosAsync(
+                (videos, pendingTransitioned, allScanned, allScannedBasic, playlistEmpty) = await _youtubeClient.CheckLatestVideosAsync(
                     channel.ChannelId, channel.LastCheckedVideoId,
-                    channel.UploadsPlaylistId, pendingIds);
+                    channel.UploadsPlaylistId, pendingIds,
+                    lastVideoPublishedAt: channel.LastCheckedVideoPublishedAt);
             }
 
-            // 定時全チェックのみ: チャンネルBAN／自主削除の判定・回復判定
-            if (isDailyFullScan && debugSvc == null)
+            // 表示中の最新動画が削除・非公開になった/復帰したかの判定
+            // allScannedBasic は新着有無に関わらず取得済み・追加API呼び出しなしのため毎回のチェックで実行
+            if (!string.IsNullOrEmpty(channel.LatestVideoId) && allScannedBasic.Count > 0)
             {
-                var banResult = await _youtubeClient.CheckChannelBannedAsync(channel.ChannelId);
-                if (banResult.HasValue && banResult.Value != channel.IsBanned)
+                var scannedEntry = allScannedBasic.FirstOrDefault(v => v.VideoId == channel.LatestVideoId);
+                if (!channel.LatestVideoDeleted && scannedEntry == null)
                 {
-                    channel.IsBanned = banResult.Value;
+                    channel.LatestVideoDeleted = true;
                     SettingsService.Instance.UpdateChannelSilent(channel);
                     ChannelUpdated?.Invoke();
-                    AppLogger.Log(banResult.Value ? LogMsg.ChannelBanned : LogMsg.ChannelBanRecovered, channel.ChannelName);
+                    AppLogger.Log(LogMsg.LatestVideoDeletedDetected, channel.ChannelName, channel.LatestVideoId);
+                }
+                else if (channel.LatestVideoDeleted && scannedEntry != null && channel.LatestKind.HasValue)
+                {
+                    // 動画IDを変えずに再公開されたケース。新着候補に差し込み、既存の新着処理
+                    // （通知送信・タイトル更新・LatestVideoDeleted 解除・カーソル更新）にそのまま乗せる。
+                    videos.Add(new VideoInfo
+                    {
+                        VideoId         = scannedEntry.VideoId,
+                        Title           = scannedEntry.Title,
+                        ThumbnailUrl    = scannedEntry.ThumbnailUrl,
+                        PublishedAt     = scannedEntry.PublishedAt,
+                        Kind            = channel.LatestKind.Value,
+                        IsUpcoming      = false,
+                        IsCurrentlyLive = false
+                    });
+                    AppLogger.Log(LogMsg.LatestVideoRecovered, channel.ChannelName, channel.LatestVideoId);
                 }
             }
 
-            // 定時全チェックのみ: 表示中の最新動画が削除されたかの判定
-            if (isDailyFullScan && !string.IsNullOrEmpty(channel.LatestVideoId) && allScanned.Count > 0
-                && !channel.LatestVideoDeleted && !allScanned.Any(v => v.VideoId == channel.LatestVideoId))
+            // 過去に動画があったチャンネルの投稿が全て確認できなくなった/復帰したかの判定
+            if (!string.IsNullOrEmpty(channel.LastCheckedVideoId))
             {
-                channel.LatestVideoDeleted = true;
-                SettingsService.Instance.UpdateChannelSilent(channel);
-                ChannelUpdated?.Invoke();
-                AppLogger.Log(LogMsg.LatestVideoDeletedDetected, channel.ChannelName, channel.LatestVideoId);
+                if (!channel.NoVideosFound && playlistEmpty)
+                {
+                    channel.NoVideosFound = true;
+                    SettingsService.Instance.UpdateChannelSilent(channel);
+                    ChannelUpdated?.Invoke();
+                    AppLogger.Log(LogMsg.NoVideosDetected, channel.ChannelName);
+                }
+                else if (channel.NoVideosFound && allScannedBasic.Count > 0)
+                {
+                    channel.NoVideosFound = false;
+                    SettingsService.Instance.UpdateChannelSilent(channel);
+                    ChannelUpdated?.Invoke();
+                    AppLogger.Log(LogMsg.NoVideosRecovered, channel.ChannelName);
+                }
             }
 
             if (videos.Count == 0 && pendingTransitioned.Count == 0)
@@ -404,13 +561,16 @@ public class MonitorService : IDisposable
                     var prevLiveCount     = channel.ActiveLives.Count;
                     var prevPremiereCount = channel.ActivePremieres.Count;
 
-                    channel.ActiveLives.Clear();
-                    channel.ActivePremieres.Clear();
-                    foreach (var v in allScanned.Where(v => v.IsCurrentlyLive))
+                    lock (_pendingListLock)
                     {
-                        var entry = new YTNotifier.Models.PendingVideoEntry { VideoId = v.VideoId, Title = v.Title, ThumbnailUrl = v.ThumbnailUrl };
-                        if (v.Kind == VideoKind.Live)          channel.ActiveLives.Add(entry);
-                        else if (v.Kind == VideoKind.Premiere) channel.ActivePremieres.Add(entry);
+                        channel.ActiveLives.Clear();
+                        channel.ActivePremieres.Clear();
+                        foreach (var v in allScanned.Where(v => v.IsCurrentlyLive))
+                        {
+                            var entry = new YTNotifier.Models.PendingVideoEntry { VideoId = v.VideoId, Title = v.Title, ThumbnailUrl = v.ThumbnailUrl, ActualStartTime = v.ActualStartTime };
+                            if (v.Kind == VideoKind.Live)          channel.ActiveLives.Add(entry);
+                            else if (v.Kind == VideoKind.Premiere) channel.ActivePremieres.Add(entry);
+                        }
                     }
 
                     if (channel.ActiveLives.Count != prevLiveCount || channel.ActivePremieres.Count != prevPremiereCount)
@@ -430,13 +590,16 @@ public class MonitorService : IDisposable
             // ① ActiveLives / ActivePremieres をスキャン結果で上書き
             var liveCountBefore     = channel.ActiveLives.Count;
             var premiereCountBefore = channel.ActivePremieres.Count;
-            channel.ActiveLives.Clear();
-            channel.ActivePremieres.Clear();
-            foreach (var v in allScanned.Where(v => v.IsCurrentlyLive))
+            lock (_pendingListLock)
             {
-                var entry = new YTNotifier.Models.PendingVideoEntry { VideoId = v.VideoId, Title = v.Title, ThumbnailUrl = v.ThumbnailUrl };
-                if (v.Kind == VideoKind.Live)           channel.ActiveLives.Add(entry);
-                else if (v.Kind == VideoKind.Premiere)  channel.ActivePremieres.Add(entry);
+                channel.ActiveLives.Clear();
+                channel.ActivePremieres.Clear();
+                foreach (var v in allScanned.Where(v => v.IsCurrentlyLive))
+                {
+                    var entry = new YTNotifier.Models.PendingVideoEntry { VideoId = v.VideoId, Title = v.Title, ThumbnailUrl = v.ThumbnailUrl, ActualStartTime = v.ActualStartTime };
+                    if (v.Kind == VideoKind.Live)           channel.ActiveLives.Add(entry);
+                    else if (v.Kind == VideoKind.Premiere)  channel.ActivePremieres.Add(entry);
+                }
             }
             if (channel.ActiveLives.Count != liveCountBefore || channel.ActivePremieres.Count != premiereCountBefore)
                 ChannelUpdated?.Invoke();
@@ -464,9 +627,10 @@ public class MonitorService : IDisposable
             // upcoming 動画はカーソルを進めない（公開済み動画が upcoming より古い位置にあっても検出できるよう）
             var cursorVideo = videos.FirstOrDefault(v => !v.IsUpcoming);
             if (cursorVideo != null)
+            {
                 channel.LastCheckedVideoId = cursorVideo.VideoId;
-            if (newCandidates.Video != null)
-                channel.LastVideoId = newCandidates.Video.VideoId;
+                channel.LastCheckedVideoPublishedAt = cursorVideo.PublishedAt;
+            }
 
             SettingsService.Instance.UpdateChannelSilent(channel);
 
@@ -482,7 +646,10 @@ public class MonitorService : IDisposable
             {
                 var best = allScanned.FirstOrDefault(s => transitionedIds.Contains(s.VideoId));
                 if (best != null)
+                {
                     channel.LastCheckedVideoId = best.VideoId;
+                    channel.LastCheckedVideoPublishedAt = best.PublishedAt;
+                }
             }
 
             SettingsService.Instance.UpdateChannelSilent(channel);
@@ -503,11 +670,7 @@ public class MonitorService : IDisposable
         catch (Exception ex)
         {
             AppLogger.Log(LogMsg.CheckFailed, channel.ChannelName, ex.Message);
-            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
-            {
-                if (System.Windows.Application.Current?.MainWindow is YTNotifier.Views.MainWindow mw)
-                    mw.CheckNetworkState();
-            });
+            NetworkCheckRequested?.Invoke();
         }
         finally
         {
@@ -517,7 +680,7 @@ public class MonitorService : IDisposable
             // クォータ超過後にリセット時刻到達で _quotaSuspendedUntil が別スレッドにクリアされた場合も
             // 次回リセット時刻まで待機させる（直前のリセット時刻はすでに過ぎているので +1日分を取得）
             if (quotaExceeded && !suspended.HasValue)
-                suspended = AppConstants.GetNextQuotaResetTime();
+                suspended = GetNextQuotaResetTime();
             RevertExpiredPendingEntries(channel, channel.LastCheckedAt);
             channel.NextCheckAt = suspended
                 ?? (hadGrace ? channel.LastCheckedAt.AddSeconds(GracePeriodIntervalSeconds) : CalcNextCheckAt(channel, channel.LastCheckedAt));
@@ -538,33 +701,36 @@ public class MonitorService : IDisposable
         }
 
         // 旧スカラーフィールド → PendingLives/Premieres マイグレーション（初回のみ）
-        var staleCutoff = DateTime.Now.AddDays(-AppConstants.StalePendingEntryDays);
-        channel.PendingLives.RemoveAll(p => !p.ScheduledAt.HasValue || p.ScheduledAt.Value < staleCutoff);
-        channel.PendingPremieres.RemoveAll(p => !p.ScheduledAt.HasValue || p.ScheduledAt.Value < staleCutoff);
+        var staleCutoff = DateTime.Now.AddDays(-StalePendingEntryDays);
+        lock (_pendingListLock)
+        {
+            channel.PendingLives.RemoveAll(p => !p.ScheduledAt.HasValue || p.ScheduledAt.Value < staleCutoff);
+            channel.PendingPremieres.RemoveAll(p => !p.ScheduledAt.HasValue || p.ScheduledAt.Value < staleCutoff);
 
-        if (channel.PendingLives.Count == 0 && channel.NextLiveCheckAt.HasValue
-            && !string.IsNullOrEmpty(channel.LastLiveId))
-        {
-            channel.PendingLives.Add(new PendingVideoEntry
+            if (channel.PendingLives.Count == 0 && channel.NextLiveCheckAt.HasValue
+                && !string.IsNullOrEmpty(channel.LastLiveId))
             {
-                VideoId        = channel.LastLiveId,
-                ScheduledAt    = channel.NextLiveCheckAt,
-                GraceRemaining = channel.LiveGraceRemaining
-            });
-            channel.NextLiveCheckAt    = null;
-            channel.LiveGraceRemaining = 0;
-            channel.LastLiveId         = string.Empty;
-        }
-        if (channel.PendingPremieres.Count == 0 && channel.NextPremiereCheckAt.HasValue
-            && !string.IsNullOrEmpty(channel.LastPremiereId))
-        {
-            channel.PendingPremieres.Add(new PendingVideoEntry
+                channel.PendingLives.Add(new PendingVideoEntry
+                {
+                    VideoId        = channel.LastLiveId,
+                    ScheduledAt    = channel.NextLiveCheckAt,
+                    GraceRemaining = channel.LiveGraceRemaining
+                });
+                channel.NextLiveCheckAt    = null;
+                channel.LiveGraceRemaining = 0;
+                channel.LastLiveId         = string.Empty;
+            }
+            if (channel.PendingPremieres.Count == 0 && channel.NextPremiereCheckAt.HasValue
+                && !string.IsNullOrEmpty(channel.LastPremiereId))
             {
-                VideoId     = channel.LastPremiereId,
-                ScheduledAt = channel.NextPremiereCheckAt
-            });
-            channel.NextPremiereCheckAt = null;
-            channel.LastPremiereId      = string.Empty;
+                channel.PendingPremieres.Add(new PendingVideoEntry
+                {
+                    VideoId     = channel.LastPremiereId,
+                    ScheduledAt = channel.NextPremiereCheckAt
+                });
+                channel.NextPremiereCheckAt = null;
+                channel.LastPremiereId      = string.Empty;
+            }
         }
     }
 
@@ -580,8 +746,8 @@ public class MonitorService : IDisposable
                 && entry.ScheduledAt.Value <= DateTime.Now
                 && entry.GraceRemaining == 0)
             {
-                entry.GraceRemaining = AppConstants.GracePeriodAttempts;
-                AppLogger.Log(LogMsg.GracePeriodStarted, channel.ChannelName, entry.VideoId, AppConstants.GracePeriodAttempts);
+                entry.GraceRemaining = GracePeriodAttempts;
+                AppLogger.Log(LogMsg.GracePeriodStarted, channel.ChannelName, entry.VideoId, GracePeriodAttempts);
             }
         }
     }
@@ -672,32 +838,35 @@ public class MonitorService : IDisposable
     {
         var scheduled = video.ScheduledStartTime?.ToLocalTime();
 
-        // 既存エントリは情報を更新して終了（日付チェック不要）
-        var existing = list.FirstOrDefault(p => p.VideoId == video.VideoId);
-        if (existing != null)
+        lock (_pendingListLock)
         {
-            existing.ScheduledAt  = scheduled;
-            existing.Title        = video.Title;
-            existing.ThumbnailUrl = video.ThumbnailUrl;
-            AppLogger.Log(LogMsg.UpcomingQueueUpdated, channel.ChannelName,
-                scheduled?.ToString("MM/dd HH:mm") ?? "-", video.Title);
-            return;
-        }
+            // 既存エントリは情報を更新して終了（日付チェック不要）
+            var existing = list.FirstOrDefault(p => p.VideoId == video.VideoId);
+            if (existing != null)
+            {
+                existing.ScheduledAt  = scheduled;
+                existing.Title        = video.Title;
+                existing.ThumbnailUrl = video.ThumbnailUrl;
+                AppLogger.Log(LogMsg.UpcomingQueueUpdated, channel.ChannelName,
+                    scheduled?.ToString("MM/dd HH:mm") ?? "-", video.Title);
+                return;
+            }
 
-        if (list.Count >= YTNotifier.Constants.AppConstants.MaxPendingQueueSize)
-        {
-            AppLogger.Log(LogMsg.UpcomingQueueFull, channel.ChannelName, video.Title);
-            return;
+            if (list.Count >= MaxPendingQueueSize)
+            {
+                AppLogger.Log(LogMsg.UpcomingQueueFull, channel.ChannelName, video.Title);
+                return;
+            }
+            list.Add(new YTNotifier.Models.PendingVideoEntry
+            {
+                VideoId      = video.VideoId,
+                ScheduledAt  = scheduled,
+                Title        = video.Title,
+                ThumbnailUrl = video.ThumbnailUrl,
+            });
+            AppLogger.Log(LogMsg.UpcomingQueued, channel.ChannelName,
+                scheduled?.ToString("MM/dd HH:mm") ?? "-", video.Title);
         }
-        list.Add(new YTNotifier.Models.PendingVideoEntry
-        {
-            VideoId      = video.VideoId,
-            ScheduledAt  = scheduled,
-            Title        = video.Title,
-            ThumbnailUrl = video.ThumbnailUrl,
-        });
-        AppLogger.Log(LogMsg.UpcomingQueued, channel.ChannelName,
-            scheduled?.ToString("MM/dd HH:mm") ?? "-", video.Title);
 
         // スケジューラーに新規キュー追加を通知
         Instance.WakeUpScheduler();
@@ -709,7 +878,8 @@ public class MonitorService : IDisposable
     /// </summary>
     private static VideoInfo? ResolveLiveCandidate(ChannelInfo channel, VideoInfo video)
     {
-        channel.PendingLives.RemoveAll(p => p.VideoId == video.VideoId);
+        lock (_pendingListLock)
+            channel.PendingLives.RemoveAll(p => p.VideoId == video.VideoId);
 
         if (channel.UpcomingNotifyMode == YTNotifier.Models.UpcomingNotifyMode.WaitingRoomOnly)
         {
@@ -725,7 +895,8 @@ public class MonitorService : IDisposable
     /// </summary>
     private static VideoInfo? ResolvePremiereCandidate(ChannelInfo channel, VideoInfo video)
     {
-        channel.PendingPremieres.RemoveAll(p => p.VideoId == video.VideoId);
+        lock (_pendingListLock)
+            channel.PendingPremieres.RemoveAll(p => p.VideoId == video.VideoId);
 
         if (channel.UpcomingNotifyMode == YTNotifier.Models.UpcomingNotifyMode.WaitingRoomOnly)
         {
@@ -763,7 +934,8 @@ public class MonitorService : IDisposable
 
             if (wasLive)
             {
-                channel.PendingLives.RemoveAll(p => p.VideoId == video.VideoId);
+                lock (_pendingListLock)
+                    channel.PendingLives.RemoveAll(p => p.VideoId == video.VideoId);
 
                 if (newCandidates.LatestLiveSeen)
                 {
@@ -787,7 +959,8 @@ public class MonitorService : IDisposable
             }
             else if (wasPremiere)
             {
-                channel.PendingPremieres.RemoveAll(p => p.VideoId == video.VideoId);
+                lock (_pendingListLock)
+                    channel.PendingPremieres.RemoveAll(p => p.VideoId == video.VideoId);
 
                 if (newCandidates.LatestPremiereSeen)
                 {
@@ -890,8 +1063,11 @@ public class MonitorService : IDisposable
             }
         }
 
-        Revert(ch.PendingLives);
-        Revert(ch.PendingPremieres);
+        lock (_pendingListLock)
+        {
+            Revert(ch.PendingLives);
+            Revert(ch.PendingPremieres);
+        }
     }
 
     /// <summary>現在、有効な時間指定スロットの監視ウィンドウ内かどうかを判定する</summary>
@@ -915,7 +1091,7 @@ public class MonitorService : IDisposable
         var globalMins = SettingsService.Instance.Settings.CheckIntervalMinutes;
 
         if (ch.ActiveLives.Count > 0 || ch.ActivePremieres.Count > 0)
-            return now.AddMinutes(AppConstants.ActiveLiveCheckIntervalMinutes);
+            return now.AddMinutes(ActiveLiveCheckIntervalMinutes);
 
         switch (ch.MonitorMode)
         {
@@ -978,6 +1154,99 @@ public class MonitorService : IDisposable
         }
     }
 
+    // ===== チャンネルの「今表示・クリックで開くべき対象」を判定（副作用なし）=====
+    public static ChannelCardStatus ResolveCardStatus(ChannelInfo ch)
+    {
+        var statusWindow = DateTime.Now.AddMinutes(UpcomingDisplayWindowMinutes);
+
+        List<YTNotifier.Models.PendingVideoEntry>  activeLiveEntries;
+        List<YTNotifier.Models.PendingVideoEntry>  activePremiereEntries;
+        YTNotifier.Models.PendingVideoEntry?       pendingLiveDisplay;
+        YTNotifier.Models.PendingVideoEntry?       pendingPremiereDisplay;
+        lock (_pendingListLock)
+        {
+            activeLiveEntries     = ch.NotifyLive  ? ch.ActiveLives.ToList()     : new List<YTNotifier.Models.PendingVideoEntry>();
+            activePremiereEntries = ch.NotifyVideo ? ch.ActivePremieres.ToList() : new List<YTNotifier.Models.PendingVideoEntry>();
+
+            pendingLiveDisplay = ch.NotifyLive
+                ? ch.PendingLives
+                    .Where(p => p.ScheduledAt.HasValue && p.ScheduledAt.Value <= statusWindow)
+                    .OrderBy(p => p.ScheduledAt)
+                    .FirstOrDefault()
+                : null;
+
+            pendingPremiereDisplay = ch.NotifyVideo
+                ? ch.PendingPremieres
+                    .Where(p => p.ScheduledAt.HasValue && p.ScheduledAt.Value <= statusWindow)
+                    .OrderBy(p => p.ScheduledAt)
+                    .FirstOrDefault()
+                : null;
+        }
+
+        var result = new ChannelCardStatus
+        {
+            ActiveLiveEntries       = activeLiveEntries,
+            ActivePremiereEntries   = activePremiereEntries,
+            PendingLiveDisplay      = pendingLiveDisplay,
+            PendingPremiereDisplay  = pendingPremiereDisplay,
+        };
+
+        // ① 進行中（配信中ライブ／公開中プレミア）の中で開始時刻が最も新しいものを優先
+        var activeCombined = activeLiveEntries
+            .Select(e => (Entry: e, Kind: VideoKind.Live))
+            .Concat(activePremiereEntries.Select(e => (Entry: e, Kind: VideoKind.Premiere)))
+            .ToList();
+        if (activeCombined.Count > 0)
+        {
+            var newest = activeCombined
+                .OrderByDescending(x => x.Entry.ActualStartTime ?? DateTime.MinValue)
+                .First();
+            result.ClickTargetVideoId = newest.Entry.VideoId;
+            result.ClickTargetKind    = newest.Kind;
+            return result;
+        }
+
+        // ② 30分以内の予約（ライブ・プレミア）で、早い方（同時刻はライブ優先）
+        if (pendingLiveDisplay != null || pendingPremiereDisplay != null)
+        {
+            if (pendingLiveDisplay != null && pendingPremiereDisplay != null)
+            {
+                if (pendingPremiereDisplay.ScheduledAt < pendingLiveDisplay.ScheduledAt)
+                {
+                    result.ClickTargetVideoId = pendingPremiereDisplay.VideoId;
+                    result.ClickTargetKind    = VideoKind.Premiere;
+                }
+                else
+                {
+                    result.ClickTargetVideoId = pendingLiveDisplay.VideoId;
+                    result.ClickTargetKind    = VideoKind.Live;
+                }
+            }
+            else if (pendingLiveDisplay != null)
+            {
+                result.ClickTargetVideoId = pendingLiveDisplay.VideoId;
+                result.ClickTargetKind    = VideoKind.Live;
+            }
+            else
+            {
+                result.ClickTargetVideoId = pendingPremiereDisplay!.VideoId;
+                result.ClickTargetKind    = VideoKind.Premiere;
+            }
+            return result;
+        }
+
+        // ③ 種別ごとの最新（削除・非公開が確定しているものは対象外）
+        if (!string.IsNullOrEmpty(ch.LatestVideoId) && ch.LatestKind.HasValue && !ch.LatestVideoDeleted && !ch.NoVideosFound)
+        {
+            result.ClickTargetVideoId = ch.LatestVideoId;
+            result.ClickTargetKind    = ch.LatestKind;
+            return result;
+        }
+
+        // ④ 該当なし
+        return result;
+    }
+
     /// <summary>曜日ビットマスク判定 (bit0=Sun..bit6=Sat)</summary>
     private static bool IsSlotDayMatch(int daysMask, DateTime date)
         => (daysMask & (1 << (int)date.DayOfWeek)) != 0;
@@ -1001,7 +1270,7 @@ public class MonitorService : IDisposable
         {
             if (_quotaSuspendedUntil.HasValue) return; // 既に処理済み（複数並列タスクの重複呼び出し防止）
 
-            resumeAt             = AppConstants.GetNextQuotaResetTime();
+            resumeAt             = GetNextQuotaResetTime();
             _quotaSuspendedUntil = resumeAt;
         }
 

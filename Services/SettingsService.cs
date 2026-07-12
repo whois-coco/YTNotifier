@@ -15,8 +15,8 @@ public class SettingsService
     private const string FileCategories = "categories.json";
     private const string FileState      = "state.json";
     private const string FileAutoBackup = "auto_backup.ytbk";
+    private const string FileDormantCategories = "dormant_categories.json";
     private const string SoundsZipPrefix = "Sounds/";
-    private const int    AllDaysMask     = 0b1111111; // 全曜日ビットマスク（bit0=日〜bit6=土）
     private const int    StateWriteIntervalMs = 60 * 60 * 1000; // 1時間
 
     private static readonly Lazy<SettingsService> _lazy = new(() => new SettingsService());
@@ -83,7 +83,7 @@ public class SettingsService
         _configPath             = Path.Combine(confDir, FileConfig);
         _channelsPath           = Path.Combine(confDir, FileChannels);
         _categoriesPath         = Path.Combine(confDir, FileCategories);
-        _dormantCategoriesPath  = Path.Combine(confDir, AppConstants.FileDormantCategories);
+        _dormantCategoriesPath  = Path.Combine(confDir, FileDormantCategories);
         _statePath              = Path.Combine(confDir, FileState);
         _apiKeyPath             = Path.Combine(confDir, AppConstants.FileApiKey);
         _confDir                = confDir;
@@ -178,7 +178,7 @@ public class SettingsService
             using var zip   = new System.IO.Compression.ZipArchive(zipMs,
                 System.IO.Compression.ZipArchiveMode.Read);
 
-            var allowedFiles = new[] { FileConfig, FileChannels, FileCategories, AppConstants.FileDormantCategories, AppConstants.FileApiKey, FileState };
+            var allowedFiles = new[] { FileConfig, FileChannels, FileCategories, FileDormantCategories, AppConstants.FileApiKey, FileState };
 
             foreach (var entry in zip.Entries)
             {
@@ -526,9 +526,12 @@ public class SettingsService
 
     public void SetChannelCategory(string channelId, string? categoryId)
     {
-        var ch = Channels.FirstOrDefault(c => c.ChannelId == channelId);
-        if (ch == null) return;
-        ch.CategoryId = categoryId;
+        lock (_persistLock)
+        {
+            var ch = Channels.FirstOrDefault(c => c.ChannelId == channelId);
+            if (ch == null) return;
+            ch.CategoryId = categoryId;
+        }
         MarkDirty();
     }
 
@@ -611,10 +614,13 @@ public class SettingsService
     private bool CleanupExpiredGraceEntries()
     {
         bool cleaned = false;
-        foreach (var ch in Channels)
+        lock (MonitorService._pendingListLock)
         {
-            if (ch.PendingLives.RemoveAll(p => p.GraceRemaining == -1) > 0) cleaned = true;
-            if (ch.PendingPremieres.RemoveAll(p => p.GraceRemaining == -1) > 0) cleaned = true;
+            foreach (var ch in Channels)
+            {
+                if (ch.PendingLives.RemoveAll(p => p.GraceRemaining == -1) > 0) cleaned = true;
+                if (ch.PendingPremieres.RemoveAll(p => p.GraceRemaining == -1) > 0) cleaned = true;
+            }
         }
         return cleaned;
     }
@@ -671,7 +677,7 @@ public class SettingsService
         {
             foreach (var slot in ch.FocusSlots.Where(s => s.SlotMode == MonitorMode.Focus && s.Days == 0))
             {
-                slot.Days = 0b1111111;
+                slot.Days = AppConstants.AllDaysMask;
                 migrated = true;
             }
         }
@@ -832,46 +838,53 @@ public class SettingsService
 
     // ===== state.json 管理 =====
 
-    private static ChannelState ExtractStateFromChannel(ChannelInfo ch) => new()
+    private static ChannelState ExtractStateFromChannel(ChannelInfo ch)
     {
-        LastCheckedVideoId     = ch.LastCheckedVideoId,
-        LastVideoId            = ch.LastVideoId,
-        NextCheckAt            = ch.NextCheckAt,
-        LastCheckedAt          = ch.LastCheckedAt,
-        UploadsPlaylistId      = ch.UploadsPlaylistId,
-        PendingLives           = ch.PendingLives,
-        PendingPremieres       = ch.PendingPremieres,
-        ActiveLives            = ch.ActiveLives,
-        ActivePremieres        = ch.ActivePremieres,
-        LastLiveNotifiedId     = ch.LastLiveNotifiedId,
-        LastPremiereNotifiedId = ch.LastPremiereNotifiedId,
-        LastLiveId             = ch.LastLiveId,
-        LastPremiereId         = ch.LastPremiereId,
-        NextLiveCheckAt        = ch.NextLiveCheckAt,
-        NextPremiereCheckAt    = ch.NextPremiereCheckAt,
-        LiveGraceRemaining     = ch.LiveGraceRemaining,
-        LastVideoTitle         = ch.LastVideoTitle,
-        LastVideoNotifiedAt    = ch.LastVideoNotifiedAt,
-        LastShortNotifiedId    = ch.LastShortNotifiedId,
-        LastShortTitle         = ch.LastShortTitle,
-        LastShortNotifiedAt    = ch.LastShortNotifiedAt,
-        LastLiveNotifiedTitle  = ch.LastLiveNotifiedTitle,
-        LastLiveNotifiedAt     = ch.LastLiveNotifiedAt,
-        LastPremiereNotifiedTitle = ch.LastPremiereNotifiedTitle,
-        LastPremiereNotifiedAt = ch.LastPremiereNotifiedAt,
-        LatestTitle            = ch.LatestTitle,
-        LatestKind             = ch.LatestKind,
-        LatestVideoId          = ch.LatestVideoId,
-        LatestDuration         = ch.LatestDuration,
-        LatestThumbnailUrl     = ch.LatestThumbnailUrl,
-        IsBanned               = ch.IsBanned,
-        LatestVideoDeleted     = ch.LatestVideoDeleted,
-    };
+        lock (MonitorService._pendingListLock)
+        {
+            return new()
+            {
+                LastCheckedVideoId     = ch.LastCheckedVideoId,
+                LastCheckedVideoPublishedAt = ch.LastCheckedVideoPublishedAt,
+                NextCheckAt            = ch.NextCheckAt,
+                LastCheckedAt          = ch.LastCheckedAt,
+                UploadsPlaylistId      = ch.UploadsPlaylistId,
+                PendingLives           = ch.PendingLives.ToList(),
+                PendingPremieres       = ch.PendingPremieres.ToList(),
+                ActiveLives            = ch.ActiveLives.ToList(),
+                ActivePremieres        = ch.ActivePremieres.ToList(),
+                LastLiveNotifiedId     = ch.LastLiveNotifiedId,
+                LastPremiereNotifiedId = ch.LastPremiereNotifiedId,
+                LastLiveId             = ch.LastLiveId,
+                LastPremiereId         = ch.LastPremiereId,
+                NextLiveCheckAt        = ch.NextLiveCheckAt,
+                NextPremiereCheckAt    = ch.NextPremiereCheckAt,
+                LiveGraceRemaining     = ch.LiveGraceRemaining,
+                LastVideoTitle         = ch.LastVideoTitle,
+                LastVideoNotifiedAt    = ch.LastVideoNotifiedAt,
+                LastShortNotifiedId    = ch.LastShortNotifiedId,
+                LastShortTitle         = ch.LastShortTitle,
+                LastShortNotifiedAt    = ch.LastShortNotifiedAt,
+                LastLiveNotifiedTitle  = ch.LastLiveNotifiedTitle,
+                LastLiveNotifiedAt     = ch.LastLiveNotifiedAt,
+                LastPremiereNotifiedTitle = ch.LastPremiereNotifiedTitle,
+                LastPremiereNotifiedAt = ch.LastPremiereNotifiedAt,
+                LatestTitle            = ch.LatestTitle,
+                LatestKind             = ch.LatestKind,
+                LatestVideoId          = ch.LatestVideoId,
+                LatestDuration         = ch.LatestDuration,
+                LatestThumbnailUrl     = ch.LatestThumbnailUrl,
+                IsBanned               = ch.IsBanned,
+                LatestVideoDeleted     = ch.LatestVideoDeleted,
+                NoVideosFound          = ch.NoVideosFound,
+            };
+        }
+    }
 
     private static void ApplyStateToChannel(ChannelInfo ch, ChannelState state)
     {
         ch.LastCheckedVideoId     = state.LastCheckedVideoId;
-        ch.LastVideoId            = state.LastVideoId;
+        ch.LastCheckedVideoPublishedAt = state.LastCheckedVideoPublishedAt;
         ch.NextCheckAt            = state.NextCheckAt;
         ch.LastCheckedAt          = state.LastCheckedAt;
         ch.UploadsPlaylistId      = state.UploadsPlaylistId;
@@ -902,6 +915,7 @@ public class SettingsService
         ch.LatestThumbnailUrl     = state.LatestThumbnailUrl;
         ch.IsBanned               = state.IsBanned;
         ch.LatestVideoDeleted     = state.LatestVideoDeleted;
+        ch.NoVideosFound          = state.NoVideosFound;
     }
 
     private void LoadState()
@@ -961,7 +975,6 @@ public class SettingsService
                         AppState.Channels[channelId] = new ChannelState
                         {
                             LastCheckedVideoId     = item["lastCheckedVideoId"]?.ToString() ?? "",
-                            LastVideoId            = item["lastVideoId"]?.ToString() ?? "",
                             NextCheckAt            = item["nextCheckAt"]?.ToObject<DateTime>() ?? DateTime.MinValue,
                             LastCheckedAt          = item["lastCheckedAt"]?.ToObject<DateTime>() ?? DateTime.MinValue,
                             UploadsPlaylistId      = item["uploadsPlaylistId"]?.ToString() ?? "",

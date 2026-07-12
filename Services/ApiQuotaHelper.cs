@@ -20,6 +20,9 @@ public static class ApiQuotaHelper
     public const int    QuotaWarnLowThresholdPct  = 85;    // この%以上で低警告色
     public const int    MinutesPerDay            = 1_440;
 
+    /// <summary>チェック間隔の推奨候補（分）</summary>
+    private static readonly int[] CheckIntervalCandidates = { 1, 5, 10, 30, 60 };
+
     /// <summary>1日の推定消費ユニット数を計算する</summary>
     public static int EstimateDailyUnits(int intervalMinutes, int channelCount)
     {
@@ -44,7 +47,7 @@ public static class ApiQuotaHelper
         if (daily <= DailyLimit) return (true, intervalMinutes);
 
         // 推奨間隔を候補から探す（小さい順に試して収まる最小値を返す）
-        var candidates = AppConstants.CheckIntervalCandidates;
+        var candidates = CheckIntervalCandidates;
         foreach (var candidate in candidates)
         {
             if (EstimateDailyUnitsForChannels(candidate, channelList) <= DailyLimit)
@@ -66,7 +69,7 @@ public static class ApiQuotaHelper
         if (maxChecks <= 0) return (false, 60);
 
         var minInterval = (int)Math.Ceiling((double)MinutesPerDay / maxChecks);
-        var candidates   = AppConstants.CheckIntervalCandidates;
+        var candidates   = CheckIntervalCandidates;
         var recommended  = candidates.FirstOrDefault(c => c >= minInterval);
         return (false, recommended == 0 ? 60 : recommended);
     }

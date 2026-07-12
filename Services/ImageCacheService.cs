@@ -12,6 +12,7 @@ namespace YTNotifier.Services;
 public static class ImageCacheService
 {
     private const string DirThumbCache = "thumbcache";
+    private const string DirIcons      = "icons";
 
     /// <summary>アイコンキャッシュの件数上限（MainWindow の旧 IconCacheMaxEntries を踏襲）</summary>
     private const int IconCacheMaxEntries = 300;
@@ -132,7 +133,7 @@ public static class ImageCacheService
     {
         foreach (var dir in new[]
         {
-            Path.Combine(appDataDir, AppConstants.DirIcons),
+            Path.Combine(appDataDir, DirIcons),
             Path.Combine(appDataDir, DirThumbCache),
         })
         {

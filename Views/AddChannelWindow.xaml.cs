@@ -70,7 +70,8 @@ public partial class AddChannelWindow : Window
         {
             Content = "（未設定）", Tag = null
         });
-        foreach (var cat in svc.Categories.OrderBy(c => c.SortOrder))
+        var categories = _isDormant ? svc.DormantCategories : svc.Categories;
+        foreach (var cat in categories.OrderBy(c => c.SortOrder))
         {
             CategoryComboBox.Items.Add(new System.Windows.Controls.ComboBoxItem
             {
@@ -115,15 +116,16 @@ public partial class AddChannelWindow : Window
         var name = NewCategoryInput.Text.Trim();
         if (string.IsNullOrEmpty(name)) return;
 
-        var svc = SettingsService.Instance;
-        if (svc.Categories.Any(c => c.CategoryName.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        var svc        = SettingsService.Instance;
+        var categories = _isDormant ? svc.DormantCategories : svc.Categories;
+        if (categories.Any(c => c.CategoryName.Equals(name, StringComparison.OrdinalIgnoreCase)))
         {
             NewCategoryInput.SelectAll();
             NewCategoryInput.Focus();
             return;
         }
 
-        var cat = svc.AddCategory(name);
+        var cat = _isDormant ? svc.AddDormantCategory(name) : svc.AddCategory(name);
         AppLogger.Log(LogMsg.CategoryAdded, null, name);
         NewCategoryPanel.Visibility = Visibility.Collapsed;
         NewCategoryInput.Text       = "";
@@ -245,6 +247,14 @@ public partial class AddChannelWindow : Window
                 BuildDetailTabUI();
                 SelectDetailTab(0);
                 ExpandedArea.Visibility = Visibility.Visible;
+
+                CheckTargetPanel.IsEnabled = !_isDormant;
+                CheckTargetPanel.Opacity   = _isDormant ? 0.4 : 1.0;
+                CheckTargetPanel.ToolTip   = _isDormant ? "休眠リストでは種別ごとの監視を行わないため設定できません" : null;
+
+                DetailExpander.IsEnabled = !_isDormant;
+                DetailExpander.Opacity   = _isDormant ? 0.4 : 1.0;
+                DetailExpander.ToolTip   = _isDormant ? "休眠リストでは種別ごとの監視を行わないため設定できません" : null;
             }
         }
         catch (Exception ex)
@@ -435,7 +445,7 @@ public partial class AddChannelWindow : Window
     private static UIElement BuildAddWindowKindIcon(string label, bool active)
     {
         var color = active
-            ? Brushes.White
+            ? (Brush)System.Windows.Application.Current.Resources["TextOnColorBrush"]
             : (Brush)System.Windows.Application.Current.Resources["TextMutedBrush"];
 
         if (label == "Short")

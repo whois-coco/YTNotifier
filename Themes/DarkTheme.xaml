@@ -34,6 +34,7 @@
     <Color x:Key="SidebarStatusBgColor">#1E293B</Color>
     <Color x:Key="SidebarActiveTextColor">#FFFFFF</Color>
     <Color x:Key="SidebarTitleColor">#FFFFFF</Color>
+    <Color x:Key="TextOnColorColor">#FFFFFF</Color>
 
     <SolidColorBrush x:Key="BackgroundBrush"      Color="{StaticResource BackgroundColor}"/>
     <SolidColorBrush x:Key="SurfaceBrush"         Color="{StaticResource SurfaceColor}"/>
@@ -67,6 +68,7 @@
     <SolidColorBrush x:Key="SidebarStatusBgBrush"   Color="{StaticResource SidebarStatusBgColor}"/>
     <SolidColorBrush x:Key="SidebarActiveTextBrush" Color="{StaticResource SidebarActiveTextColor}"/>
     <SolidColorBrush x:Key="SidebarTitleBrush"      Color="{StaticResource SidebarTitleColor}"/>
+    <SolidColorBrush x:Key="TextOnColorBrush"       Color="{StaticResource TextOnColorColor}"/>
 
     <!-- 種別トグル -->
     <!-- 種別ピル（LatestTitle 表示） -->

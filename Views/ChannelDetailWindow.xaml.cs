@@ -11,6 +11,7 @@ using Color       = System.Windows.Media.Color;
 using Orientation = System.Windows.Controls.Orientation;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using VerticalAlignment   = System.Windows.VerticalAlignment;
+using YTNotifier.Constants;
 using YTNotifier.Models;
 using YTNotifier.Services;
 
@@ -18,12 +19,9 @@ namespace YTNotifier.Views;
 
 public partial class ChannelDetailWindow : Window
 {
-    private const int AllDaysMask = 0b1111111; // 全曜日ビットマスク（bit0=日〜bit6=土）
-
     private readonly ChannelInfo _channel;
     private readonly List<FocusTabPanel> _tabPanels = new();
     private int _selectedTab = 0;
-    private bool _syncingKind = false;
     private readonly bool _origNotifyVideo;
     private readonly bool _origNotifyShort;
     private readonly bool _origNotifyLive;
@@ -62,8 +60,7 @@ public partial class ChannelDetailWindow : Window
             SlotLowFreqIntervalMinutes = s.SlotLowFreqIntervalMinutes,
         }).ToList();
 
-        // 通知方法ドロップダウン初期選択（_tabPanels 未構築中のイベント発火を抑制）
-        _syncingKind = true;
+        // 通知方法ドロップダウン初期選択
         SelectComboByTag(UpcomingNotifyModeCombo, channel.UpcomingNotifyMode switch
         {
             UpcomingNotifyMode.LiveStartOnly => "LiveStartOnly",
@@ -72,7 +69,6 @@ public partial class ChannelDetailWindow : Window
         });
         SelectComboByTag(UpcomingLeadCombo, channel.UpcomingNotifyLeadMinutes > 0 ? channel.UpcomingNotifyLeadMinutes.ToString() : "10");
         UpdateLeadRowVisibility();
-        _syncingKind = false;
 
         // 監視設定タブ初期化：既存モードをスロット形式に変換
         List<FocusSlot> slots;
@@ -176,7 +172,6 @@ public partial class ChannelDetailWindow : Window
             {
                 SetTabBorderStyle(tab, tab.NavBorder!.Tag is int t && t == _selectedTab);
                 UpdateEstimate();
-                SyncKindToChannel();
             };
             tab.OnModeChanged = () =>
             {
@@ -284,9 +279,6 @@ public partial class ChannelDetailWindow : Window
         }
     }
 
-    // null（グローバルに従う）を維持するか、明示的な値を返す
-    // 元が null でトグルがグローバル値と同じまま → null を維持
-    // それ以外 → 明示的な true/false
     // ===== ドロップダウン操作ヘルパー =====
     private static void SelectComboByTag(ComboBox combo, string tag)
     {
@@ -331,15 +323,6 @@ public partial class ChannelDetailWindow : Window
     private void UpcomingNotifyModeCombo_Changed(object sender, SelectionChangedEventArgs e)
     {
         UpdateLeadRowVisibility();
-        SyncKindToChannel();
-    }
-
-    private void UpcomingLeadCombo_Changed(object sender, SelectionChangedEventArgs e)
-        => SyncKindToChannel();
-
-    private void SyncKindToChannel()
-    {
-        if (_syncingKind) return;
     }
 
     private void RevertAndClose()
@@ -586,7 +569,7 @@ public partial class ChannelDetailWindow : Window
     private static string BuildFocusDesc(FocusSlot slot)
     {
         const string dayChars = "日月火水木金土";
-        var daysStr = slot.Days == AllDaysMask
+        var daysStr = slot.Days == AppConstants.AllDaysMask
             ? "全曜日"
             : string.Concat(dayChars.Where((_, i) => (slot.Days & (1 << i)) != 0));
         var intervalLabel = slot.IntervalMinutes == 0 ? "30秒" : $"{slot.IntervalMinutes}分";

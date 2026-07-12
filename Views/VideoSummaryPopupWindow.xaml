@@ -32,7 +32,7 @@
                 <!-- サムネイル -->
                 <Border x:Name="ThumbnailBorder" CornerRadius="6" Margin="0,0,0,12"
                         Visibility="Collapsed" ClipToBounds="True">
-                    <Image x:Name="ThumbnailImage" Stretch="UniformToFill" MaxHeight="200"/>
+                    <Image x:Name="ThumbnailImage" Stretch="Uniform" MaxHeight="200"/>
                 </Border>
 
                 <!-- チャンネル情報 -->
@@ -45,14 +45,18 @@
                 </StackPanel>
 
                 <!-- 種別 + タイトル -->
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                    <Border x:Name="KindPill" CornerRadius="3" Padding="4,1,4,1" Margin="0,0,6,0"
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border x:Name="KindPill" Grid.Column="0" CornerRadius="3" Padding="4,1,4,1" Margin="0,0,6,0"
                             VerticalAlignment="Top">
                         <TextBlock x:Name="KindPillText" FontSize="12"/>
                     </Border>
-                    <TextBlock x:Name="TitleText" FontSize="13" TextWrapping="Wrap"
+                    <TextBlock x:Name="TitleText" Grid.Column="1" FontSize="13" TextWrapping="Wrap"
                                Foreground="{DynamicResource TextPrimaryBrush}"/>
-                </StackPanel>
+                </Grid>
 
                 <!-- 動画時間 -->
                 <TextBlock x:Name="DurationText" FontSize="12" Margin="0,0,0,12"
@@ -76,7 +80,7 @@
                                    Foreground="{DynamicResource TextPrimaryBrush}"/>
                         <TextBlock x:Name="SummaryDetailText" FontSize="12" Margin="0,6,0,0"
                                    TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
                     </StackPanel>
                 </StackPanel>
             </StackPanel>

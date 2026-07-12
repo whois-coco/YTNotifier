@@ -19,6 +19,18 @@ public static class NotificationService
     private const string DirResources = "Resources";
     private const string FileAppIcon  = "app.png";
 
+    /// <summary>トースト通知用画像の一時保存先ディレクトリ名（%TEMP% 配下）</summary>
+    private const string DirToastTempImages = "YTNotifier_ToastImages";
+
+    /// <summary>トースト通知用サムネイル一時ファイルの拡張子</summary>
+    private const string ToastThumbnailTempExtension = ".jpg";
+
+    /// <summary>トースト通知用アイコン一時ファイルの拡張子</summary>
+    private const string ToastIconTempExtension = ".png";
+
+    /// <summary>トースト通知用一時画像ファイルの削除待機時間（ミリ秒）。通知プラットフォームの画像読込猶予</summary>
+    private const int ToastTempImageCleanupDelayMs = 10000;
+
     private static string ToFileUri(string path) => "file:///" + path.Replace("\\", "/");
 
     private static readonly string ExeDir =
@@ -32,7 +44,7 @@ public static class NotificationService
         new() { Timeout = TimeSpan.FromSeconds(5) };
 
     private static readonly string ToastTempImageDir =
-        Path.Combine(Path.GetTempPath(), AppConstants.DirToastTempImages);
+        Path.Combine(Path.GetTempPath(), DirToastTempImages);
 
     private static async Task<string?> DownloadToTempFileAsync(string url, string extension)
     {
@@ -49,7 +61,7 @@ public static class NotificationService
 
     private static void ScheduleTempFileCleanup(string path)
     {
-        _ = Task.Delay(AppConstants.ToastTempImageCleanupDelayMs).ContinueWith(_ =>
+        _ = Task.Delay(ToastTempImageCleanupDelayMs).ContinueWith(_ =>
         {
             try { File.Delete(path); } catch { }
         });
@@ -92,6 +104,9 @@ public static class NotificationService
     // トースト通知クリック処理の登録
     // ============================================================
 
+    /// <summary>トーストクリック時の動画オープン処理（View 側が起動時に設定する）</summary>
+    public static Func<ChannelInfo, string?, Task>? OpenVideoFromToast { get; set; }
+
     /// <summary>トースト通知クリックハンドラを登録する（起動時に1回呼ぶ）</summary>
     public static void RegisterToastActivation()
     {
@@ -123,7 +138,8 @@ public static class NotificationService
                 var toastUrl = !string.IsNullOrEmpty(toastVideoId)
                     ? YouTubeConstants.WatchUrlBase + toastVideoId
                     : null;
-                await YTNotifier.Views.MainWindow.OpenChannelLatestVideoFromToastAsync(ch, toastUrl);
+                if (OpenVideoFromToast != null)
+                    await OpenVideoFromToast(ch, toastUrl);
             }
             catch (Exception ex) { AppLogger.Log(LogMsg.NotifyFailed, null, ex.Message); }
         });
@@ -161,7 +177,7 @@ public static class NotificationService
                 // 表示直前だけ一時フォルダへダウンロードし、表示後に削除する
                 if (!string.IsNullOrEmpty(videoThumbnailUrl))
                 {
-                    var heroPath = await DownloadToTempFileAsync(videoThumbnailUrl, AppConstants.ToastThumbnailTempExtension).ConfigureAwait(false);
+                    var heroPath = await DownloadToTempFileAsync(videoThumbnailUrl, ToastThumbnailTempExtension).ConfigureAwait(false);
                     if (heroPath != null)
                     {
                         tempFiles.Add(heroPath);
@@ -171,7 +187,7 @@ public static class NotificationService
                 }
                 if (!string.IsNullOrEmpty(channelThumbnailUrl))
                 {
-                    var iconPath = await DownloadToTempFileAsync(channelThumbnailUrl, AppConstants.ToastIconTempExtension).ConfigureAwait(false);
+                    var iconPath = await DownloadToTempFileAsync(channelThumbnailUrl, ToastIconTempExtension).ConfigureAwait(false);
                     if (iconPath != null)
                     {
                         tempFiles.Add(iconPath);
@@ -193,7 +209,7 @@ public static class NotificationService
                 // ─── デフォルト通知 ──────────────────────────────────────
                 if (!string.IsNullOrEmpty(channelThumbnailUrl))
                 {
-                    var iconPath = await DownloadToTempFileAsync(channelThumbnailUrl, AppConstants.ToastIconTempExtension).ConfigureAwait(false);
+                    var iconPath = await DownloadToTempFileAsync(channelThumbnailUrl, ToastIconTempExtension).ConfigureAwait(false);
                     if (iconPath != null)
                     {
                         tempFiles.Add(iconPath);

@@ -36,6 +36,15 @@ namespace YTNotifier.Views;
 
 public partial class MainWindow : System.Windows.Window
 {
+    private const int    WindowMinWidth          = CompactTotalWidth; // コンパクト幅を下限とする
+    private const string BackupFileFilterSave    = "YTNotifierバックアップ (*.ytbk)|*.ytbk";
+
+    // コンパクトモード
+    private bool   _preCompactSidebarCollapsed = false;
+    private bool   _applyingCompactMode        = false;
+
+    private int    _selectedApiKeySlotIndex = 0;
+
     // ===== 設定ハンドラ =====
     private void SaveApiKey_Click(object sender, RoutedEventArgs e)
     {
@@ -107,7 +116,7 @@ public partial class MainWindow : System.Windows.Window
         SaveApiKeyButton.Content = saved ? "変更" : "保存";
         SetDynamicBrush(SaveApiKeyButton, Button.BackgroundProperty, saved ? "SurfaceElevatedBrush" : "PrimaryBrush");
         if (saved) SetDynamicBrush(SaveApiKeyButton, Button.ForegroundProperty, "TextPrimaryBrush");
-        else       SaveApiKeyButton.Foreground = Brushes.White;
+        else       SetDynamicBrush(SaveApiKeyButton, Button.ForegroundProperty, "TextOnColorBrush");
     }
 
     private void DarkModeToggle_Changed(object sender, RoutedEventArgs e)
@@ -236,7 +245,7 @@ public partial class MainWindow : System.Windows.Window
             }
 
             UpdateCompactModeButton(enabled);
-            if (!skipRefresh) RefreshChannelList();
+            if (!skipRefresh) { RefreshChannelList(); RefreshDormantChannelList(); }
         }
         finally
         {
@@ -316,7 +325,6 @@ public partial class MainWindow : System.Windows.Window
     {
         _sidebarCollapsed       = true;
         SidebarColumn.Width     = new GridLength(SidebarCollapsedWidth);
-        MenuLabel.Text          = " ";
         StatusBadge.Visibility  = Visibility.Visible;
         StatusBadgeColumn.Width = new GridLength(1, GridUnitType.Star);
         SetSidebarLabels(Visibility.Collapsed);
@@ -334,8 +342,6 @@ public partial class MainWindow : System.Windows.Window
     {
         _sidebarCollapsed       = false;
         SidebarColumn.Width     = new GridLength(SidebarExpandedWidth);
-        MenuLabelWrap.Visibility = Visibility.Visible;
-        MenuLabel.Text          = "MENU";
         StatusBadge.Visibility  = Visibility.Visible;
         StatusBadgeColumn.Width = new GridLength(1, GridUnitType.Star);
         SetSidebarLabels(Visibility.Visible);
@@ -356,7 +362,7 @@ public partial class MainWindow : System.Windows.Window
         var dlg = new Microsoft.Win32.SaveFileDialog
         {
             Title = "バックアップの保存先を選択",
-            Filter = AppConstants.BackupFileFilterSave,
+            Filter = BackupFileFilterSave,
             FileName = $"{BackupFilePrefix}{DateTime.Now:yyyyMMdd}.ytbk",
             DefaultExt = ".ytbk",
             InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)

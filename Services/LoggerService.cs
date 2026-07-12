@@ -17,6 +17,7 @@ public class LoggerService
     private readonly string _logDir;
     private readonly object _fileLock = new();
     private string? _debugDbPath;
+    private DateTime _debugDbDate = DateTime.MinValue;
     private readonly object _dbLock = new();
     private const int MaxUiEntries      = 200;
     private const int MaxTodayEntries   = 1000;
@@ -350,6 +351,7 @@ public class LoggerService
     private void InitDebugDb(DateTime date)
     {
         _debugDbPath = Path.Combine(_logDir, $"trace_{date:yyyyMMdd}.db");
+        _debugDbDate = date;
         using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_debugDbPath}");
         conn.Open();
         var cmd = conn.CreateCommand();
@@ -373,7 +375,7 @@ public class LoggerService
         if (_debugDbPath == null) InitDebugDb(entry.Timestamp.Date);
         try
         {
-            if (entry.Timestamp.Date > _currentLogDate)
+            if (entry.Timestamp.Date > _debugDbDate)
                 InitDebugDb(entry.Timestamp.Date);
             lock (_dbLock)
             {

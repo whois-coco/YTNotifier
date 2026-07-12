@@ -106,7 +106,7 @@ public partial class VideoSummaryPopupWindow : Window
 
     private void SetupSummarySection(VideoKind kind, string videoId)
     {
-        if (kind != VideoKind.Video || string.IsNullOrEmpty(videoId)) return;
+        if ((kind != VideoKind.Video && kind != VideoKind.Short && kind != VideoKind.Premiere) || string.IsNullOrEmpty(videoId)) return;
 
         var apiKey = GeminiApiKeyService.Load(SettingsService.Instance.ConfDir);
         if (string.IsNullOrEmpty(apiKey)) return;

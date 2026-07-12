@@ -6,13 +6,9 @@ public interface IYouTubeApiClient
     Task<string?> GetUploadsPlaylistIdAsync(string channelId);
     Task<ApiKeyTestResult> TestApiKeyAsync(string apiKey, string channelId);
     Task<ChannelInfo?> FetchChannelInfoAsync(string input);
-    Task<(List<VideoInfo> Videos, List<VideoInfo> PendingTransitioned, List<VideoInfo> AllScanned)> CheckLatestVideosAsync(
+    Task<(List<VideoInfo> Videos, List<VideoInfo> PendingTransitioned, List<VideoInfo> AllScanned, List<VideoInfo> AllScannedBasic, bool PlaylistEmpty)> CheckLatestVideosAsync(
         string channelId, string lastVideoId,
         string uploadsPlaylistId = "", IReadOnlyList<string>? pendingUpcomingVideoIds = null,
-        int maxResults = 50);
-    Task<(string? videoId, VideoKind kind)?> FetchLatestAllowedVideoAsync(
-        string channelId, bool allowVideo, bool allowShort, bool allowLive,
-        string uploadsPlaylistId = "");
-    Task<Dictionary<string, DateTime?>> GetActualEndTimesAsync(IEnumerable<string> videoIds);
-    Task<bool?> CheckChannelBannedAsync(string channelId);
+        int maxResults = 50, DateTime? lastVideoPublishedAt = null);
+    Task<Dictionary<string, bool>> CheckChannelsBannedAsync(IReadOnlyList<string> channelIds);
 }

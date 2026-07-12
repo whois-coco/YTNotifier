@@ -4,18 +4,30 @@ using YTNotifier.Constants;
 
 namespace YTNotifier.Services;
 
-/// <summary>Gemini 動画要約の結果</summary>
-public class GeminiSummaryResult
-{
-    public bool    Success      { get; init; }
-    public string? Headline     { get; init; }
-    public string? Detail       { get; init; }
-    public string? ErrorMessage { get; init; }
-}
-
-/// <summary>Gemini API（gemini-2.5-flash）を使った動画要約サービス</summary>
+/// <summary>Gemini API（gemini-3.1-flash-lite）を使った動画要約サービス</summary>
 public static class GeminiSummaryService
 {
+    /// <summary>Gemini 要約に使用するモデル名</summary>
+    private const string GeminiModelName = "gemini-3.1-flash-lite";
+
+    /// <summary>Gemini へ動画を渡す際の固定 mime_type</summary>
+    private const string GeminiVideoMimeType = "video/mp4";
+
+    /// <summary>Gemini API リクエストのタイムアウト（分）</summary>
+    private const int GeminiRequestTimeoutMinutes = 3;
+
+    /// <summary>Gemini 要約リクエストのプロンプト（1行目=主題、2行目以降=詳細要約）</summary>
+    private const string GeminiSummaryPromptText =
+        "この動画の内容を要約してください。1行目に「ざっくり言うとどんな動画か」が一言でわかる見出しを、" +
+        "2行目以降に箇条書き（「・」始まり）で3〜5行程度の要約を記載してください。" +
+        "1行目は「要約しますと」「この動画の内容は以下の通りです」のような前置きを含めず、内容そのものを直接書いてください。";
+
+    /// <summary>Gemini 要約リクエストの thinking トークン予算（0=思考無効化で高速化）</summary>
+    private const int GeminiThinkingBudget = 0;
+
+    /// <summary>音声中心の要約実験用：動画フレームのサンプリング頻度（fps）を極小化</summary>
+    private const double GeminiAudioOnlyFps = 0.1;
+
     private static string ClassifyClientError(ClientError ex)
     {
         if (ex.StatusCode == 403) return $"Gemini APIキーが無効または権限がありません（HTTP {ex.StatusCode}）";
@@ -42,7 +54,7 @@ public static class GeminiSummaryService
 
             using var client = new Client(apiKey: apiKey, httpOptions: new HttpOptions
             {
-                Timeout = AppConstants.GeminiRequestTimeoutMinutes * 60 * 1000
+                Timeout = GeminiRequestTimeoutMinutes * 60 * 1000
             });
 
             var content = new Content
@@ -52,20 +64,20 @@ public static class GeminiSummaryService
                     new() { FileData = new FileData
                     {
                         FileUri  = $"{YouTubeConstants.WatchUrlBase}{videoId}",
-                        MimeType = AppConstants.GeminiVideoMimeType
-                    }, VideoMetadata = new VideoMetadata { Fps = AppConstants.GeminiAudioOnlyFps } },
-                    new() { Text = AppConstants.GeminiSummaryPromptText }
+                        MimeType = GeminiVideoMimeType
+                    }, VideoMetadata = new VideoMetadata { Fps = GeminiAudioOnlyFps } },
+                    new() { Text = GeminiSummaryPromptText }
                 }
             };
 
             var config = new GenerateContentConfig
             {
-                ThinkingConfig  = new ThinkingConfig { ThinkingBudget = AppConstants.GeminiThinkingBudget },
+                ThinkingConfig  = new ThinkingConfig { ThinkingBudget = GeminiThinkingBudget },
                 MediaResolution = MediaResolution.MediaResolutionLow
             };
 
             var textBuilder = new System.Text.StringBuilder();
-            await foreach (var chunk in client.Models.GenerateContentStreamAsync(AppConstants.GeminiModelName, content, config))
+            await foreach (var chunk in client.Models.GenerateContentStreamAsync(GeminiModelName, content, config))
             {
                 if (string.IsNullOrEmpty(chunk.Text)) continue;
                 textBuilder.Append(chunk.Text);

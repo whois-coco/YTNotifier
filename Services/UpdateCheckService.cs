@@ -7,6 +7,8 @@ namespace YTNotifier.Services;
 
 internal static class UpdateCheckService
 {
+    private const string GitHubReleasesApiUrl = "https://api.github.com/repos/whois-coco/YTNotifier/releases/latest";
+
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     static UpdateCheckService()
@@ -23,7 +25,7 @@ internal static class UpdateCheckService
     {
         try
         {
-            var json = await _http.GetStringAsync(AppConstants.GitHubReleasesApiUrl);
+            var json = await _http.GetStringAsync(GitHubReleasesApiUrl);
             var tag = JObject.Parse(json)["tag_name"]?.ToString();
             if (string.IsNullOrEmpty(tag)) return null;
 

@@ -39,23 +39,11 @@ public partial class MainWindow : System.Windows.Window
     // ===== 定数 =====
     private const int    SidebarExpandedWidth    = 120;
     private const int    SidebarCollapsedWidth   = 44;
-    private const int    ChannelRowHeight        = 60;
-    private const int    ChannelRowHeightCompact    = 36;
-    private const int    CategoryRowHeight          = 36;
-    private const int    CategoryRowHeightCompact   = 24;
-    private const int    CategoryBadgeSize          = 18;
-    private const double ChannelRowMarginBottom  = 2;
-    private const int    ContentWidthNormal      = 400;
+    private const int    ContentWidthNormal      = 380;
     private const int    ContentWidthCompact     = 286;
-    private const int    ExpandedTotalWidth      = SidebarExpandedWidth  + ContentWidthNormal;  // 480
-    private const int    CollapsedTotalWidth     = SidebarCollapsedWidth + ContentWidthNormal;  // 404
-    private const int    CompactTotalWidth       = SidebarCollapsedWidth + ContentWidthCompact; // 340
-    private const int    WindowMinWidth          = CompactTotalWidth; // コンパクト幅を下限とする
-    private const int    WindowMinHeight         = 500;
-
-    // Short: Lucide zap
-    private const string ShortIconPath =
-        "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z";
+    private const int    CollapsedTotalWidth     = SidebarCollapsedWidth + ContentWidthNormal;  // 424
+    private const int    CompactTotalWidth       = SidebarCollapsedWidth + ContentWidthCompact; // 330
+    private const string GitHubReleasesPageUrl   = "https://github.com/whois-coco/YTNotifier/releases/latest";
 
     // ===== フィールド =====
     private Border?    _navWatchUnreadBadge   = null;
@@ -64,25 +52,10 @@ public partial class MainWindow : System.Windows.Window
     private TextBlock? _navWatchCompactText   = null;
     private bool _sidebarCollapsed      = false;
     private bool _loadingSettings       = false;
-    private bool _isOffline             = false;
     private System.Windows.Threading.DispatcherTimer? _networkCheckTimer;
-    internal bool _editMode             = false;
-    private bool _dormantEditMode       = false;
-    private bool _uncategorizedCollapsed         = false;
-    private bool _dormantUncategorizedCollapsed  = false;
 
     // アイコンダウンロード中フラグ（多重ダウンロード防止）。コレクション操作は全て UI スレッドに集約しスレッド安全を担保
     private static readonly HashSet<string> _iconDownloading = new();
-    // HttpClient はソケット枯渇を避けるため使い回す（ネットワーク疎通確認用。アイコン取得は ImageCacheService 側で使用）
-    private static readonly System.Net.Http.HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
-
-    // D&D
-    private ChannelInfo?  _dragSource      = null;
-    private bool          _isDragging      = false;
-
-    // D&Dアニメーション
-    private int     _animDropIndex  = -1;
-    private Border? _dragSourceRow  = null;
 
     // ミュート
     private bool _isMuted                    = false;
@@ -90,20 +63,8 @@ public partial class MainWindow : System.Windows.Window
     private bool _preMuteNotificationSound   = false;
     private bool _preMuteFlashTaskbar        = false;
 
-    // コンパクトモード
-    private bool   _preCompactSidebarCollapsed = false;
-    private bool   _applyingCompactMode        = false;
-
     // APIキー
     private string _actualApiKey = "";
-    private int    _selectedApiKeySlotIndex = 0;
-    // 検索
-    private string _searchQuery    = "";
-    private bool   _searchExpanded = false;
-
-    // 休眠リスト検索
-    private string _dormantSearchQuery    = "";
-    private bool   _dormantSearchExpanded = false;
 
     // ナビゲーション状態
     private string     _currentNav = "Watch";
@@ -112,13 +73,7 @@ public partial class MainWindow : System.Windows.Window
     private Action<bool>? _onStatusChanged;
     private Action?       _onChannelUpdated;
     private Action?       _onQuotaUpdated;
-
-
-    // Win32
-    [DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-    private const int WM_NCLBUTTONDOWN = 0xA1;
-    private const int HTCAPTION        = 2;
+    private Action?       _onNetworkCheckRequested;
 
     // ===== アイコンキャッシュ =====
     private static BitmapImage? GetCachedIcon(string url, string channelId)
@@ -174,9 +129,12 @@ public partial class MainWindow : System.Windows.Window
         _onStatusChanged  = isRunning => Dispatcher.Invoke(() => UpdateMonitorStatus(isRunning));
         _onChannelUpdated = ()        => Dispatcher.Invoke(RefreshChannelList);
         _onQuotaUpdated   = ()        => Dispatcher.Invoke(UpdateQuotaInfo);
-        MonitorService.Instance.StatusChanged  += _onStatusChanged;
-        MonitorService.Instance.ChannelUpdated += _onChannelUpdated;
-        MonitorService.Instance.QuotaUpdated   += _onQuotaUpdated;
+        _onNetworkCheckRequested = () => Dispatcher.InvokeAsync(() => CheckNetworkState());
+        MonitorService.Instance.StatusChanged         += _onStatusChanged;
+        MonitorService.Instance.ChannelUpdated        += _onChannelUpdated;
+        MonitorService.Instance.QuotaUpdated          += _onQuotaUpdated;
+        MonitorService.Instance.NetworkCheckRequested += _onNetworkCheckRequested;
+        NotificationService.OpenVideoFromToast = OpenChannelLatestVideoFromToastAsync;
     }
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -271,14 +229,14 @@ public partial class MainWindow : System.Windows.Window
                     $"新しいバージョン {latestTag} が公開されています。\nリリースページを開きますか？",
                     "開く", "閉じる") == true)
             {
-                Process.Start(new ProcessStartInfo(AppConstants.GitHubReleasesPageUrl) { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo(GitHubReleasesPageUrl) { UseShellExecute = true });
             }
         });
     }
 
     private void UpdateOpenBtn_Click(object sender, RoutedEventArgs e)
     {
-        Process.Start(new ProcessStartInfo(AppConstants.GitHubReleasesPageUrl) { UseShellExecute = true });
+        Process.Start(new ProcessStartInfo(GitHubReleasesPageUrl) { UseShellExecute = true });
     }
 
     private void InitChannelListDragDrop()
@@ -333,9 +291,10 @@ public partial class MainWindow : System.Windows.Window
         }
         else
         {
-            MonitorService.Instance.StatusChanged  -= _onStatusChanged;
-            MonitorService.Instance.ChannelUpdated -= _onChannelUpdated;
-            MonitorService.Instance.QuotaUpdated   -= _onQuotaUpdated;
+            MonitorService.Instance.StatusChanged         -= _onStatusChanged;
+            MonitorService.Instance.ChannelUpdated        -= _onChannelUpdated;
+            MonitorService.Instance.QuotaUpdated          -= _onQuotaUpdated;
+            MonitorService.Instance.NetworkCheckRequested -= _onNetworkCheckRequested;
             MonitorService.Instance.Stop();
             Application.Current.Shutdown();
         }

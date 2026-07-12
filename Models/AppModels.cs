@@ -1,3 +1,4 @@
+using YTNotifier.Constants;
 using YTNotifier.Services;
 using Newtonsoft.Json;
 
@@ -130,9 +131,9 @@ public class ChannelInfo
     [JsonIgnore]
     public string LastCheckedVideoId { get; set; } = string.Empty;
 
-    /// <summary>UI のクリック機能で「最新動画を開く」ために使用（動画のみ）。state.json で管理</summary>
+    /// <summary>LastCheckedVideoId が指す動画自身の投稿日時（新着検出の基準線）。state.json で管理</summary>
     [JsonIgnore]
-    public string LastVideoId { get; set; } = string.Empty;
+    public DateTime? LastCheckedVideoPublishedAt { get; set; } = null;
 
     // ===== upcoming 待ちリスト（state.json で管理）=====
     private List<PendingVideoEntry> _pendingLives = new();
@@ -246,6 +247,10 @@ public class ChannelInfo
     [JsonIgnore]
     public bool LatestVideoDeleted { get; set; } = false;
 
+    /// <summary>過去に動画が存在したチャンネルの投稿がすべて確認できなくなった場合 true。state.json で管理</summary>
+    [JsonIgnore]
+    public bool NoVideosFound { get; set; } = false;
+
     [JsonProperty("isEnabled")]
     public bool IsEnabled { get; set; } = true;
 
@@ -346,14 +351,14 @@ public class ChannelInfo
     /// 種別ごとの実効監視モードを返す。
     /// スロットベース（MonitorMode.Focus + FocusSlots）の場合はタブ固定順（動画=0/Short=1/ライブ=2）のSlotModeを返す。
     /// </summary>
-    public MonitorMode GetEffectiveModeForKind(YTNotifier.Services.VideoKind kind)
+    public MonitorMode GetEffectiveModeForKind(VideoKind kind)
     {
         if (MonitorMode != MonitorMode.Focus || FocusSlots.Count == 0) return MonitorMode;
         int idx = kind switch
         {
-            YTNotifier.Services.VideoKind.Short => 1,
-            YTNotifier.Services.VideoKind.Live  => 2,
-            _                                   => 0
+            VideoKind.Short => 1,
+            VideoKind.Live  => 2,
+            _               => 0
         };
         return idx < FocusSlots.Count ? FocusSlots[idx].SlotMode : MonitorMode.Normal;
     }
@@ -450,16 +455,31 @@ public class PendingVideoEntry
     /// <summary>開始時刻到達後の猶予チェック残回数</summary>
     [JsonProperty("graceRemaining")]
     public int GraceRemaining { get; set; } = 0;
+
+    /// <summary>配信・公開の実際の開始時刻（ActiveLives/ActivePremieres でのみ使用）</summary>
+    [JsonProperty("actualStartTime")]
+    public DateTime? ActualStartTime { get; set; }
+}
+
+/// <summary>チャンネルの「今表示・クリックで開くべき対象」の判定結果</summary>
+public class ChannelCardStatus
+{
+    public List<PendingVideoEntry> ActiveLiveEntries { get; set; } = new();
+    public List<PendingVideoEntry> ActivePremiereEntries { get; set; } = new();
+    public PendingVideoEntry? PendingLiveDisplay { get; set; }
+    public PendingVideoEntry? PendingPremiereDisplay { get; set; }
+    public string? ClickTargetVideoId { get; set; }
+    public VideoKind? ClickTargetKind { get; set; }
 }
 
 /// <summary>時間指定の1スロット設定</summary>
 public class FocusSlot
 {
     [JsonProperty("notifyKind")]
-    public YTNotifier.Services.VideoKind NotifyKind { get; set; } = YTNotifier.Services.VideoKind.Video;
+    public VideoKind NotifyKind { get; set; } = VideoKind.Video;
     /// <summary>曜日ビットマスク (bit0=Sun..bit6=Sat, 0b1111111=全曜日)</summary>
     [JsonProperty("days")]
-    public int Days { get; set; } = 0b1111111;
+    public int Days { get; set; } = AppConstants.AllDaysMask;
     [JsonProperty("hour")]
     public int Hour { get; set; } = 18;
     [JsonProperty("minute")]
@@ -490,8 +510,8 @@ public class ChannelState
     [JsonProperty("lastCheckedVideoId")]
     public string LastCheckedVideoId { get; set; } = string.Empty;
 
-    [JsonProperty("lastVideoId")]
-    public string LastVideoId { get; set; } = string.Empty;
+    [JsonProperty("lastCheckedVideoPublishedAt")]
+    public DateTime? LastCheckedVideoPublishedAt { get; set; } = null;
 
     [JsonProperty("nextCheckAt")]
     public DateTime NextCheckAt { get; set; } = DateTime.MinValue;
@@ -592,6 +612,9 @@ public class ChannelState
 
     [JsonProperty("latestVideoDeleted")]
     public bool LatestVideoDeleted { get; set; } = false;
+
+    [JsonProperty("noVideosFound")]
+    public bool NoVideosFound { get; set; } = false;
 }
 
 /// <summary>Gemini 要約結果1件分（gemini_summary_cache.json で管理）</summary>
@@ -615,4 +638,45 @@ public class AppState
 
     [JsonProperty("channels")]
     public Dictionary<string, ChannelState> Channels { get; set; } = new();
+}
+
+public enum VideoKind { Video, Short, Live, Premiere }
+
+/// <summary>APIキー有効性テストの結果</summary>
+public enum ApiKeyTestResult { Valid, Invalid, NetworkError }
+
+public class VideoInfo
+{
+    public string    VideoId      { get; set; } = string.Empty;
+    public string    Title        { get; set; } = string.Empty;
+    public string?   ThumbnailUrl { get; set; }
+    public VideoKind Kind         { get; set; } = VideoKind.Video;
+    /// <summary>liveBroadcastContent == "upcoming" の時 true（待機所状態）</summary>
+    public bool      IsUpcoming      { get; set; } = false;
+    /// <summary>liveBroadcastContent == "live" の時 true（今まさに配信中）</summary>
+    public bool      IsCurrentlyLive { get; set; } = false;
+    /// <summary>配信予定時刻（upcoming の場合のみ設定）</summary>
+    public DateTime? ScheduledStartTime { get; set; } = null;
+    /// <summary>配信実際の開始時刻（配信中・アーカイブの場合に設定）</summary>
+    public DateTime? ActualStartTime    { get; set; } = null;
+    /// <summary>動画の再生時間（取得できない場合は null）</summary>
+    public TimeSpan? Duration    { get; set; } = null;
+    /// <summary>動画の投稿日時（プレイリストアイテムの snippet.publishedAt）</summary>
+    public DateTime? PublishedAt { get; set; } = null;
+    public string KindLabel => Kind switch
+    {
+        VideoKind.Short    => "Short",
+        VideoKind.Live     => "ライブ",
+        VideoKind.Premiere => "プレミア",
+        _                  => "動画"
+    };
+}
+
+/// <summary>Gemini 動画要約の結果</summary>
+public class GeminiSummaryResult
+{
+    public bool    Success      { get; init; }
+    public string? Headline     { get; init; }
+    public string? Detail       { get; init; }
+    public string? ErrorMessage { get; init; }
 }

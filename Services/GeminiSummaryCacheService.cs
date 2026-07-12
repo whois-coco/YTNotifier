@@ -11,8 +11,10 @@ namespace YTNotifier.Services;
 /// </summary>
 public static class GeminiSummaryCacheService
 {
+    private const string FileGeminiSummaryCache = "gemini_summary_cache.json";
+
     private static string GetPath(string appDataDir)
-        => Path.Combine(appDataDir, AppConstants.FileGeminiSummaryCache);
+        => Path.Combine(appDataDir, FileGeminiSummaryCache);
 
     private static Dictionary<string, GeminiSummaryEntry> Load(string appDataDir)
     {
