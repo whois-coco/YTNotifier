@@ -3,7 +3,7 @@ namespace YTNotifier.Constants;
 internal static class AppConstants
 {
     public const string AppName          = "YTNotifier";
-    public const string AppVersion       = "0.8.6";
+    public const string AppVersion       = "0.8.7";
     public const string DirLogs          = "logs";
     public const string DirSounds        = "Sounds";
     public const string FileApiKey              = "api_key.dat";
@@ -11,6 +11,9 @@ internal static class AppConstants
 
     /// <summary>全曜日ビットマスク（bit0=日〜bit6=土）</summary>
     public const int AllDaysMask = 0b1111111;
+
+    /// <summary>無効化されたコントロールの不透明度</summary>
+    public const double DisabledControlOpacity = 0.3;
 
     private static readonly TimeZoneInfo _pacificTz =
         TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");

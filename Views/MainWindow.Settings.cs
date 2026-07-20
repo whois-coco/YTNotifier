@@ -148,6 +148,8 @@ public partial class MainWindow : System.Windows.Window
         SettingsService.Instance.Settings.ShowDesktopNotification = enabled;
         SettingsService.Instance.MarkDirty();
         AppLogger.Log(LogMsg.SettingDesktopNotification, null, enabled ? "ON" : "OFF");
+        ToastStyleComboBox.IsEnabled = enabled;
+        ToastStyleComboBox.Opacity   = enabled ? 1.0 : AppConstants.DisabledControlOpacity;
     }
 
     private void ToastStyleComboBox_Changed(object sender, SelectionChangedEventArgs e)
@@ -169,6 +171,8 @@ public partial class MainWindow : System.Windows.Window
         SettingsService.Instance.Settings.NotificationSound = enabled;
         SettingsService.Instance.MarkDirty();
         AppLogger.Log(LogMsg.SettingNotificationSound, null, enabled ? "ON" : "OFF");
+        NotificationSoundSetComboBox.IsEnabled = enabled;
+        NotificationSoundSetComboBox.Opacity   = enabled ? 1.0 : AppConstants.DisabledControlOpacity;
     }
 
     private void FlashTaskbarToggle_Changed(object sender, RoutedEventArgs e)
@@ -217,7 +221,7 @@ public partial class MainWindow : System.Windows.Window
                 SetSidebarIconSize(20);
                 // 折り畳みボタンをグレーアウト・無効化
                 SidebarToggleButton.IsEnabled = false;
-                SidebarToggleButton.Opacity   = 0.3;
+                SidebarToggleButton.Opacity   = AppConstants.DisabledControlOpacity;
 
                 Dispatcher.Invoke(() =>
                 {
@@ -394,13 +398,13 @@ public partial class MainWindow : System.Windows.Window
 
         if (ConfirmDialog.Show(this, "復元の確認", "現在の設定がバックアップで上書きされます。\n続行しますか？", "上書きする") != true) return;
 
-        var currentLogLevel = SettingsService.Instance.Settings.LogLevel;
+        var currentTraceLogEnabled = SettingsService.Instance.Settings.TraceLogEnabled;
         var (success, message) = SettingsService.Instance.ImportBackup(dlg.FileName);
         BackupStatusText.Text = success ? $"✅ {message}" : $"❌ {message}";
         SetDynamicBrush(BackupStatusText, TextBlock.ForegroundProperty, success ? "SuccessBrush" : "ErrorBrush");
         if (success)
         {
-            SettingsService.Instance.Settings.LogLevel = currentLogLevel;
+            SettingsService.Instance.Settings.TraceLogEnabled = currentTraceLogEnabled;
             SettingsService.Instance.SaveSettings();
             AppLogger.Log(LogMsg.SettingBackupImported, null, System.IO.Path.GetFileName(dlg.FileName));
             LoadSettings(); RefreshChannelList();
@@ -468,7 +472,6 @@ public partial class MainWindow : System.Windows.Window
         AppLogger.Log(LogMsg.SettingCheckInterval, null, minutes);
         MonitorService.Instance.ResetNormalChannels(minutes);
         MonitorService.Instance.RestartWithNewInterval();
-        LoggerService.Instance.UpdateFlushInterval();
         UpdateQuotaInfo();
     }
 
@@ -529,16 +532,13 @@ public partial class MainWindow : System.Windows.Window
         LogStatsText.Text = $"ファイル数: {count} 件  合計サイズ: {sizeStr}\n最古: {oldest:yyyy/MM/dd}  最新: {newest:yyyy/MM/dd}";
     }
 
-    private void LogLevelComboBox_Changed(object sender, SelectionChangedEventArgs e)
+    private void TraceLogToggle_Changed(object sender, RoutedEventArgs e)
     {
         if (_loadingSettings) return;
-        if (LogLevelComboBox.SelectedItem is ComboBoxItem item)
-        {
-            var level = item.Tag?.ToString() ?? "Info";
-            SettingsService.Instance.Settings.LogLevel = level;
-            SettingsService.Instance.MarkDirty();
-            AppLogger.Log(LogMsg.SettingLogLevel, null, item.Content?.ToString() ?? level);
-        }
+        var enabled = TraceLogToggle.IsChecked == true;
+        SettingsService.Instance.Settings.TraceLogEnabled = enabled;
+        SettingsService.Instance.MarkDirty();
+        AppLogger.Log(LogMsg.SettingTraceLogEnabled, null, enabled ? "ON" : "OFF");
     }
 
     private void AutoCleanLogsToggle_Changed(object sender, RoutedEventArgs e)
@@ -607,5 +607,35 @@ public partial class MainWindow : System.Windows.Window
             _actualApiKey = SettingsService.Instance.Settings.ApiKey;
         }
         UpdateApiKeyState(!string.IsNullOrEmpty(_actualApiKey));
+    }
+
+    // ===== 通知音セット選択 =====
+
+    private const string DefaultSoundSetLabel = "デフォルト";
+
+    private void InitNotificationSoundSetComboBox()
+    {
+        _loadingSettings = true;
+        NotificationSoundSetComboBox.Items.Clear();
+        NotificationSoundSetComboBox.Items.Add(DefaultSoundSetLabel);
+        foreach (var setName in NotificationService.GetAvailableSoundSets())
+            NotificationSoundSetComboBox.Items.Add(setName);
+
+        var current = SettingsService.Instance.Settings.NotificationSoundSet;
+        var target = string.IsNullOrEmpty(current) || !NotificationSoundSetComboBox.Items.Contains(current)
+            ? DefaultSoundSetLabel
+            : current;
+        NotificationSoundSetComboBox.SelectedItem = target;
+        _loadingSettings = false;
+    }
+
+    private void NotificationSoundSetComboBox_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        var selected = NotificationSoundSetComboBox.SelectedItem as string ?? DefaultSoundSetLabel;
+        var value = selected == DefaultSoundSetLabel ? string.Empty : selected;
+        SettingsService.Instance.Settings.NotificationSoundSet = value;
+        SettingsService.Instance.MarkDirty();
+        AppLogger.Log(LogMsg.SettingNotificationSoundSet, null, selected);
     }
 }

@@ -7,7 +7,8 @@
         MinHeight="680" MaxHeight="680"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
-        WindowStyle="None">
+        WindowStyle="None"
+        FontFamily="Noto Sans JP">
 
     <Border Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"

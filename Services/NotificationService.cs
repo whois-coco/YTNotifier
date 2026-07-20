@@ -235,7 +235,7 @@ public static class NotificationService
             if (settings.FlashTaskbar)
                 System.Windows.Application.Current?.Dispatcher.BeginInvoke(FlashTaskbar);
 
-            AppLogger.Log(LogMsg.NotificationSent, null, videoTitle);
+            AppLogger.Log(LogMsg.NotificationSent, channelName, videoTitle);
         }
         catch (Exception ex)
         {
@@ -322,6 +322,34 @@ public static class NotificationService
     // サウンド再生
     // ============================================================
 
+    /// <summary>テスト用サウンドファイル名（PlayTestSound 内で複数回参照するためローカル定数化）</summary>
+    private const string TestSoundFileName = "test.wav";
+
+    /// <summary>
+    /// Sounds フォルダ配下のサブフォルダ名一覧（通知音セット候補）を取得する。
+    /// Sounds フォルダが存在しない場合は空リストを返す。
+    /// </summary>
+    public static List<string> GetAvailableSoundSets()
+    {
+        try
+        {
+            var soundsDir = Path.Combine(ExeDir, AppConstants.DirSounds);
+            if (!Directory.Exists(soundsDir))
+                return new List<string>();
+
+            return Directory.GetDirectories(soundsDir)
+                .Select(Path.GetFileName)
+                .Where(name => !string.IsNullOrEmpty(name))
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .Select(name => name!)
+                .ToList();
+        }
+        catch
+        {
+            return new List<string>();
+        }
+    }
+
     /// <summary>
     /// 動画種別に応じた通知音を再生する
     /// Sounds\video.wav / short.wav / live.wav → なければ notify.wav → Asterisk
@@ -338,6 +366,19 @@ public static class NotificationService
                 VideoKind.Premiere => "premiere.wav",
                 _                  => "video.wav"
             };
+
+            var soundSet = SettingsService.Instance.Settings.NotificationSoundSet;
+            if (!string.IsNullOrEmpty(soundSet))
+            {
+                var setPath = Path.Combine(soundsDir, soundSet, kindFile);
+                if (File.Exists(setPath))
+                {
+                    using var setPlayer = new System.Media.SoundPlayer(setPath);
+                    setPlayer.Play();
+                    return;
+                }
+            }
+
             var customPath = Path.Combine(soundsDir, kindFile);
             if (File.Exists(customPath))
             {
@@ -370,7 +411,20 @@ public static class NotificationService
     {
         try
         {
-            var testPath = Path.Combine(ExeDir, AppConstants.DirSounds, "test.wav");
+            var soundsDir = Path.Combine(ExeDir, AppConstants.DirSounds);
+            var soundSet  = SettingsService.Instance.Settings.NotificationSoundSet;
+            if (!string.IsNullOrEmpty(soundSet))
+            {
+                var setTestPath = Path.Combine(soundsDir, soundSet, TestSoundFileName);
+                if (File.Exists(setTestPath))
+                {
+                    using var player = new System.Media.SoundPlayer(setTestPath);
+                    player.Play();
+                    return;
+                }
+            }
+
+            var testPath = Path.Combine(soundsDir, TestSoundFileName);
             if (File.Exists(testPath))
             {
                 using var player = new System.Media.SoundPlayer(testPath);

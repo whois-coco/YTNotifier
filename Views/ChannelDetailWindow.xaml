@@ -6,7 +6,8 @@
         Width="380" MinWidth="380" MaxWidth="380"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False">
+        ShowInTaskbar="False"
+        FontFamily="Noto Sans JP">
     <Border CornerRadius="8" BorderThickness="1">
         <Border.Background><DynamicResource ResourceKey="SurfaceBrush"/></Border.Background>
         <Border.BorderBrush><DynamicResource ResourceKey="BorderBrush"/></Border.BorderBrush>

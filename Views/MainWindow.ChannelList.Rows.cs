@@ -118,6 +118,15 @@ public partial class MainWindow : System.Windows.Window
                 Margin = new Thickness(8, 0, 0, 0)
             };
             SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+            nameText.Cursor = Cursors.Hand;
+            nameText.ToolTip = "クリックしてチャンネルページを開く";
+            nameText.PreviewMouseLeftButtonDown += (_, e) => e.Handled = true;
+            nameText.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                AppLogger.Log(LogMsg.ChannelNameClicked, null, ch.ChannelName);
+                OpenUrl(ch.ChannelUrl);
+            };
 
             // 削除ボタン（コンパクト + 編集モードONの時のみ表示）
             var deleteBtn = BuildCompactDeleteButton(ch);
@@ -254,6 +263,15 @@ public partial class MainWindow : System.Windows.Window
             VerticalAlignment = VerticalAlignment.Center
         };
         SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        nameText.Cursor = Cursors.Hand;
+        nameText.ToolTip = "クリックしてチャンネルページを開く";
+        nameText.PreviewMouseLeftButtonDown += (_, e) => e.Handled = true;
+        nameText.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            AppLogger.Log(LogMsg.ChannelNameClicked, null, ch.ChannelName);
+            OpenUrl(ch.ChannelUrl);
+        };
         info.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { nameText } });
 
         if (editMode)
@@ -290,44 +308,108 @@ public partial class MainWindow : System.Windows.Window
 
         if (cardStatus.ActiveLiveEntries.Count > 0)
         {
-            var bullet = new TextBlock { Margin = new Thickness(0, 0, 6, 0), FontSize = 13 };
+            var bullet = new TextBlock { Margin = new Thickness(0, 0, 6, 0), FontSize = 13, Cursor = Cursors.Hand };
             bullet.Text = cardStatus.ActiveLiveEntries.Count == 1 ? "● ライブ配信中" : $"● ライブ配信中 ×{cardStatus.ActiveLiveEntries.Count}";
             SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "ErrorBrush");
+
+            var liveEntries = cardStatus.ActiveLiveEntries;
+            if (liveEntries.Count == 1)
+            {
+                var entry = liveEntries[0];
+                bullet.ToolTip = entry.Title;
+                bullet.MouseLeftButtonUp += (_, e) =>
+                {
+                    e.Handled = true;
+                    var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
+                    new VideoSummaryPopupWindow(owner!, ch, VideoKind.Live, entry.Title, entry.VideoId).Show();
+                };
+            }
+            else
+            {
+                bullet.MouseLeftButtonUp += (_, e) =>
+                {
+                    e.Handled = true;
+                    var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
+                    new VideoListPopupWindow(owner!, ch, VideoKind.Live, liveEntries).Show();
+                };
+            }
+
             row.Children.Add(bullet);
             anyStatusShown = true;
         }
 
         if (cardStatus.ActivePremiereEntries.Count > 0)
         {
-            var bullet = new TextBlock { Margin = new Thickness(0, 0, 6, 0), FontSize = 13 };
+            var bullet = new TextBlock { Margin = new Thickness(0, 0, 6, 0), FontSize = 13, Cursor = Cursors.Hand };
             bullet.Text = cardStatus.ActivePremiereEntries.Count == 1 ? "● プレミア公開中" : $"● プレミア公開中 ×{cardStatus.ActivePremiereEntries.Count}";
             SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "WarningBrush");
+
+            var premiereEntries = cardStatus.ActivePremiereEntries;
+            if (premiereEntries.Count == 1)
+            {
+                var entry = premiereEntries[0];
+                bullet.ToolTip = entry.Title;
+                bullet.MouseLeftButtonUp += (_, e) =>
+                {
+                    e.Handled = true;
+                    var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
+                    new VideoSummaryPopupWindow(owner!, ch, VideoKind.Premiere, entry.Title, entry.VideoId, allowSummary: false).Show();
+                };
+            }
+            else
+            {
+                bullet.MouseLeftButtonUp += (_, e) =>
+                {
+                    e.Handled = true;
+                    var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
+                    new VideoListPopupWindow(owner!, ch, VideoKind.Premiere, premiereEntries, allowSummary: false).Show();
+                };
+            }
+
             row.Children.Add(bullet);
             anyStatusShown = true;
         }
 
         if (cardStatus.PendingLiveDisplay != null)
         {
+            var pendingLive = cardStatus.PendingLiveDisplay;
             var bullet = new TextBlock
             {
-                Text = $"⏲ {cardStatus.PendingLiveDisplay.ScheduledAt!.Value:HH:mm} から配信予定",
+                Text = $"⏲ {pendingLive.ScheduledAt!.Value:HH:mm} から配信予定",
                 Margin = new Thickness(0, 0, 6, 0),
-                FontSize = 13, Opacity = 0.7
+                FontSize = 13, Opacity = 0.7,
+                Cursor = Cursors.Hand,
+                ToolTip = pendingLive.Title
             };
             SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "WarningBrush");
+            bullet.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
+                new VideoSummaryPopupWindow(owner!, ch, VideoKind.Live, pendingLive.Title, pendingLive.VideoId, isPending: true).Show();
+            };
             row.Children.Add(bullet);
             anyStatusShown = true;
         }
 
         if (cardStatus.PendingPremiereDisplay != null)
         {
+            var pendingPremiere = cardStatus.PendingPremiereDisplay;
             var bullet = new TextBlock
             {
-                Text = $"⏲ {cardStatus.PendingPremiereDisplay.ScheduledAt!.Value:HH:mm} からプレミア公開予定",
+                Text = $"⏲ {pendingPremiere.ScheduledAt!.Value:HH:mm} からプレミア公開予定",
                 Margin = new Thickness(0, 0, 6, 0),
-                FontSize = 13, Opacity = 0.7
+                FontSize = 13, Opacity = 0.7,
+                Cursor = Cursors.Hand,
+                ToolTip = pendingPremiere.Title
             };
             SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "WarningBrush");
+            bullet.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
+                new VideoSummaryPopupWindow(owner!, ch, VideoKind.Premiere, pendingPremiere.Title, pendingPremiere.VideoId, allowSummary: false).Show();
+            };
             row.Children.Add(bullet);
             anyStatusShown = true;
         }
@@ -379,19 +461,20 @@ public partial class MainWindow : System.Windows.Window
                 VerticalAlignment = VerticalAlignment.Center
             };
             SetDynamicBrush(pill, Border.BackgroundProperty, bgKey);
-            var pillText = new TextBlock { Text = kindLabel, FontSize = 13 };
+            var pillText = new TextBlock { Text = kindLabel, FontSize = 11 };
             SetDynamicBrush(pillText, TextBlock.ForegroundProperty, fgKey);
             pill.Child = pillText;
 
             var titleText = new TextBlock
             {
-                Text = ch.LatestTitle != null && ch.LatestTitle.Length > ChannelCardTitleMaxLength ? ch.LatestTitle.Substring(0, ChannelCardTitleMaxLength) + "..." : ch.LatestTitle, FontSize = 13,
+                Text = ch.LatestTitle != null && ch.LatestTitle.Length > ChannelCardTitleMaxLength ? ch.LatestTitle.Substring(0, ChannelCardTitleMaxLength) + "..." : ch.LatestTitle, FontSize = 11,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
                 MaxWidth = 180,
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                ToolTip = ch.LatestTitle
             };
-            SetDynamicBrush(titleText, TextBlock.ForegroundProperty, "TextSecondaryBrush");
+            SetDynamicBrush(titleText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
             if (!string.IsNullOrEmpty(ch.LatestVideoId))
             {
                 var kind     = ch.LatestKind.Value;

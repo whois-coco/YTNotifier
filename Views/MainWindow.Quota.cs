@@ -65,7 +65,10 @@ public partial class MainWindow : System.Windows.Window
             var settings = svc.Settings;
             var channels = svc.GetChannelsSnapshot();
             var interval = settings.CheckIntervalMinutes;
-            var daily    = ApiQuotaHelper.EstimateDailyUnitsForChannels(interval, channels);
+            var banCheckUnits = ApiQuotaHelper.EstimateDailyUnitsForBanCheck(
+                channels.Count(c => c.IsEnabled && !c.IsDormant),
+                channels.Count(c => c.IsDormant));
+            var daily    = ApiQuotaHelper.EstimateDailyUnitsForChannels(interval, channels) + banCheckUnits;
             var pct      = Math.Min(daily * 100.0 / ApiQuotaHelper.DailyLimit, 100.0);
 
             QuotaInfoText.Text    = $"{daily:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日";
@@ -227,7 +230,6 @@ public partial class MainWindow : System.Windows.Window
                 SettingsService.Instance.SaveSettings();
                 MonitorService.Instance.ResetNormalChannels(newMins);
                 MonitorService.Instance.RestartWithNewInterval();
-                LoggerService.Instance.UpdateFlushInterval();
                 AppLogger.Log(LogMsg.QuotaAutoIntervalAdjusted, null, newMins);
             }
         }

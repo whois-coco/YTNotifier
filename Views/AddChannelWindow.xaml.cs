@@ -116,15 +116,7 @@ public partial class AddChannelWindow : Window
         var name = NewCategoryInput.Text.Trim();
         if (string.IsNullOrEmpty(name)) return;
 
-        var svc        = SettingsService.Instance;
-        var categories = _isDormant ? svc.DormantCategories : svc.Categories;
-        if (categories.Any(c => c.CategoryName.Equals(name, StringComparison.OrdinalIgnoreCase)))
-        {
-            NewCategoryInput.SelectAll();
-            NewCategoryInput.Focus();
-            return;
-        }
-
+        var svc = SettingsService.Instance;
         var cat = _isDormant ? svc.AddDormantCategory(name) : svc.AddCategory(name);
         AppLogger.Log(LogMsg.CategoryAdded, null, name);
         NewCategoryPanel.Visibility = Visibility.Collapsed;

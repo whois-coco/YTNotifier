@@ -431,14 +431,23 @@ public class SettingsService
     // save には SaveCategories / SaveDormantCategories を渡す
     //（ダーティフラグの扱いの差は各保存メソッド側で維持される）
 
-    private CategoryInfo AddCategoryCore(List<CategoryInfo> categories, Action save, string name)
+    // カテゴリ名の重複判定で共通使用（大文字小文字を無視）
+    private static bool CategoryNameEquals(string a, string b) => a.Equals(b, StringComparison.OrdinalIgnoreCase);
+
+    private CategoryInfo AddCategoryCore(List<CategoryInfo> categories, List<CategoryInfo> otherCategories, Action save, string name)
     {
-        CategoryInfo cat;
+        CategoryInfo? cat;
         lock (_persistLock)
         {
+            // 自リスト内に同名カテゴリが既にあればそれを返す（重複作成しない）
+            cat = categories.FirstOrDefault(c => CategoryNameEquals(c.CategoryName, name));
+            if (cat != null) return cat;
+
+            // 相手リストに同名カテゴリがあればカテゴリIDを引き継ぐ
+            var linked = otherCategories.FirstOrDefault(c => CategoryNameEquals(c.CategoryName, name));
             cat = new CategoryInfo
             {
-                CategoryId   = Guid.NewGuid().ToString(),
+                CategoryId   = linked?.CategoryId ?? Guid.NewGuid().ToString(),
                 CategoryName = name,
                 SortOrder    = categories.Count
             };
@@ -448,11 +457,18 @@ public class SettingsService
         return cat;
     }
 
-    private void EnsureCategoryCore(List<CategoryInfo> categories, Action save, string categoryId, string categoryName)
+    private string EnsureCategoryCore(List<CategoryInfo> categories, Action save, string categoryId, string categoryName)
     {
         lock (_persistLock)
         {
-            if (categories.Any(c => c.CategoryId == categoryId)) return;
+            // 移動元と同じIDが既に対象リストにあればそのまま使う
+            if (categories.Any(c => c.CategoryId == categoryId)) return categoryId;
+
+            // 同名カテゴリが対象リストに既にあれば新規作成せず合流する
+            var byName = categories.FirstOrDefault(c => CategoryNameEquals(c.CategoryName, categoryName));
+            if (byName != null) return byName.CategoryId;
+
+            // どちらにも該当が無ければ移動元と同じIDでペアを作成し最後尾に追加する
             categories.Add(new CategoryInfo
             {
                 CategoryId   = categoryId,
@@ -461,6 +477,7 @@ public class SettingsService
             });
         }
         save();
+        return categoryId;
     }
 
     private void RemoveCategoryCore(List<CategoryInfo> categories, Action save, string categoryId, bool isDormant)
@@ -476,27 +493,65 @@ public class SettingsService
         SaveChannels();
     }
 
-    private void RenameCategoryCore(List<CategoryInfo> categories, Action save, string categoryId, string newName)
+    private void RenameCategoryCore(List<CategoryInfo> categories, List<CategoryInfo> otherCategories, Action save, string categoryId, bool isDormant, string newName)
     {
         lock (_persistLock)
         {
             var cat = categories.FirstOrDefault(c => c.CategoryId == categoryId);
             if (cat == null) return;
-            cat.CategoryName = newName;
+            if (CategoryNameEquals(cat.CategoryName, newName)) return;
+
+            var isPaired = otherCategories.Any(c => c.CategoryId == categoryId);
+            var ownDup   = categories.FirstOrDefault(c => c.CategoryId != categoryId && CategoryNameEquals(c.CategoryName, newName));
+
+            if (!isPaired)
+            {
+                if (ownDup == null)
+                {
+                    // 単純リネーム
+                    cat.CategoryName = newName;
+                }
+                else
+                {
+                    // 自リスト内の既存カテゴリへ合流
+                    foreach (var ch in Channels.Where(c => c.CategoryId == categoryId && c.IsDormant == isDormant))
+                        ch.CategoryId = ownDup.CategoryId;
+                    categories.Remove(cat);
+                }
+            }
+            else if (ownDup != null)
+            {
+                // 相手リストとの共有を切り離し、自リスト内の既存カテゴリへ合流。相手リストの元カテゴリ（categoryId）は無変更のまま残る
+                foreach (var ch in Channels.Where(c => c.CategoryId == categoryId && c.IsDormant == isDormant))
+                    ch.CategoryId = ownDup.CategoryId;
+                categories.Remove(cat);
+            }
+            else
+            {
+                // 相手リストとの共有を切り離す。相手リストに新名称と同名のカテゴリがあればそのIDを引き継ぎ、無ければ新規ID発行
+                var otherMatch = otherCategories.FirstOrDefault(c => c.CategoryId != categoryId && CategoryNameEquals(c.CategoryName, newName));
+                var newId      = otherMatch?.CategoryId ?? Guid.NewGuid().ToString();
+
+                foreach (var ch in Channels.Where(c => c.CategoryId == categoryId && c.IsDormant == isDormant))
+                    ch.CategoryId = newId;
+                cat.CategoryId   = newId;
+                cat.CategoryName = newName;
+            }
         }
         save();
+        SaveChannels();
     }
 
-    public CategoryInfo AddCategory(string name)        => AddCategoryCore(Categories,        SaveCategories,        name);
+    public CategoryInfo AddCategory(string name)        => AddCategoryCore(Categories,        DormantCategories, SaveCategories,        name);
 
-    public CategoryInfo AddDormantCategory(string name) => AddCategoryCore(DormantCategories, SaveDormantCategories, name);
+    public CategoryInfo AddDormantCategory(string name) => AddCategoryCore(DormantCategories, Categories,        SaveDormantCategories, name);
 
-    /// <summary>指定した categoryId の監視カテゴリがなければ同じID・名前で作成する</summary>
-    public void EnsureCategory(string categoryId, string categoryName)
+    /// <summary>指定した categoryId の監視カテゴリがあればそのIDを、無ければ同名カテゴリに合流するか新規作成して使用すべきカテゴリIDを返す</summary>
+    public string EnsureCategory(string categoryId, string categoryName)
         => EnsureCategoryCore(Categories, SaveCategories, categoryId, categoryName);
 
-    /// <summary>指定した categoryId の休眠カテゴリがなければ同じID・名前で作成する</summary>
-    public void EnsureDormantCategory(string categoryId, string categoryName)
+    /// <summary>指定した categoryId の休眠カテゴリがあればそのIDを、無ければ同名カテゴリに合流するか新規作成して使用すべきカテゴリIDを返す</summary>
+    public string EnsureDormantCategory(string categoryId, string categoryName)
         => EnsureCategoryCore(DormantCategories, SaveDormantCategories, categoryId, categoryName);
 
     public void SetDormantChannelCategory(string channelId, string? categoryId)
@@ -506,7 +561,7 @@ public class SettingsService
         => RemoveCategoryCore(DormantCategories, SaveDormantCategories, categoryId, isDormant: true);
 
     public void RenameDormantCategory(string categoryId, string newName)
-        => RenameCategoryCore(DormantCategories, SaveDormantCategories, categoryId, newName);
+        => RenameCategoryCore(DormantCategories, Categories, SaveDormantCategories, categoryId, isDormant: true, newName);
 
     public List<ChannelInfo> GetEnabledChannelsSnapshot()
     {
@@ -522,7 +577,7 @@ public class SettingsService
         => RemoveCategoryCore(Categories, SaveCategories, categoryId, isDormant: false);
 
     public void RenameCategory(string categoryId, string newName)
-        => RenameCategoryCore(Categories, SaveCategories, categoryId, newName);
+        => RenameCategoryCore(Categories, DormantCategories, SaveCategories, categoryId, isDormant: false, newName);
 
     public void SetChannelCategory(string channelId, string? categoryId)
     {
@@ -686,42 +741,34 @@ public class SettingsService
         {
             if (ch.FocusSlots.Count > 0) continue;
 
-            List<FocusSlot> baseSlots = ch.MonitorMode switch
+            FocusSlot MakeDefaultSlot(VideoKind kind) => ch.MonitorMode switch
             {
-                MonitorMode.LowFreq => new List<FocusSlot>
+                MonitorMode.LowFreq => new FocusSlot
                 {
-                    new FocusSlot
-                    {
-                        SlotMode = MonitorMode.LowFreq,
-                        SlotLowFreqIntervalMinutes = ch.LowFreqIntervalMinutes,
-                        IsEnabled = true
-                    }
+                    SlotMode                   = MonitorMode.LowFreq,
+                    SlotLowFreqIntervalMinutes = ch.LowFreqIntervalMinutes,
+                    NotifyKind                 = kind,
+                    IsEnabled                  = true
                 },
-                MonitorMode.Focus => new List<FocusSlot>
+                MonitorMode.Focus => new FocusSlot
                 {
-                    new FocusSlot
-                    {
-                        SlotMode        = MonitorMode.Focus,
-                        NotifyKind      = VideoKind.Video,
-                        Days            = ch.FocusDays,
-                        Hour            = ch.FocusHour,
-                        Minute          = ch.FocusMinute,
-                        WindowMinutes   = ch.FocusWindowMinutes,
-                        IntervalMinutes = ch.FocusIntervalMinutes,
-                        IsEnabled       = true
-                    }
+                    SlotMode        = MonitorMode.Focus,
+                    NotifyKind      = kind,
+                    Days            = ch.FocusDays,
+                    Hour            = ch.FocusHour,
+                    Minute          = ch.FocusMinute,
+                    WindowMinutes   = ch.FocusWindowMinutes,
+                    IntervalMinutes = ch.FocusIntervalMinutes,
+                    IsEnabled       = true
                 },
-                _ => new List<FocusSlot>
-                {
-                    new FocusSlot { SlotMode = MonitorMode.Normal, IsEnabled = true }
-                }
+                _ => new FocusSlot { SlotMode = MonitorMode.Normal, NotifyKind = kind, IsEnabled = true }
             };
 
             bool[] kindEnabled = { ch.NotifyVideo, ch.NotifyShort, ch.NotifyLive };
             var slots = new List<FocusSlot>();
             for (int i = 0; i < 3; i++)
             {
-                var slot = i < baseSlots.Count ? baseSlots[i] : new FocusSlot { NotifyKind = defaultKinds[i] };
+                var slot = MakeDefaultSlot(defaultKinds[i]);
                 slot.IsEnabled = kindEnabled[i];
                 slots.Add(slot);
             }

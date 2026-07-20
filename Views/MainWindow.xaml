@@ -11,7 +11,8 @@
         WindowStyle="None"
         AllowsTransparency="False"
         ResizeMode="CanResize"
-        FontFamily="Resources/#Source Han Sans JP Normal">
+        FontFamily="Noto Sans JP"
+        PreviewKeyDown="MainWindow_PreviewKeyDown">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0"
                       ResizeBorderThickness="5"
@@ -244,8 +245,8 @@
         <!-- ===== メインレイアウト（タイトルバー下） ===== -->
         <Grid Grid.Row="1">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition x:Name="SidebarColumn" Width="110" MinWidth="0"/>
-            <ColumnDefinition x:Name="ContentColumn" Width="380" MinWidth="380"/>
+            <ColumnDefinition x:Name="SidebarColumn" Width="130" MinWidth="0"/>
+            <ColumnDefinition x:Name="ContentColumn" Width="400" MinWidth="400"/>
         </Grid.ColumnDefinitions>
 
         <!-- ===== サイドバー ===== -->
@@ -365,8 +366,44 @@
                 <!-- コンパクトモード + ピンボタン（サイドバー左下） -->
                 <Border DockPanel.Dock="Bottom"
                         BorderBrush="{DynamicResource SidebarBorderBrush}"
-                        BorderThickness="0,1,0,0">
+                        BorderThickness="0">
                     <StackPanel>
+                        <Button x:Name="NavSettings"
+                                Height="44"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                HorizontalAlignment="Stretch"
+                                ToolTip="設定"
+                                Click="Nav_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Grid x:Name="Bd" Height="44">
+                                        <Border x:Name="BdBg" Background="Transparent"/>
+                                        <Border x:Name="SelectorBar" Width="3" HorizontalAlignment="Left"
+                                                Background="Transparent" CornerRadius="0,2,2,0"/>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,10,0">
+                                            <Viewbox Width="24" Height="24" VerticalAlignment="Center">
+                                                <Canvas Width="24" Height="24">
+                                                <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent" Data="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/>
+                                                <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent" Data="M 9 12 A 3 3 0 0 0 15 12 A 3 3 0 0 0 9 12"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                            <TextBlock x:Name="LblNavSettings" Text="設定" FontSize="12" FontWeight="Bold"
+                                                       Foreground="{DynamicResource SidebarTextBrush}"
+                                                       VerticalAlignment="Center" Margin="10,0,0,0"
+                                                       Visibility="Collapsed"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="BdBg" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <Border Height="1" Background="{DynamicResource SidebarBorderBrush}" Margin="8,0"/>
                         <Button x:Name="SidebarToggleButton"
                                 Height="44"
                                 Background="Transparent"
@@ -410,43 +447,6 @@
                                 </ControlTemplate>
                             </Button.Template>
                         </Button>
-                        <Border Height="1" Background="{DynamicResource SidebarBorderBrush}" Margin="8,0"/>
-                        <Button x:Name="NavSettings"
-                                Height="44"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                Cursor="Hand"
-                                HorizontalAlignment="Stretch"
-                                ToolTip="設定"
-                                Click="Nav_Click">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Grid x:Name="Bd" Height="44">
-                                        <Border x:Name="BdBg" Background="Transparent"/>
-                                        <Border x:Name="SelectorBar" Width="3" HorizontalAlignment="Left"
-                                                Background="Transparent" CornerRadius="0,2,2,0"/>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,10,0">
-                                            <Viewbox Width="24" Height="24" VerticalAlignment="Center">
-                                                <Canvas Width="24" Height="24">
-                                                <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent" Data="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/>
-                                                <Path Stroke="{DynamicResource SidebarTextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent" Data="M 9 12 A 3 3 0 0 0 15 12 A 3 3 0 0 0 9 12"/>
-                                                </Canvas>
-                                            </Viewbox>
-                                            <TextBlock x:Name="LblNavSettings" Text="設定" FontSize="12" FontWeight="Bold"
-                                                       Foreground="{DynamicResource SidebarTextBrush}"
-                                                       VerticalAlignment="Center" Margin="10,0,0,0"
-                                                       Visibility="Collapsed"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="BdBg" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Button.Template>
-                        </Button>
-                        <Border Height="1" Background="{DynamicResource SidebarBorderBrush}" Margin="8,0"/>
                         <Button x:Name="MuteButton"
                                 Height="44"
                                 Background="Transparent"
@@ -874,7 +874,7 @@
                             ClipToBounds="True"
                             Background="Transparent"
                             BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="0" CornerRadius="4">
+                            BorderThickness="0" CornerRadius="12">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="44"/>
@@ -884,13 +884,13 @@
                             <!-- 虫眼鏡 / × ボタン -->
                             <Button x:Name="SearchButton" Grid.Column="0"
                                     HorizontalAlignment="Center" VerticalAlignment="Center"
-                                    Width="24" Height="24"
+                                    Width="44" Height="44"
                                     Background="Transparent" BorderThickness="0"
                                     Cursor="Hand" ToolTip="検索"
                                     Click="SearchButton_Click">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
-                                        <Border x:Name="Bd" Background="Transparent" CornerRadius="3">
+                                        <Border x:Name="Bd" Background="Transparent" CornerRadius="12">
                                             <Viewbox x:Name="SearchIcon" Width="16" Height="16">
                                                 <Canvas Width="24" Height="24">
                                                     <Path Data="M11 3a8 8 0 1 0 0 16A8 8 0 0 0 11 3z"
@@ -906,7 +906,7 @@
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="Bd" Property="Background"
-                                                        Value="{DynamicResource HoverBrush}"/>
+                                                        Value="{DynamicResource BorderBrush}"/>
                                             </Trigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
@@ -1110,7 +1110,7 @@
                             ClipToBounds="True"
                             Background="Transparent"
                             BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="0" CornerRadius="4">
+                            BorderThickness="0" CornerRadius="12">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="44"/>
@@ -1120,13 +1120,13 @@
                             <!-- 虫眼鏡ボタン -->
                             <Button x:Name="DormantSearchButton" Grid.Column="0"
                                     HorizontalAlignment="Center" VerticalAlignment="Center"
-                                    Width="24" Height="24"
+                                    Width="44" Height="44"
                                     Background="Transparent" BorderThickness="0"
                                     Cursor="Hand" ToolTip="検索"
                                     Click="DormantSearchButton_Click">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
-                                        <Border x:Name="Bd" Background="Transparent" CornerRadius="3">
+                                        <Border x:Name="Bd" Background="Transparent" CornerRadius="12">
                                             <Viewbox x:Name="SearchIcon" Width="16" Height="16">
                                                 <Canvas Width="24" Height="24">
                                                     <Path Data="M11 3a8 8 0 1 0 0 16A8 8 0 0 0 11 3z"
@@ -1142,7 +1142,7 @@
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="Bd" Property="Background"
-                                                        Value="{DynamicResource HoverBrush}"/>
+                                                        Value="{DynamicResource BorderBrush}"/>
                                             </Trigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
@@ -1327,36 +1327,6 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="通知音" FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}"
-                                                   VerticalAlignment="Center"/>
-                                        <CheckBox x:Name="NotificationSoundToggle" Grid.Column="1"
-                                                  Style="{StaticResource ToggleSwitch}"
-                                                  VerticalAlignment="Center"
-                                                  Checked="NotificationSoundToggle_Changed"
-                                                  Unchecked="NotificationSoundToggle_Changed"/>
-                                    </Grid>
-                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
-                                    <Grid Margin="0,8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="タスクバー点滅" FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}"
-                                                   VerticalAlignment="Center"/>
-                                        <CheckBox x:Name="FlashTaskbarToggle" Grid.Column="1"
-                                                  Style="{StaticResource ToggleSwitch}"
-                                                  VerticalAlignment="Center"
-                                                  Checked="FlashTaskbarToggle_Changed"
-                                                  Unchecked="FlashTaskbarToggle_Changed"/>
-                                    </Grid>
-                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
-                                    <Grid Margin="0,8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
                                         <TextBlock Text="デスクトップ通知" FontSize="12" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource TextPrimaryBrush}"
                                                    VerticalAlignment="Center"/>
@@ -1383,6 +1353,49 @@
                                             <ComboBoxItem Content="サムネイル通知" Tag="Thumbnail"
                                                           Style="{StaticResource ModernComboBoxItem}"/>
                                         </ComboBox>
+                                    </Grid>
+                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="通知音" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="NotificationSoundToggle" Grid.Column="1"
+                                                  Style="{StaticResource ToggleSwitch}"
+                                                  VerticalAlignment="Center"
+                                                  Checked="NotificationSoundToggle_Changed"
+                                                  Unchecked="NotificationSoundToggle_Changed"/>
+                                    </Grid>
+                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="通知音の種類" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="NotificationSoundSetComboBox" Grid.Column="1"
+                                                  Style="{StaticResource ModernComboBox}"
+                                                  SelectionChanged="NotificationSoundSetComboBox_Changed"/>
+                                    </Grid>
+                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="タスクバー点滅" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="FlashTaskbarToggle" Grid.Column="1"
+                                                  Style="{StaticResource ToggleSwitch}"
+                                                  VerticalAlignment="Center"
+                                                  Checked="FlashTaskbarToggle_Changed"
+                                                  Unchecked="FlashTaskbarToggle_Changed"/>
                                     </Grid>
                                 </StackPanel>
                             </Border>
@@ -1653,32 +1666,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="ログレベル" FontSize="12" FontWeight="SemiBold"
+                                        <TextBlock Text="トレースログの取得" FontSize="12" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource TextPrimaryBrush}"
                                                    VerticalAlignment="Center"/>
-                                        <ComboBox x:Name="LogLevelComboBox" Grid.Column="1"
-                                                  Style="{StaticResource ModernComboBox}"
-                                                  SelectionChanged="LogLevelComboBox_Changed">
-                                            <ComboBoxItem Content="情報"  Tag="Info"    Style="{StaticResource ModernComboBoxItem}"/>
-                                            <ComboBoxItem Content="警告"  Tag="Warning" Style="{StaticResource ModernComboBoxItem}"/>
-                                            <ComboBoxItem Content="エラー" Tag="Error"   Style="{StaticResource ModernComboBoxItem}"/>
-                                            <ComboBoxItem Content="DEBUG" Tag="Debug"   Style="{StaticResource ModernComboBoxItem}"/>
-                                        </ComboBox>
-                                    </Grid>
-                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
-                                    <Grid Margin="0,8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="自動ログ削除" FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}"
-                                                   VerticalAlignment="Center"/>
-                                        <CheckBox x:Name="AutoCleanLogsToggle" Grid.Column="1"
+                                        <CheckBox x:Name="TraceLogToggle" Grid.Column="1"
                                                   Style="{StaticResource ToggleSwitch}"
                                                   VerticalAlignment="Center"
-                                                  Checked="AutoCleanLogsToggle_Changed"
-                                                  Unchecked="AutoCleanLogsToggle_Changed"/>
+                                                  Checked="TraceLogToggle_Changed"
+                                                  Unchecked="TraceLogToggle_Changed"/>
                                     </Grid>
                                     <Separator Style="{StaticResource HorizontalSeparator}"/>
                                     <Grid Margin="0,8">
@@ -1699,6 +1694,21 @@
                                             <ComboBoxItem Content="7日"  Tag="7"   Style="{StaticResource ModernComboBoxItem}"/>
                                             <ComboBoxItem Content="無制限" Tag="-1" Style="{StaticResource ModernComboBoxItem}"/>
                                         </ComboBox>
+                                    </Grid>
+                                    <Separator Style="{StaticResource HorizontalSeparator}"/>
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="自動ログ削除" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="AutoCleanLogsToggle" Grid.Column="1"
+                                                  Style="{StaticResource ToggleSwitch}"
+                                                  VerticalAlignment="Center"
+                                                  Checked="AutoCleanLogsToggle_Changed"
+                                                  Unchecked="AutoCleanLogsToggle_Changed"/>
                                     </Grid>
                                 </StackPanel>
                             </Border>
@@ -1774,6 +1784,8 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        Margin="0,0,0,4"/>
                             <TextBlock Text="YouTube Data API v3 使用" FontSize="12"
+                                       Foreground="{DynamicResource TextMutedBrush}"/>
+                            <TextBlock Text="Gemini API 使用" FontSize="12"
                                        Foreground="{DynamicResource TextMutedBrush}"/>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
                             <TextBlock Text="Created by Coco" FontSize="12"

@@ -34,9 +34,6 @@ public partial class YouTubeApiClient : IYouTubeApiClient
     /// <summary>YouTube チャンネル ID の固定長（UC + 22文字）</summary>
     private const int ChannelIdLength = 24;
 
-    /// <summary>channels.list の Id に一括指定するチャンネルIDの1回あたり最大件数</summary>
-    private const int BanCheckChunkSize = 50;
-
     private static bool IsQuotaExceededError(Google.GoogleApiException ex)
     {
         var reason = ex.Error?.Errors?.FirstOrDefault()?.Reason ?? "";
@@ -589,9 +586,9 @@ public partial class YouTubeApiClient : IYouTubeApiClient
     public async Task<Dictionary<string, bool>> CheckChannelsBannedAsync(IReadOnlyList<string> channelIds)
     {
         var result = new Dictionary<string, bool>();
-        for (var offset = 0; offset < channelIds.Count; offset += BanCheckChunkSize)
+        for (var offset = 0; offset < channelIds.Count; offset += YouTubeConstants.BanCheckChunkSize)
         {
-            var chunk = channelIds.Skip(offset).Take(BanCheckChunkSize).ToList();
+            var chunk = channelIds.Skip(offset).Take(YouTubeConstants.BanCheckChunkSize).ToList();
             try
             {
                 var svc = GetService();

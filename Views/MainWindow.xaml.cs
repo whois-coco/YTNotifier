@@ -37,9 +37,9 @@ namespace YTNotifier.Views;
 public partial class MainWindow : System.Windows.Window
 {
     // ===== 定数 =====
-    private const int    SidebarExpandedWidth    = 120;
+    private const int    SidebarExpandedWidth    = 130;
     private const int    SidebarCollapsedWidth   = 44;
-    private const int    ContentWidthNormal      = 380;
+    private const int    ContentWidthNormal      = 400;
     private const int    ContentWidthCompact     = 286;
     private const int    CollapsedTotalWidth     = SidebarCollapsedWidth + ContentWidthNormal;  // 424
     private const int    CompactTotalWidth       = SidebarCollapsedWidth + ContentWidthCompact; // 330
@@ -336,6 +336,7 @@ public partial class MainWindow : System.Windows.Window
     {
         var s = SettingsService.Instance.Settings;
         InitApiKeySlotComboBox();
+        InitNotificationSoundSetComboBox();
         _actualApiKey                     = s.ApiKey;
         ApiKeyBox.Text                    = _actualApiKey;
         UpdateApiKeyState(!string.IsNullOrEmpty(_actualApiKey));
@@ -355,6 +356,10 @@ public partial class MainWindow : System.Windows.Window
             if (item.Tag?.ToString() == s.ToastStyle.ToString())
             { ToastStyleComboBox.SelectedItem = item; break; }
         if (ToastStyleComboBox.SelectedItem == null) ToastStyleComboBox.SelectedIndex = 0;
+        ToastStyleComboBox.IsEnabled           = s.ShowDesktopNotification;
+        ToastStyleComboBox.Opacity             = s.ShowDesktopNotification ? 1.0 : AppConstants.DisabledControlOpacity;
+        NotificationSoundSetComboBox.IsEnabled = s.NotificationSound;
+        NotificationSoundSetComboBox.Opacity   = s.NotificationSound ? 1.0 : AppConstants.DisabledControlOpacity;
         _loadingSettings = false;
         UpdatePinButton(s.AlwaysOnTop);
 
@@ -378,11 +383,9 @@ public partial class MainWindow : System.Windows.Window
 
         UpdateQuotaInfo();
 
-        AutoCleanLogsToggle.IsChecked = s.AutoCleanLogs;
         _loadingSettings = true;
-        var lvlItems = LogLevelComboBox.Items.Cast<ComboBoxItem>().ToList();
-        LogLevelComboBox.SelectedItem =
-            lvlItems.FirstOrDefault(i => i.Tag?.ToString() == s.LogLevel) ?? lvlItems[0];
+        AutoCleanLogsToggle.IsChecked = s.AutoCleanLogs;
+        TraceLogToggle.IsChecked = s.TraceLogEnabled;
         _loadingSettings = false;
         _loadingSettings = true;
         var retItems = LogRetentionComboBox.Items.Cast<ComboBoxItem>().ToList();

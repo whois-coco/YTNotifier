@@ -41,8 +41,8 @@ public class AppSettings
     [JsonProperty("startWithWindows")]
     public bool StartWithWindows { get; set; } = false;
 
-    [JsonProperty("logLevel")]
-    public string LogLevel { get; set; } = "Info";
+    [JsonProperty("traceLogEnabled")]
+    public bool TraceLogEnabled { get; set; } = false;
 
     // ウィンドウサイズ・位置
     [JsonProperty("windowWidth")]
@@ -65,6 +65,10 @@ public class AppSettings
 
     [JsonProperty("notificationSound")]
     public bool NotificationSound { get; set; } = true;
+
+    /// <summary>選択中の通知音セット（Sounds フォルダ配下のサブフォルダ名）。空文字は Sounds 直下を使う「デフォルト」</summary>
+    [JsonProperty("notificationSoundSet")]
+    public string NotificationSoundSet { get; set; } = string.Empty;
 
     [JsonProperty("isMuted")]
     public bool IsMuted { get; set; } = false;
@@ -426,11 +430,26 @@ public enum LogLevel
 
 public enum LogCategory
 {
-    System,
-    Info,
-    Warning,
-    Error,
-    Debug
+    Monitor,              // 監視・チェック実行、動画検索
+    VideoFilter,          // 待機所（ライブ/プレミア）フィルター・スケジューラー
+    Notification,         // 通知送信・テスト通知
+    Channel,              // チャンネルBAN検知・API取得失敗
+    ChannelListUi,        // チャンネル一覧画面の操作
+    CategoryUi,           // カテゴリの追加・削除・並び替え
+    AddChannelWindow,      // チャンネル追加ウィンドウ
+    ChannelDetailWindow,   // チャンネル詳細ウィンドウ
+    VideoSummaryPopup,    // 動画情報・Gemini要約ポップアップ
+    ApiKeyWindow,          // APIキー・要約用APIキーウィンドウ
+    Navigation,           // ページ・サイドバー切替
+    Tray,                 // タスクトレイ操作
+    Settings,             // 設定タブでの変更
+    Quota,                // APIクォータ関連
+    Network,              // ネットワーク切断・復帰
+    Backup,               // バックアップ・自動復元
+    Log,                  // ログ削除・アクティビティログウィンドウ
+    Startup,              // 起動時エラー（設定読込・チャンネル一覧・監視開始）
+    Ui,                   // アイコン・トレイ初期化等の汎用UIエラー
+    Debug,                // デバッグ・開発者ツール
 }
 
 /// <summary>upcoming 待ち中のライブ/プレミア1件分の情報</summary>
@@ -666,7 +685,8 @@ public class VideoInfo
     public string KindLabel => Kind switch
     {
         VideoKind.Short    => "Short",
-        VideoKind.Live     => "ライブ",
+        // 配信中・予定（upcoming）は「ライブ」、配信終了済み（録画）は「アーカイブ」
+        VideoKind.Live     => (IsCurrentlyLive || IsUpcoming) ? "ライブ" : "アーカイブ",
         VideoKind.Premiere => "プレミア",
         _                  => "動画"
     };

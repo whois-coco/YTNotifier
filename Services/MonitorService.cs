@@ -138,7 +138,7 @@ public class MonitorService : IDisposable
         {
             try { await CheckAllChannelsAsync(); }
             catch (Exception ex) { AppLogger.Log(LogMsg.CheckFailed, null, ex.Message); }
-            finally { LoggerService.Instance.FlushLog(); ScheduleNextTick(); }
+            finally { ScheduleNextTick(); }
         }, null, TimeSpan.Zero, Timeout.InfiniteTimeSpan);
         CancellationTokenSource oldCts;
         lock (_schedulerLock)
@@ -176,7 +176,7 @@ public class MonitorService : IDisposable
     // ===== 待機所・開始通知スケジューラー =====
 
     /// <summary>スケジューラーを起こして次アクションを再計算させる（新規キュー追加時に呼ぶ）</summary>
-    public void WakeUpScheduler()
+    public void WakeUpScheduler(string? channelName = null)
     {
         CancellationTokenSource old;
         lock (_schedulerLock)
@@ -185,7 +185,7 @@ public class MonitorService : IDisposable
             _schedulerCts = new CancellationTokenSource();
         }
         old.Cancel();
-        AppLogger.Log(LogMsg.SchedulerWakeUp);
+        AppLogger.Log(LogMsg.SchedulerWakeUp, channelName);
     }
 
     private record SchedulerAction(
@@ -530,6 +530,16 @@ public class MonitorService : IDisposable
                     });
                     AppLogger.Log(LogMsg.LatestVideoRecovered, channel.ChannelName, channel.LatestVideoId);
                 }
+                else if (!channel.LatestVideoDeleted && scannedEntry != null
+                         && !string.IsNullOrEmpty(scannedEntry.Title) && scannedEntry.Title != channel.LatestTitle)
+                {
+                    // 動画IDは同じままYouTube側でタイトルのみ変更されたケース
+                    var oldTitle = channel.LatestTitle;
+                    channel.LatestTitle = scannedEntry.Title;
+                    SettingsService.Instance.UpdateChannelSilent(channel);
+                    ChannelUpdated?.Invoke();
+                    AppLogger.Log(LogMsg.LatestVideoTitleChanged, channel.ChannelName, channel.LatestVideoId, oldTitle!, scannedEntry.Title);
+                }
             }
 
             // 過去に動画があったチャンネルの投稿が全て確認できなくなった/復帰したかの判定
@@ -634,11 +644,14 @@ public class MonitorService : IDisposable
 
             SettingsService.Instance.UpdateChannelSilent(channel);
 
-            var (pendingNotifyLive, pendingNotifyPremiere) =
+            var (pendingNotifyLive, pendingNotifyPremiere, confirmedTransitions) =
                 BuildPendingTransitionCandidates(channel, pendingTransitioned, newCandidates);
 
-            // ③ pendingTransitioned の VideoId で LastCheckedVideoId を進める（新着と重複していない場合）
-            var transitionedIds = pendingTransitioned
+            // ③ 確認済み遷移動画（wasLive/wasPremiereで実在確認済み）の VideoId で LastCheckedVideoId を進める
+            // 配信中のライブ/プレミア自身は毎回 pendingTransitioned に含まれ続けるが wasLive/wasPremiere が
+            // 既に false（PendingLives/PendingPremieres から削除済み）のため confirmedTransitions には含まれず、
+            // カーソルを巻き戻さない（007修正）
+            var transitionedIds = confirmedTransitions
                 .Where(v => !videos.Any(x => x.VideoId == v.VideoId) && v.VideoId != channel.LastCheckedVideoId)
                 .Select(v => v.VideoId)
                 .ToHashSet();
@@ -764,7 +777,10 @@ public class MonitorService : IDisposable
         var notifyLives                = new List<VideoInfo>();
         bool publishedLiveSeen         = false;
         bool publishedPremiereSeen     = false;
-        bool publishedLiveArchiveSeen  = false;
+        // カーソル未設定＝まだ一度も中身を見ていない初回チェック。BuildNewVideoNotifyCandidates は
+        // カーソル更新（CheckChannelAsync の cursorVideo 反映）より前に呼ばれるため、ここで判定して問題ない。
+        bool isFirstCheck              = string.IsNullOrEmpty(channel.LastCheckedVideoId);
+        bool firstViewArchiveNotified  = false;
 
         foreach (var video in videos)
         {
@@ -773,27 +789,35 @@ public class MonitorService : IDisposable
                 case VideoKind.Live:
                     if (video.IsUpcoming)
                         QueueUpcomingEntry(channel, channel.PendingLives, video);
+                    else if (video.IsCurrentlyLive)
+                    {
+                        // 配信中：pending から削除し、開始日に関わらず通知する
+                        // （⑥ 013修正で当日フィルタ撤去。最新のライブ活動を通知。二重通知はカーソルで防止）
+                        // publishedLiveSeen は「通知対象の配信中ライブを見た」ときだけ立てる（⑦）
+                        publishedLiveSeen = true;
+                        var liveCandidate = ResolveLiveCandidate(channel, video);
+                        if (liveCandidate != null) notifyLives.Add(liveCandidate);
+                    }
                     else
                     {
-                        publishedLiveSeen = true;
-                        if (video.IsCurrentlyLive)
+                        // アーカイブ（配信終了済み）。まず pending の後始末のみ行う。
+                        lock (_pendingListLock)
+                            channel.PendingLives.RemoveAll(p => p.VideoId == video.VideoId);
+
+                        // 初回チェック（まだ一度も中身を見ていないチャンネル）に限り、最新1件を通知する（①例外）。
+                        // 既に見ているチャンネルで配信終了→アーカイブ化したものは通知しない（①本体・02:42バグ修正）。
+                        // 通知する場合も KindLabel は「アーカイブ」になる（②）。NotifyLive フィルタのみ適用し、
+                        // 待機所モード（WaitingRoomOnly）は配信開始通知向けの設定のためここでは適用しない。
+                        if (isFirstCheck && !firstViewArchiveNotified)
                         {
-                            // 配信中：当日開始のもののみ通知（過去日から続く配信の誤通知防止）
-                            if (video.ActualStartTime.HasValue && video.ActualStartTime.Value >= DateTime.Today)
-                            {
-                                var liveCandidate = ResolveLiveCandidate(channel, video);
-                                if (liveCandidate != null) notifyLives.Add(liveCandidate);
-                            }
-                        }
-                        else if (!publishedLiveArchiveSeen)
-                        {
-                            // アーカイブ（配信終了済み）：最新1件のみ通知
-                            publishedLiveArchiveSeen = true;
-                            var liveCandidate = ResolveLiveCandidate(channel, video);
-                            if (liveCandidate != null) notifyLives.Add(liveCandidate);
+                            firstViewArchiveNotified = true;
+                            var archiveCandidate = FilterByKind(channel, video, channel.NotifyLive);
+                            if (archiveCandidate != null) notifyLives.Add(archiveCandidate);
                         }
                         else
-                            ResolveLiveCandidate(channel, video); // pending 削除のみ
+                        {
+                            AppLogger.Log(LogMsg.ArchivedLiveNotNotified, channel.ChannelName, video.Title);
+                        }
                     }
                     break;
 
@@ -844,11 +868,19 @@ public class MonitorService : IDisposable
             var existing = list.FirstOrDefault(p => p.VideoId == video.VideoId);
             if (existing != null)
             {
+                bool hasChanged = existing.ScheduledAt != scheduled
+                                || existing.Title != video.Title
+                                || existing.ThumbnailUrl != video.ThumbnailUrl;
+
                 existing.ScheduledAt  = scheduled;
                 existing.Title        = video.Title;
                 existing.ThumbnailUrl = video.ThumbnailUrl;
-                AppLogger.Log(LogMsg.UpcomingQueueUpdated, channel.ChannelName,
-                    scheduled?.ToString("MM/dd HH:mm") ?? "-", video.Title);
+
+                if (hasChanged)
+                {
+                    AppLogger.Log(LogMsg.UpcomingQueueUpdated, channel.ChannelName,
+                        scheduled?.ToString("MM/dd HH:mm") ?? "-", video.Title);
+                }
                 return;
             }
 
@@ -869,7 +901,7 @@ public class MonitorService : IDisposable
         }
 
         // スケジューラーに新規キュー追加を通知
-        Instance.WakeUpScheduler();
+        Instance.WakeUpScheduler(channel.ChannelName);
     }
 
     /// <summary>
@@ -918,13 +950,14 @@ public class MonitorService : IDisposable
     /// pending 遷移リストを走査して通知候補を返す。
     /// 新着ループで既に新しいライブ/プレミアが見つかっていた場合は遷移を破棄する。
     /// </summary>
-    private static (VideoInfo? live, VideoInfo? premiere) BuildPendingTransitionCandidates(
+    private static (VideoInfo? live, VideoInfo? premiere, List<VideoInfo> confirmedTransitions) BuildPendingTransitionCandidates(
         ChannelInfo channel,
         List<VideoInfo> pendingTransitioned,
         NewVideoNotifyCandidates newCandidates)
     {
         VideoInfo? pendingNotifyLive     = null;
         VideoInfo? pendingNotifyPremiere = null;
+        var confirmedTransitions = new List<VideoInfo>();
 
         foreach (var video in pendingTransitioned)
         {
@@ -937,7 +970,15 @@ public class MonitorService : IDisposable
                 lock (_pendingListLock)
                     channel.PendingLives.RemoveAll(p => p.VideoId == video.VideoId);
 
-                if (newCandidates.LatestLiveSeen)
+                confirmedTransitions.Add(video);
+
+                if (!video.IsCurrentlyLive)
+                {
+                    // 待機所から配信開始を捕まえられないまま終了（アーカイブ化）したものは通知しない（③ 013修正）。
+                    // カーソルは confirmedTransitions 経由で前進させ、pending は上で削除済み。
+                    AppLogger.Log(LogMsg.ArchivedLiveNotNotified, channel.ChannelName, video.Title);
+                }
+                else if (newCandidates.LatestLiveSeen)
                 {
                     AppLogger.Log(LogMsg.OldLiveDiscardedNew, channel.ChannelName, video.Title);
                 }
@@ -962,6 +1003,8 @@ public class MonitorService : IDisposable
                 lock (_pendingListLock)
                     channel.PendingPremieres.RemoveAll(p => p.VideoId == video.VideoId);
 
+                confirmedTransitions.Add(video);
+
                 if (newCandidates.LatestPremiereSeen)
                 {
                     AppLogger.Log(LogMsg.OldPremiereDiscardedNew, channel.ChannelName, video.Title);
@@ -984,7 +1027,7 @@ public class MonitorService : IDisposable
             }
         }
 
-        return (pendingNotifyLive, pendingNotifyPremiere);
+        return (pendingNotifyLive, pendingNotifyPremiere, confirmedTransitions);
     }
 
     private async Task NotifyAsync(ChannelInfo channel, VideoInfo video)
@@ -1050,7 +1093,6 @@ public class MonitorService : IDisposable
     /// </summary>
     private static void RevertExpiredPendingEntries(ChannelInfo ch, DateTime now)
     {
-        if (ch.MonitorMode != MonitorMode.Focus) return;
         if (HasActiveTimeSlotWindow(ch, now)) return;
 
         void Revert(List<PendingVideoEntry> entries)
@@ -1171,6 +1213,7 @@ public class MonitorService : IDisposable
             pendingLiveDisplay = ch.NotifyLive
                 ? ch.PendingLives
                     .Where(p => p.ScheduledAt.HasValue && p.ScheduledAt.Value <= statusWindow)
+                    .Where(p => !activeLiveEntries.Any(a => a.VideoId == p.VideoId)) // 012修正：配信中と同一動画は予定側に出さない
                     .OrderBy(p => p.ScheduledAt)
                     .FirstOrDefault()
                 : null;
@@ -1178,6 +1221,7 @@ public class MonitorService : IDisposable
             pendingPremiereDisplay = ch.NotifyVideo
                 ? ch.PendingPremieres
                     .Where(p => p.ScheduledAt.HasValue && p.ScheduledAt.Value <= statusWindow)
+                    .Where(p => !activePremiereEntries.Any(a => a.VideoId == p.VideoId)) // 012修正：公開中と同一動画は予定側に出さない
                     .OrderBy(p => p.ScheduledAt)
                     .FirstOrDefault()
                 : null;

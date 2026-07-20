@@ -24,20 +24,11 @@ public class LoggerService
     private const int MaxErrorEntries   = 500;
     private DateTime _currentLogDate = DateTime.Today;
 
-    private readonly List<(string path, string line)> _logBuffer = new();
-    private readonly object _bufferLock = new();
-    private const int LogBufferFlushCount = 50;
-    private const int LogBufferFlushIntervalMs = 5 * 60 * 1000;
-    private readonly System.Threading.Timer _logFlushTimer;
-
     private LoggerService()
     {
         _logDir = Path.Combine(SettingsService.Instance.AppDataDir, AppConstants.DirLogs);
         Directory.CreateDirectory(_logDir);
         LoadTodayLogFile();
-        var initialMs = CalcFlushIntervalMs();
-        _logFlushTimer = new System.Threading.Timer(
-            _ => FlushLog(), null, initialMs, initialMs);
     }
 
     private void LoadTodayLogFile()
@@ -51,8 +42,7 @@ public class LoggerService
             for (var i = start; i < lines.Length; i++)
             {
                 var entry = ParseLogLine(lines[i], DateTime.Today);
-                if (entry != null && (entry.Level == LogLevel.System || IsLevelVisible(entry.Level)))
-                    TodayEntries.Add(entry);
+                if (entry != null) TodayEntries.Add(entry);
             }
         }
         catch { }
@@ -94,8 +84,7 @@ public class LoggerService
         return new LogEntry { Timestamp = date + time, Level = level, Message = message, ChannelName = channelName };
     }
 
-    public void Log(string message, LogLevel level = LogLevel.Info, string? channelName = null,
-                    LogCategory category = LogCategory.System)
+    public void Log(string message, LogLevel level, string? channelName, LogCategory category)
     {
         var entry = new LogEntry
         {
@@ -105,23 +94,8 @@ public class LoggerService
             ChannelName = channelName
         };
 
-        // フィルター判定（System レベルは常時表示、その他は設定レベルに従う）
-        bool show = level == LogLevel.System || IsLevelVisible(level);
-
-        if (level == LogLevel.Debug)
-        {
-            var dbEntry = new LogEntry { Timestamp = DateTime.Now, Level = level, Message = message, ChannelName = channelName };
-            WriteToDebugDb(dbEntry, category);
-            if (!show) return;
-        }
-        else
-        {
-            if (!show) return;
-        }
-
-        // ファイル書き込みを先に行い、UI更新が失敗しても記録が残るようにする
-        WriteToFile(entry);
-        if (level != LogLevel.Debug) WriteToDebugDb(entry, category);  // DEBUG以外もDBへ記録
+        WriteToDebugDb(entry, category);
+        if (level == LogLevel.Debug) return;
 
         Application.Current?.Dispatcher.InvokeAsync(() =>
         {
@@ -154,86 +128,43 @@ public class LoggerService
         });
     }
 
-    private static bool IsLevelVisible(LogLevel level)
-    {
-        var filter = SettingsService.Instance.Settings.LogLevel;
-        return filter switch
-        {
-            "Info"    => level is LogLevel.Info or LogLevel.Warning or LogLevel.Error,
-            "Warning" => level is LogLevel.Warning or LogLevel.Error,
-            "Error"   => level == LogLevel.Error,
-            "Debug"   => level is LogLevel.Info or LogLevel.Warning or LogLevel.Error,
-            _         => level is LogLevel.Info or LogLevel.Error
-        };
-    }
-
-    public void System(string msg, string? ch = null, LogCategory cat = LogCategory.System)
+    public void System(string msg, string? ch, LogCategory cat)
         => Log(msg, LogLevel.System, ch, cat);
-    public void Info(string msg, string? ch = null, LogCategory cat = LogCategory.Info)
+    public void Info(string msg, string? ch, LogCategory cat)
         => Log(msg, LogLevel.Info, ch, cat);
-    public void Debug(string msg, string? ch = null, LogCategory cat = LogCategory.Debug)
+    public void Debug(string msg, string? ch, LogCategory cat)
         => Log(msg, LogLevel.Debug, ch, cat);
-    public void Warning(string msg, string? ch = null, LogCategory cat = LogCategory.Warning)
+    public void Warning(string msg, string? ch, LogCategory cat)
     {
         Log(msg, LogLevel.Warning, ch, cat);
         LogError(msg, LogLevel.Warning, ch);
     }
-    public void Error(string msg, string? ch = null, LogCategory cat = LogCategory.Error)
+    public void Error(string msg, string? ch, LogCategory cat)
     {
         Log(msg, LogLevel.Error, ch, cat);
         LogError(msg, LogLevel.Error, ch);
     }
 
-    private void WriteToFile(LogEntry entry)
+    private static string FormatLogLine(LogEntry entry)
     {
-        var fileName = $"{entry.Timestamp:yyyy-MM-dd}.log";
-        var path     = Path.Combine(_logDir, fileName);
-        var line     = $"[{entry.Timestamp:HH:mm:ss}] [{entry.LevelText,-7}]";
+        var line = $"[{entry.Timestamp:HH:mm:ss}] [{entry.LevelText,-7}]";
         if (entry.ChannelName != null) line += $" [{entry.ChannelName}]";
         line += $" {entry.Message}";
-
-        bool flush;
-        lock (_bufferLock)
-        {
-            _logBuffer.Add((path, line));
-            flush = _logBuffer.Count >= LogBufferFlushCount;
-        }
-        if (flush) FlushLog();
+        return line;
     }
 
-    private int CalcFlushIntervalMs()
+    /// <summary>動作ログウィンドウの「ファイルへ保存」ボタンから呼ばれる。当日ログ全件でその日の.logファイルを上書きする</summary>
+    public int SaveTodayLogToFile()
     {
-        var checkMs = SettingsService.Instance.Settings.CheckIntervalMinutes * 60 * 1000;
-        return Math.Min(LogBufferFlushIntervalMs, checkMs);
-    }
+        var fileName = $"{DateTime.Today:yyyy-MM-dd}.log";
+        var path     = Path.Combine(_logDir, fileName);
+        var lines    = TodayEntries.Select(FormatLogLine).ToList();
 
-    /// <summary>グローバルチェック間隔が変わったときにタイマーを再設定する</summary>
-    public void UpdateFlushInterval()
-    {
-        var ms = CalcFlushIntervalMs();
-        _logFlushTimer.Change(ms, ms);
-    }
-
-    /// <summary>バッファ内のログをすべてファイルに書き出す。アプリ終了時・タイマー・50行到達時・チェック完了時に呼ばれる</summary>
-    public void FlushLog()
-    {
-        List<(string path, string line)> snapshot;
-        lock (_bufferLock)
+        lock (_fileLock)
         {
-            if (_logBuffer.Count == 0) return;
-            snapshot = new List<(string, string)>(_logBuffer);
-            _logBuffer.Clear();
+            File.WriteAllLines(path, lines);
         }
-        try
-        {
-            lock (_fileLock)
-            {
-                foreach (var group in snapshot.GroupBy(e => e.path))
-                    File.AppendAllText(group.Key,
-                        string.Join(Environment.NewLine, group.Select(e => e.line)) + Environment.NewLine);
-            }
-        }
-        catch { }
+        return lines.Count;
     }
 
     public void ClearUiLog()
@@ -371,7 +302,7 @@ public class LoggerService
 
     private void WriteToDebugDb(LogEntry entry, LogCategory category)
     {
-        if (SettingsService.Instance.Settings.LogLevel != "Debug") return;
+        if (!SettingsService.Instance.Settings.TraceLogEnabled) return;
         if (_debugDbPath == null) InitDebugDb(entry.Timestamp.Date);
         try
         {

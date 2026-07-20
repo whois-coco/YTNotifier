@@ -7,7 +7,8 @@
         Background="{DynamicResource BackgroundBrush}"
         WindowStyle="None"
         AllowsTransparency="False"
-        ResizeMode="CanResize">
+        ResizeMode="CanResize"
+        FontFamily="Noto Sans JP">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0"
                       ResizeBorderThickness="5"
@@ -90,14 +91,27 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="動作ログ" FontSize="16" FontWeight="Bold"
                            Foreground="{DynamicResource TextPrimaryBrush}"
                            VerticalAlignment="Center"/>
-                <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
+                <ComboBox x:Name="LogFilterComboBox" Grid.Column="1"
+                          Style="{StaticResource ModernComboBox}"
+                          Margin="0,0,8,0"
+                          SelectionChanged="LogFilterComboBox_Changed">
+                    <ComboBoxItem Content="情報"  Tag="Info"    Style="{StaticResource ModernComboBoxItem}"/>
+                    <ComboBoxItem Content="警告"  Tag="Warning" Style="{StaticResource ModernComboBoxItem}"/>
+                    <ComboBoxItem Content="エラー" Tag="Error"   Style="{StaticResource ModernComboBoxItem}"/>
+                </ComboBox>
+                <Button Grid.Column="2" Style="{StaticResource SecondaryButton}"
+                        Click="SaveLogToFile_Click" Padding="10,7" Margin="0,0,8,0"
+                        Content="💾 ファイルへ保存"/>
+                <Button Grid.Column="3" Style="{StaticResource SecondaryButton}"
                         Click="ClearLog_Click" Padding="10,7" Margin="0,0,8,0"
                         Content="🗑 クリア"/>
-                <Button Grid.Column="2" Style="{StaticResource SecondaryButton}"
+                <Button Grid.Column="4" Style="{StaticResource SecondaryButton}"
                         Click="OpenLogFolder_Click" Padding="10,7"
                         Content="📁"
                         ToolTip="ログフォルダを開く"

@@ -4,7 +4,8 @@
         WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        SizeToContent="WidthAndHeight" MinWidth="320" MaxWidth="480">
+        SizeToContent="WidthAndHeight" MinWidth="320" MaxWidth="480"
+        FontFamily="Noto Sans JP">
 
     <Border Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"

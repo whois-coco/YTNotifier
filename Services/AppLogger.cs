@@ -103,6 +103,7 @@ public enum LogMsg
     OldPremiereDiscarded      = 5023,  // {0}=title
     OldPremiereDiscardedNew   = 5024,  // {0}=title
     OldPremiereDiscardedTrans = 5025,  // {0}=title
+    ArchivedLiveNotNotified   = 5127,  // {0}=title
     UpcomingQueued            = 5084,  // {0}=time {1}=title
     UpcomingQueueUpdated      = 5087,  // {0}=time {1}=title
     UpcomingQueueFull         = 5085,  // {0}=title
@@ -123,6 +124,7 @@ public enum LogMsg
     SettingToastStyle          = 5029,  // {0}=style
     SettingGlobalNotifyUpcoming= 5030,  // {0}=ON/OFF
     SettingNotificationSound   = 5031,  // {0}=ON/OFF
+    SettingNotificationSoundSet = 5131,  // {0}=セット名
     SettingFlashTaskbar        = 5032,  // {0}=ON/OFF
     SettingMinimizeToTray      = 5033,  // {0}=ON/OFF
     SettingMute                = 5034,  // {0}=ON/OFF
@@ -131,7 +133,7 @@ public enum LogMsg
     SettingStartWithWindows    = 5037,  // {0}=ON/OFF
     SettingCheckInterval       = 5038,  // {0}=minutes
     QuotaAutoIntervalAdjusted  = 5079,  // {0}=minutes
-    SettingLogLevel            = 5039,  // {0}=level
+    SettingTraceLogEnabled     = 5129,  // {0}=ON/OFF
     SettingAutoCleanLogs       = 5040,  // {0}=ON/OFF
     SettingLogRetention        = 5041,  // {0}=days
     SettingBackupExported      = 5042,  // {0}=filename
@@ -144,6 +146,7 @@ public enum LogMsg
     CategoryReordered          = 5046,  // {0}=categoryName
     KindToggleChanged          = 5044,  // {0}=kind {1}=ON/OFF
     ChannelRowClicked          = 5049,  // {0}=channelName
+    ChannelNameClicked         = 5126,  // {0}=channelName
     ChannelContextClearNew     = 5050,  // {0}=channelName
     ChannelContextOpenDetail   = 5051,  // {0}=channelName
     ChannelMovedToCategory     = 5052,  // {0}=channelName {1}=categoryName
@@ -199,10 +202,12 @@ public enum LogMsg
     // チャンネルBAN・動画削除検知
     LatestVideoDeletedDetected         = 5121,  // {0}=videoId
     LatestVideoRecovered               = 5122,  // {0}=videoId
+    LatestVideoTitleChanged            = 5125,  // {0}=videoId {1}=旧タイトル {2}=新タイトル
     ChannelListAllAlive                = 5123,
     DormantListAllAlive                = 5124,
     // 動画要約ポップアップ
     VideoSummaryPopupOpened           = 5109,  // {0}=channelName
+    VideoListPopupOpened              = 5130,  // {0}=channelName {1}=件数
     GeminiSummaryRequested            = 5110,  // {0}=videoId
     GeminiSummaryCacheHit             = 5111,  // {0}=videoId
     GeminiSummarySucceeded            = 5112,  // {0}=videoId
@@ -219,6 +224,7 @@ public enum LogMsg
     ActivityLogWindowOpened    = 5062,
     ActivityLogCleared         = 5063,
     LogFolderOpened            = 5064,
+    ActivityLogSavedToFile     = 5128,  // {0}=count
     // デバッグ・開発
     DebugWindowNotFound       = 5012,
     DevToolError              = 5013,  // {0}=message
@@ -228,230 +234,236 @@ public enum LogMsg
 
 public static class AppLogger
 {
-    private record MessageDef(LogLevel Level, string Template);
+    private record MessageDef(LogLevel Level, LogCategory Category, string Template);
 
     private static readonly Dictionary<LogMsg, MessageDef> _messages = new()
     {
         // SYSTEM ─────────────────────────────────────────────────────
         // 監視
-        [LogMsg.MonitorStarted]            = new(LogLevel.System,  "監視を開始しました({0})"),
-        [LogMsg.MonitorStopped]            = new(LogLevel.System,  "監視を停止しました"),
-        [LogMsg.NetworkRestored]           = new(LogLevel.System,  "インターネット接続が回復しました。監視を再開します。"),
+        [LogMsg.MonitorStarted]            = new(LogLevel.System,  LogCategory.Monitor,      "監視を開始しました({0})"),
+        [LogMsg.MonitorStopped]            = new(LogLevel.System,  LogCategory.Monitor,      "監視を停止しました"),
+        [LogMsg.NetworkRestored]           = new(LogLevel.System,  LogCategory.Network,      "インターネット接続が回復しました。監視を再開します。"),
         // ログ
-        [LogMsg.AutoLogDeleted]            = new(LogLevel.System,  "起動時ログ自動削除: {0}件"),
+        [LogMsg.AutoLogDeleted]            = new(LogLevel.System,  LogCategory.Log,          "起動時ログ自動削除: {0}件"),
         // クォータ
-        [LogMsg.QuotaResumed]              = new(LogLevel.System,  "APIクォータをリセットしました。監視を再開します。"),
+        [LogMsg.QuotaResumed]              = new(LogLevel.System,  LogCategory.Quota,        "APIクォータをリセットしました。監視を再開します。"),
         // 設定
-        [LogMsg.SettingLogLevel]           = new(LogLevel.System,  "ログレベル変更: {0}"),
-        [LogMsg.SettingBackupExported]      = new(LogLevel.System,  "バックアップをエクスポートしました: {0}"),
-        [LogMsg.SettingBackupImported]      = new(LogLevel.System,  "バックアップをインポートしました: {0}"),
+        [LogMsg.SettingTraceLogEnabled]    = new(LogLevel.Debug,   LogCategory.Settings,     "トレースログの取得: {0}"),
+        [LogMsg.SettingBackupExported]      = new(LogLevel.System,  LogCategory.Settings,     "バックアップをエクスポートしました: {0}"),
+        [LogMsg.SettingBackupImported]      = new(LogLevel.System,  LogCategory.Settings,     "バックアップをインポートしました: {0}"),
 
         // INFO ────────────────────────────────────────────────────────
         // 監視・通知
-        [LogMsg.CheckStarted]              = new(LogLevel.Info,    "{0}開始 ({1}/{2}チャンネル)"),
-        [LogMsg.CheckCompleted]            = new(LogLevel.Info,    "{0}完了"),
-        [LogMsg.NewVideo]                  = new(LogLevel.Info,    "新着{0}: {1}"),
+        [LogMsg.CheckStarted]              = new(LogLevel.Info,    LogCategory.Monitor,      "{0}開始 ({1}/{2}チャンネル)"),
+        [LogMsg.CheckCompleted]            = new(LogLevel.Info,    LogCategory.Monitor,      "{0}完了"),
+        [LogMsg.NewVideo]                  = new(LogLevel.Info,    LogCategory.Monitor,      "新着{0}: {1}"),
         // チャンネル
-        [LogMsg.ChannelAdded]              = new(LogLevel.Info,    "チャンネルを追加しました"),
-        [LogMsg.ChannelRemoved]            = new(LogLevel.Info,    "チャンネルを削除しました"),
-        [LogMsg.ChannelBanned]              = new(LogLevel.Info,    "チャンネルBAN／削除を検知しました"),
-        [LogMsg.ChannelBanRecovered]        = new(LogLevel.Info,    "チャンネルの利用停止状態が解除されました"),
-        [LogMsg.ChannelListBanCheckStarted]   = new(LogLevel.Info,    "チャンネルリスト内の全チャンネル確認開始"),
-        [LogMsg.ChannelListBanCheckCompleted] = new(LogLevel.Info,    "チャンネルリスト内の全チャンネル確認完了"),
-        [LogMsg.DormantListBanCheckStarted]   = new(LogLevel.Info,    "休眠リスト内の全チャンネル確認開始"),
-        [LogMsg.DormantListBanCheckCompleted] = new(LogLevel.Info,    "休眠リスト内の全チャンネル確認完了"),
-        [LogMsg.NoVideosDetected]           = new(LogLevel.Info,    "投稿された動画が見つからなくなったことを検知しました"),
-        [LogMsg.NoVideosRecovered]          = new(LogLevel.Info,    "投稿された動画が見つかるようになりました（復帰）"),
+        [LogMsg.ChannelAdded]              = new(LogLevel.Info,    LogCategory.Channel,      "チャンネルを追加しました"),
+        [LogMsg.ChannelRemoved]            = new(LogLevel.Info,    LogCategory.Channel,      "チャンネルを削除しました"),
+        [LogMsg.ChannelBanned]              = new(LogLevel.Info,    LogCategory.Channel,      "チャンネルBAN／削除を検知しました"),
+        [LogMsg.ChannelBanRecovered]        = new(LogLevel.Info,    LogCategory.Channel,      "チャンネルの利用停止状態が解除されました"),
+        [LogMsg.ChannelListBanCheckStarted]   = new(LogLevel.Info,    LogCategory.Channel,      "チャンネルリスト内の全チャンネル確認開始"),
+        [LogMsg.ChannelListBanCheckCompleted] = new(LogLevel.Info,    LogCategory.Channel,      "チャンネルリスト内の全チャンネル確認完了"),
+        [LogMsg.DormantListBanCheckStarted]   = new(LogLevel.Info,    LogCategory.Channel,      "休眠リスト内の全チャンネル確認開始"),
+        [LogMsg.DormantListBanCheckCompleted] = new(LogLevel.Info,    LogCategory.Channel,      "休眠リスト内の全チャンネル確認完了"),
+        [LogMsg.NoVideosDetected]           = new(LogLevel.Info,    LogCategory.Monitor,      "投稿された動画が見つからなくなったことを検知しました"),
+        [LogMsg.NoVideosRecovered]          = new(LogLevel.Info,    LogCategory.Monitor,      "投稿された動画が見つかるようになりました（復帰）"),
         // APIキー
-        [LogMsg.ApiKeySaved]               = new(LogLevel.Info,    "APIキーを保存しました"),
-        [LogMsg.ApiKeyChanged]              = new(LogLevel.Info,    "APIキーを変更しました"),
-        [LogMsg.GeminiApiKeySaved]          = new(LogLevel.Info,    "要約用APIキーを保存しました"),
-        [LogMsg.GeminiApiKeyChanged]        = new(LogLevel.Info,    "要約用APIキーを変更しました"),
+        [LogMsg.ApiKeySaved]               = new(LogLevel.Info,    LogCategory.ApiKeyWindow, "APIキーを保存しました"),
+        [LogMsg.ApiKeyChanged]              = new(LogLevel.Info,    LogCategory.ApiKeyWindow, "APIキーを変更しました"),
+        [LogMsg.GeminiApiKeySaved]          = new(LogLevel.Info,    LogCategory.ApiKeyWindow, "要約用APIキーを保存しました"),
+        [LogMsg.GeminiApiKeyChanged]        = new(LogLevel.Info,    LogCategory.ApiKeyWindow, "要約用APIキーを変更しました"),
         // ログ
-        [LogMsg.LogManualDeleted]          = new(LogLevel.Info,    "ログ手動削除: {0}件 ({1})"),
+        [LogMsg.LogManualDeleted]          = new(LogLevel.Info,    LogCategory.Log,          "ログ手動削除: {0}件 ({1})"),
 
         // WARNING ─────────────────────────────────────────────────────
         // APIキー
-        [LogMsg.ApiKeyNotSet]              = new(LogLevel.Warning, "APIキーが未設定です。設定タブからAPIキーを入力してください。"),
-        [LogMsg.ApiKeyNotSetChannel]       = new(LogLevel.Warning, "APIキーが設定されていません。設定タブからAPIキーを入力してください。"),
+        [LogMsg.ApiKeyNotSet]              = new(LogLevel.Warning, LogCategory.ApiKeyWindow, "APIキーが未設定です。設定タブからAPIキーを入力してください。"),
+        [LogMsg.ApiKeyNotSetChannel]       = new(LogLevel.Warning, LogCategory.ApiKeyWindow, "APIキーが設定されていません。設定タブからAPIキーを入力してください。"),
         // クォータ
-        [LogMsg.QuotaRiskAdjusted]         = new(LogLevel.Warning, "チャンネル数増加によりAPI超過リスク → 監視間隔を{0}分に自動調整"),
-        [LogMsg.QuotaAutoIntervalAdjusted]  = new(LogLevel.Warning, "クォータ超過のためチェック間隔を自動調整: {0}分"),
-        [LogMsg.QuotaWarningOnSave]        = new(LogLevel.Warning, "詳細設定保存: クォータ使用量警告 {1}%（チャンネル: {0}）"),
-        [LogMsg.QuotaExceededOnSave]       = new(LogLevel.Warning, "詳細設定保存: クォータ超過 {1}%（チャンネル: {0}）"),
+        [LogMsg.QuotaRiskAdjusted]         = new(LogLevel.Warning, LogCategory.Quota,        "チャンネル数増加によりAPI超過リスク → 監視間隔を{0}分に自動調整"),
+        [LogMsg.QuotaAutoIntervalAdjusted]  = new(LogLevel.Warning, LogCategory.Quota,        "クォータ超過のためチェック間隔を自動調整: {0}分"),
+        [LogMsg.QuotaWarningOnSave]        = new(LogLevel.Warning, LogCategory.ChannelDetailWindow, "詳細設定保存: クォータ使用量警告 {1}%（チャンネル: {0}）"),
+        [LogMsg.QuotaExceededOnSave]       = new(LogLevel.Warning, LogCategory.ChannelDetailWindow, "詳細設定保存: クォータ超過 {1}%（チャンネル: {0}）"),
         // その他
-        [LogMsg.AutoRestored]              = new(LogLevel.Warning, "自動復元を実行しました（理由: {0}）"),
-        [LogMsg.InvalidChannelId]          = new(LogLevel.Warning, "不正なチャンネルID: '{0}'"),
+        [LogMsg.AutoRestored]              = new(LogLevel.Warning, LogCategory.Backup,       "自動復元を実行しました（理由: {0}）"),
+        [LogMsg.InvalidChannelId]          = new(LogLevel.Warning, LogCategory.Channel,       "不正なチャンネルID: '{0}'"),
 
         // ERROR ───────────────────────────────────────────────────────
         // ネットワーク
-        [LogMsg.NetworkDisconnected]       = new(LogLevel.Error,   "インターネット接続が切断されました。監視を停止します。"),
+        [LogMsg.NetworkDisconnected]       = new(LogLevel.Error,   LogCategory.Network,      "インターネット接続が切断されました。監視を停止します。"),
         // API呼び出し
-        [LogMsg.QuotaExceeded]             = new(LogLevel.Error,   "APIクォータ上限に達しました。{0} まで監視を停止します。"),
-        [LogMsg.CheckFailed]               = new(LogLevel.Error,   "チェック失敗: {0}"),
-        [LogMsg.ChannelInfoFailed]         = new(LogLevel.Error,   "チャンネル情報取得失敗: {0}"),
-        [LogMsg.LatestVideoFailed]         = new(LogLevel.Error,   "最新動画取得失敗: {0}"),
-        [LogMsg.UploadsPlaylistFailed]     = new(LogLevel.Error,   "UploadsPlaylistId 取得失敗({0}): {1}"),
-        [LogMsg.VideoKindFailed]           = new(LogLevel.Error,   "動画種別一括取得失敗: {0}"),
-        [LogMsg.UushFallbackFailed]        = new(LogLevel.Error,   "UUSH プレイリスト確認失敗({0}): {1}"),
-        [LogMsg.PlaylistFailed]            = new(LogLevel.Error,   "プレイリスト取得失敗({0}): {1}"),
-        [LogMsg.ApiFallback]               = new(LogLevel.Error,   "API失敗、フォールバック"),
-        [LogMsg.ChannelBanCheckFailed]     = new(LogLevel.Error,   "チャンネルBAN確認失敗({0}): {1}"),
+        [LogMsg.QuotaExceeded]             = new(LogLevel.Error,   LogCategory.Quota,        "APIクォータ上限に達しました。{0} まで監視を停止します。"),
+        [LogMsg.CheckFailed]               = new(LogLevel.Error,   LogCategory.Channel,      "チェック失敗: {0}"),
+        [LogMsg.ChannelInfoFailed]         = new(LogLevel.Error,   LogCategory.Channel,      "チャンネル情報取得失敗: {0}"),
+        [LogMsg.LatestVideoFailed]         = new(LogLevel.Error,   LogCategory.Channel,      "最新動画取得失敗: {0}"),
+        [LogMsg.UploadsPlaylistFailed]     = new(LogLevel.Error,   LogCategory.Channel,      "UploadsPlaylistId 取得失敗({0}): {1}"),
+        [LogMsg.VideoKindFailed]           = new(LogLevel.Error,   LogCategory.Channel,      "動画種別一括取得失敗: {0}"),
+        [LogMsg.UushFallbackFailed]        = new(LogLevel.Error,   LogCategory.Channel,      "UUSH プレイリスト確認失敗({0}): {1}"),
+        [LogMsg.PlaylistFailed]            = new(LogLevel.Error,   LogCategory.Channel,      "プレイリスト取得失敗({0}): {1}"),
+        [LogMsg.ApiFallback]               = new(LogLevel.Error,   LogCategory.Channel,      "API失敗、フォールバック"),
+        [LogMsg.ChannelBanCheckFailed]     = new(LogLevel.Error,   LogCategory.Channel,      "チャンネルBAN確認失敗({0}): {1}"),
         // スケジューラー
-        [LogMsg.SchedulerError]            = new(LogLevel.Error,   "スケジューラーエラー: {0}"),
+        [LogMsg.SchedulerError]            = new(LogLevel.Error,   LogCategory.VideoFilter,  "スケジューラーエラー: {0}"),
         // Gemini要約
-        [LogMsg.GeminiSummaryFailed]       = new(LogLevel.Error,   "Gemini要約失敗({0}): {1}"),
+        [LogMsg.GeminiSummaryFailed]       = new(LogLevel.Error,   LogCategory.VideoSummaryPopup, "Gemini要約失敗({0}): {1}"),
         // 通知
-        [LogMsg.NotifyFailed]              = new(LogLevel.Error,   "通知送信失敗: {0}"),
-        [LogMsg.TestNotifyFailed]          = new(LogLevel.Error,   "テスト通知失敗: {0}"),
-        [LogMsg.TestNotifyFailedNS]        = new(LogLevel.Error,   "テスト通知失敗: {0}"),
+        [LogMsg.NotifyFailed]              = new(LogLevel.Error,   LogCategory.Notification, "通知送信失敗: {0}"),
+        [LogMsg.TestNotifyFailed]          = new(LogLevel.Error,   LogCategory.Notification, "テスト通知失敗: {0}"),
+        [LogMsg.TestNotifyFailedNS]        = new(LogLevel.Error,   LogCategory.Notification, "テスト通知失敗: {0}"),
         // バックアップ・復元
-        [LogMsg.BackupFailed]              = new(LogLevel.Error,   "自動バックアップに失敗しました: {0}"),
-        [LogMsg.AutoRestoreFailed]         = new(LogLevel.Error,   "自動復元に失敗しました: {0}"),
+        [LogMsg.BackupFailed]              = new(LogLevel.Error,   LogCategory.Backup,       "自動バックアップに失敗しました: {0}"),
+        [LogMsg.AutoRestoreFailed]         = new(LogLevel.Error,   LogCategory.Backup,       "自動復元に失敗しました: {0}"),
         // 設定・起動
-        [LogMsg.SettingsLoadError]         = new(LogLevel.Error,   "設定読込エラー: {0}"),
-        [LogMsg.ChannelListError]          = new(LogLevel.Error,   "チャンネル一覧エラー: {0}"),
-        [LogMsg.MonitorStartError]         = new(LogLevel.Error,   "監視開始エラー: {0}"),
+        [LogMsg.SettingsLoadError]         = new(LogLevel.Error,   LogCategory.Startup,      "設定読込エラー: {0}"),
+        [LogMsg.ChannelListError]          = new(LogLevel.Error,   LogCategory.Startup,      "チャンネル一覧エラー: {0}"),
+        [LogMsg.MonitorStartError]         = new(LogLevel.Error,   LogCategory.Startup,      "監視開始エラー: {0}"),
         // UI
-        [LogMsg.IconLoadFailed]            = new(LogLevel.Error,   "アイコン読込失敗: {0}"),
-        [LogMsg.IconDownloadFailed]        = new(LogLevel.Error,   "アイコンDL失敗: {0}"),
-        [LogMsg.TrayIconInitFailed]        = new(LogLevel.Error,   "トレイアイコン初期化失敗: {0}"),
+        [LogMsg.IconLoadFailed]            = new(LogLevel.Error,   LogCategory.Ui,           "アイコン読込失敗: {0}"),
+        [LogMsg.IconDownloadFailed]        = new(LogLevel.Error,   LogCategory.Ui,           "アイコンDL失敗: {0}"),
+        [LogMsg.TrayIconInitFailed]        = new(LogLevel.Error,   LogCategory.Ui,           "トレイアイコン初期化失敗: {0}"),
 
         // DEBUG ───────────────────────────────────────────────────────
         // 監視・通知
-        [LogMsg.NotificationSent]          = new(LogLevel.Debug,   "通知送信: {0}"),
+        [LogMsg.NotificationSent]          = new(LogLevel.Debug,   LogCategory.Notification, "通知送信: {0}"),
         // 監視フロー
-        [LogMsg.NoNew]                     = new(LogLevel.Debug,   "新着なし"),
-        [LogMsg.GracePeriodStarted]        = new(LogLevel.Debug,   "猶予開始（残{1}回）: {0}"),
-        [LogMsg.VideoNotFound]             = new(LogLevel.Debug,   "対象動画が見つかりませんでした"),
+        [LogMsg.NoNew]                     = new(LogLevel.Debug,   LogCategory.Monitor,      "新着なし"),
+        [LogMsg.GracePeriodStarted]        = new(LogLevel.Debug,   LogCategory.Monitor,      "猶予開始（残{1}回）: {0}"),
+        [LogMsg.VideoNotFound]             = new(LogLevel.Debug,   LogCategory.Monitor,      "対象動画が見つかりませんでした"),
         // 動画通知フィルター
-        [LogMsg.LiveSkipped]               = new(LogLevel.Debug,   "ライブ待機所スキップ → {0}: {1}"),
-        [LogMsg.LiveReSkipped]             = new(LogLevel.Debug,   "ライブ待機所再スキップ（通知済）: {0}"),
-        [LogMsg.PremiereSkipped]           = new(LogLevel.Debug,   "プレミア待機所スキップ → {0}: {1}"),
-        [LogMsg.PremiereReSkipped]         = new(LogLevel.Debug,   "プレミア待機所再スキップ（通知済）: {0}"),
-        [LogMsg.KindFilterSkipped]         = new(LogLevel.Debug,   "種別フィルタースキップ [{0}]: {1}"),
-        [LogMsg.LiveStartSkipped]          = new(LogLevel.Debug,   "ライブ開始スキップ（待機所通知済）: {0}"),
-        [LogMsg.PremiereStartSkipped]      = new(LogLevel.Debug,   "プレミア開始スキップ（待機所通知済）: {0}"),
-        [LogMsg.OldLiveDiscarded]          = new(LogLevel.Debug,   "古いライブ破棄: {0}"),
-        [LogMsg.OldLiveDiscardedNew]       = new(LogLevel.Debug,   "古いライブ破棄（新着ライブ優先）: {0}"),
-        [LogMsg.OldLiveDiscardedTrans]     = new(LogLevel.Debug,   "古いライブ破棄（遷移済）: {0}"),
-        [LogMsg.OldPremiereDiscarded]      = new(LogLevel.Debug,   "古いプレミア破棄: {0}"),
-        [LogMsg.OldPremiereDiscardedNew]   = new(LogLevel.Debug,   "古いプレミア破棄（新着プレミア優先）: {0}"),
-        [LogMsg.OldPremiereDiscardedTrans] = new(LogLevel.Debug,   "古いプレミア破棄（遷移済）: {0}"),
-        [LogMsg.UpcomingQueued]             = new(LogLevel.Debug,   "待機所キュー追加 → {0}: {1}"),
-        [LogMsg.UpcomingQueueUpdated]       = new(LogLevel.Debug,   "待機所キュー更新 → {0}: {1}"),
-        [LogMsg.UpcomingQueueFull]          = new(LogLevel.Debug,   "待機所キュー満杯スキップ: {0}"),
-        [LogMsg.SchedulerWaitingRoomNotify]  = new(LogLevel.Debug,   "スケジューラー待機所通知 [{0}]: {1}"),
-        [LogMsg.SchedulerGracePeriodStarted] = new(LogLevel.Debug,   "スケジューラー集中監視起動: {0}"),
-        [LogMsg.SchedulerWakeUp]             = new(LogLevel.Debug,   "スケジューラー再計算"),
-        [LogMsg.PendingWindowExpired]        = new(LogLevel.Debug,   "監視ウィンドウ終了により予約状態解除: {0}"),
+        [LogMsg.LiveSkipped]               = new(LogLevel.Debug,   LogCategory.VideoFilter,  "ライブ待機所スキップ → {0}: {1}"),
+        [LogMsg.LiveReSkipped]             = new(LogLevel.Debug,   LogCategory.VideoFilter,  "ライブ待機所再スキップ（通知済）: {0}"),
+        [LogMsg.PremiereSkipped]           = new(LogLevel.Debug,   LogCategory.VideoFilter,  "プレミア待機所スキップ → {0}: {1}"),
+        [LogMsg.PremiereReSkipped]         = new(LogLevel.Debug,   LogCategory.VideoFilter,  "プレミア待機所再スキップ（通知済）: {0}"),
+        [LogMsg.KindFilterSkipped]         = new(LogLevel.Debug,   LogCategory.VideoFilter,  "種別フィルタースキップ [{0}]: {1}"),
+        [LogMsg.LiveStartSkipped]          = new(LogLevel.Debug,   LogCategory.VideoFilter,  "ライブ開始スキップ（待機所通知済）: {0}"),
+        [LogMsg.PremiereStartSkipped]      = new(LogLevel.Debug,   LogCategory.VideoFilter,  "プレミア開始スキップ（待機所通知済）: {0}"),
+        [LogMsg.OldLiveDiscarded]          = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いライブ破棄: {0}"),
+        [LogMsg.OldLiveDiscardedNew]       = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いライブ破棄（新着ライブ優先）: {0}"),
+        [LogMsg.OldLiveDiscardedTrans]     = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いライブ破棄（遷移済）: {0}"),
+        [LogMsg.OldPremiereDiscarded]      = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いプレミア破棄: {0}"),
+        [LogMsg.OldPremiereDiscardedNew]   = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いプレミア破棄（新着プレミア優先）: {0}"),
+        [LogMsg.OldPremiereDiscardedTrans] = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いプレミア破棄（遷移済）: {0}"),
+        [LogMsg.ArchivedLiveNotNotified]   = new(LogLevel.Debug,   LogCategory.VideoFilter,  "アーカイブのため通知せず: {0}"),
+        [LogMsg.UpcomingQueued]             = new(LogLevel.Debug,   LogCategory.VideoFilter,  "待機所キュー追加 → {0}: {1}"),
+        [LogMsg.UpcomingQueueUpdated]       = new(LogLevel.Debug,   LogCategory.VideoFilter,  "待機所キュー更新 → {0}: {1}"),
+        [LogMsg.UpcomingQueueFull]          = new(LogLevel.Debug,   LogCategory.VideoFilter,  "待機所キュー満杯スキップ: {0}"),
+        [LogMsg.SchedulerWaitingRoomNotify]  = new(LogLevel.Debug,   LogCategory.VideoFilter,  "スケジューラー待機所通知 [{0}]: {1}"),
+        [LogMsg.SchedulerGracePeriodStarted] = new(LogLevel.Debug,   LogCategory.VideoFilter,  "スケジューラー集中監視起動: {0}"),
+        [LogMsg.SchedulerWakeUp]             = new(LogLevel.Debug,   LogCategory.VideoFilter,  "スケジューラー再計算"),
+        [LogMsg.PendingWindowExpired]        = new(LogLevel.Debug,   LogCategory.VideoFilter,  "監視ウィンドウ終了により予約状態解除: {0}"),
         // 動画検索・表示
-        [LogMsg.SearchingVideo]            = new(LogLevel.Debug,   "最新動画を検索中..."),
-        [LogMsg.OpenChannelPage]           = new(LogLevel.Debug,   "チャンネルページを開きます（全種別オフ）"),
-        [LogMsg.OpenLatestVideo]           = new(LogLevel.Debug,   "最新{0}を開きます"),
+        [LogMsg.SearchingVideo]            = new(LogLevel.Debug,   LogCategory.Monitor,      "最新動画を検索中..."),
+        [LogMsg.OpenChannelPage]           = new(LogLevel.Debug,   LogCategory.Monitor,      "チャンネルページを開きます（全種別オフ）"),
+        [LogMsg.OpenLatestVideo]           = new(LogLevel.Debug,   LogCategory.Monitor,      "最新{0}を開きます"),
         // 通知テスト
-        [LogMsg.TestNotifySent]            = new(LogLevel.Debug,   "テスト通知を送信しました"),
+        [LogMsg.TestNotifySent]            = new(LogLevel.Debug,   LogCategory.Notification, "テスト通知を送信しました"),
         // APIキー
-        [LogMsg.ApiKeyMigrated]            = new(LogLevel.Debug,   "APIキーを api_key.dat へ移行しました"),
+        [LogMsg.ApiKeyMigrated]            = new(LogLevel.Debug,   LogCategory.ApiKeyWindow, "APIキーを api_key.dat へ移行しました"),
         // バックアップ
-        [LogMsg.BackupSaved]               = new(LogLevel.Debug,   "自動バックアップを保存しました"),
+        [LogMsg.BackupSaved]               = new(LogLevel.Debug,   LogCategory.Backup,       "自動バックアップを保存しました"),
         // 設定変更
-        [LogMsg.SettingDarkMode]            = new(LogLevel.Debug,   "ダークモード: {0}"),
-        [LogMsg.SettingNoCategoryMode]      = new(LogLevel.Debug,   "カテゴリなし表示: {0}"),
-        [LogMsg.SettingDesktopNotification] = new(LogLevel.Debug,   "デスクトップ通知: {0}"),
-        [LogMsg.SettingToastStyle]          = new(LogLevel.Debug,   "通知スタイル変更: {0}"),
-        [LogMsg.SettingGlobalNotifyUpcoming]= new(LogLevel.Debug,   "プレミア/ライブ待機所通知: {0}"),
-        [LogMsg.SettingNotificationSound]   = new(LogLevel.Debug,   "通知音: {0}"),
-        [LogMsg.SettingFlashTaskbar]        = new(LogLevel.Debug,   "タスクバー点滅: {0}"),
-        [LogMsg.SettingMinimizeToTray]      = new(LogLevel.Debug,   "タスクトレイに格納: {0}"),
-        [LogMsg.SettingMute]                = new(LogLevel.Debug,   "通知ミュート: {0}"),
-        [LogMsg.SettingCompactMode]         = new(LogLevel.Debug,   "コンパクトモード: {0}"),
-        [LogMsg.SettingAlwaysOnTop]         = new(LogLevel.Debug,   "ピン留め: {0}"),
-        [LogMsg.SettingStartWithWindows]    = new(LogLevel.Debug,   "スタートアップ起動: {0}"),
-        [LogMsg.SettingCheckInterval]       = new(LogLevel.Debug,   "チェック間隔変更: {0}分"),
-        [LogMsg.SettingAutoCleanLogs]       = new(LogLevel.Debug,   "自動ログ削除: {0}"),
-        [LogMsg.SettingLogRetention]        = new(LogLevel.Debug,   "ログ保持期間変更: {0}日"),
+        [LogMsg.SettingDarkMode]            = new(LogLevel.Debug,   LogCategory.Settings,     "ダークモード: {0}"),
+        [LogMsg.SettingNoCategoryMode]      = new(LogLevel.Debug,   LogCategory.Settings,     "カテゴリなし表示: {0}"),
+        [LogMsg.SettingDesktopNotification] = new(LogLevel.Debug,   LogCategory.Settings,     "デスクトップ通知: {0}"),
+        [LogMsg.SettingToastStyle]          = new(LogLevel.Debug,   LogCategory.Settings,     "通知スタイル変更: {0}"),
+        [LogMsg.SettingGlobalNotifyUpcoming]= new(LogLevel.Debug,   LogCategory.Settings,     "プレミア/ライブ待機所通知: {0}"),
+        [LogMsg.SettingNotificationSound]   = new(LogLevel.Debug,   LogCategory.Settings,     "通知音: {0}"),
+        [LogMsg.SettingNotificationSoundSet]= new(LogLevel.Debug,   LogCategory.Settings,     "通知音の種類: {0}"),
+        [LogMsg.SettingFlashTaskbar]        = new(LogLevel.Debug,   LogCategory.Settings,     "タスクバー点滅: {0}"),
+        [LogMsg.SettingMinimizeToTray]      = new(LogLevel.Debug,   LogCategory.Settings,     "タスクトレイに格納: {0}"),
+        [LogMsg.SettingMute]                = new(LogLevel.Debug,   LogCategory.Settings,     "通知ミュート: {0}"),
+        [LogMsg.SettingCompactMode]         = new(LogLevel.Debug,   LogCategory.Settings,     "コンパクトモード: {0}"),
+        [LogMsg.SettingAlwaysOnTop]         = new(LogLevel.Debug,   LogCategory.Settings,     "ピン留め: {0}"),
+        [LogMsg.SettingStartWithWindows]    = new(LogLevel.Debug,   LogCategory.Settings,     "スタートアップ起動: {0}"),
+        [LogMsg.SettingCheckInterval]       = new(LogLevel.Debug,   LogCategory.Settings,     "チェック間隔変更: {0}分"),
+        [LogMsg.SettingAutoCleanLogs]       = new(LogLevel.Debug,   LogCategory.Settings,     "自動ログ削除: {0}"),
+        [LogMsg.SettingLogRetention]        = new(LogLevel.Debug,   LogCategory.Settings,     "ログ保持期間変更: {0}日"),
         // チャンネル一覧・編集
-        [LogMsg.EditModeOn]                = new(LogLevel.Debug,   "編集モード開始"),
-        [LogMsg.EditModeOff]               = new(LogLevel.Debug,   "編集モード終了"),
-        [LogMsg.ChannelRenamed]            = new(LogLevel.Debug,   "名称を変更しました → {0}"),
-        [LogMsg.ChannelReordered]           = new(LogLevel.Debug,   "チャンネル並び替え: {0}"),
-        [LogMsg.CategoryReordered]          = new(LogLevel.Debug,   "カテゴリ並び替え: {0}"),
-        [LogMsg.KindToggleChanged]          = new(LogLevel.Debug,   "種別トグル変更 [{0}]: {1}"),
-        [LogMsg.ChannelRowClicked]          = new(LogLevel.Debug,   "チャンネル行クリック: {0}"),
-        [LogMsg.ChannelContextClearNew]     = new(LogLevel.Debug,   "NEWバッジ消去: {0}"),
-        [LogMsg.ChannelContextOpenDetail]   = new(LogLevel.Debug,   "詳細設定を開く: {0}"),
-        [LogMsg.ChannelMovedToCategory]     = new(LogLevel.Debug,   "カテゴリ移動: {0} → {1}"),
+        [LogMsg.EditModeOn]                = new(LogLevel.Debug,   LogCategory.ChannelListUi, "編集モード開始"),
+        [LogMsg.EditModeOff]               = new(LogLevel.Debug,   LogCategory.ChannelListUi, "編集モード終了"),
+        [LogMsg.ChannelRenamed]            = new(LogLevel.Debug,   LogCategory.ChannelListUi, "名称を変更しました → {0}"),
+        [LogMsg.ChannelReordered]           = new(LogLevel.Debug,   LogCategory.ChannelListUi, "チャンネル並び替え: {0}"),
+        [LogMsg.CategoryReordered]          = new(LogLevel.Debug,   LogCategory.ChannelListUi, "カテゴリ並び替え: {0}"),
+        [LogMsg.KindToggleChanged]          = new(LogLevel.Debug,   LogCategory.ChannelListUi, "種別トグル変更 [{0}]: {1}"),
+        [LogMsg.ChannelRowClicked]          = new(LogLevel.Debug,   LogCategory.ChannelListUi, "チャンネル行クリック: {0}"),
+        [LogMsg.ChannelNameClicked]         = new(LogLevel.Debug,   LogCategory.ChannelListUi, "チャンネル名クリック: {0}"),
+        [LogMsg.ChannelContextClearNew]     = new(LogLevel.Debug,   LogCategory.ChannelListUi, "NEWバッジ消去: {0}"),
+        [LogMsg.ChannelContextOpenDetail]   = new(LogLevel.Debug,   LogCategory.ChannelListUi, "詳細設定を開く: {0}"),
+        [LogMsg.ChannelMovedToCategory]     = new(LogLevel.Debug,   LogCategory.ChannelListUi, "カテゴリ移動: {0} → {1}"),
         // カテゴリ操作
-        [LogMsg.CategoryCollapsed]          = new(LogLevel.Debug,   "カテゴリ{1}: {0}"),
-        [LogMsg.CategoryContextClearNew]    = new(LogLevel.Debug,   "カテゴリ内NEWバッジ一括消去: {0}"),
-        [LogMsg.CategoryContextExpandAll]   = new(LogLevel.Debug,   "全カテゴリ展開"),
-        [LogMsg.CategoryContextCollapseAll] = new(LogLevel.Debug,   "全カテゴリ折り畳み"),
-        [LogMsg.CategoryDeleted]            = new(LogLevel.Debug,   "カテゴリ削除: {0}"),
-        [LogMsg.CategoryRenamed]            = new(LogLevel.Debug,   "カテゴリ名変更: {0} → {1}"),
-        [LogMsg.CategoryAdded]                   = new(LogLevel.Debug,   "カテゴリ作成: {0}"),
-        [LogMsg.AddChannelPasteClicked]          = new(LogLevel.Debug,   "チャンネル追加: クリップボードからペースト"),
-        [LogMsg.AddChannelDetailTabSwitched]     = new(LogLevel.Debug,   "チャンネル追加: 詳細タブ切替: {0}"),
-        [LogMsg.AddChannelWindowClosed]          = new(LogLevel.Debug,   "チャンネル追加ウィンドウを閉じた"),
-        [LogMsg.AddChannelNewCategoryPanelOpened]= new(LogLevel.Debug,   "チャンネル追加: 新規カテゴリ入力パネルを開いた"),
-        [LogMsg.MovedToDormant]                  = new(LogLevel.Debug,   "{0} を休眠リストへ移動しました"),
-        [LogMsg.MovedToActive]                   = new(LogLevel.Debug,   "{0} をチャンネルリストへ移動しました"),
-        [LogMsg.DormantChannelMovedToCategory]   = new(LogLevel.Debug,   "カテゴリ移動(休眠): {0} → {1}"),
-        [LogMsg.DormantSearchExecuted]           = new(LogLevel.Debug,   "休眠検索: {0}"),
-        [LogMsg.DormantSearchCleared]            = new(LogLevel.Debug,   "休眠検索クリア"),
+        [LogMsg.CategoryCollapsed]          = new(LogLevel.Debug,   LogCategory.CategoryUi,    "カテゴリ{1}: {0}"),
+        [LogMsg.CategoryContextClearNew]    = new(LogLevel.Debug,   LogCategory.CategoryUi,    "カテゴリ内NEWバッジ一括消去: {0}"),
+        [LogMsg.CategoryContextExpandAll]   = new(LogLevel.Debug,   LogCategory.CategoryUi,    "全カテゴリ展開"),
+        [LogMsg.CategoryContextCollapseAll] = new(LogLevel.Debug,   LogCategory.CategoryUi,    "全カテゴリ折り畳み"),
+        [LogMsg.CategoryDeleted]            = new(LogLevel.Debug,   LogCategory.CategoryUi,    "カテゴリ削除: {0}"),
+        [LogMsg.CategoryRenamed]            = new(LogLevel.Debug,   LogCategory.CategoryUi,    "カテゴリ名変更: {0} → {1}"),
+        [LogMsg.CategoryAdded]                   = new(LogLevel.Debug,   LogCategory.CategoryUi,      "カテゴリ作成: {0}"),
+        [LogMsg.AddChannelPasteClicked]          = new(LogLevel.Debug,   LogCategory.AddChannelWindow, "チャンネル追加: クリップボードからペースト"),
+        [LogMsg.AddChannelDetailTabSwitched]     = new(LogLevel.Debug,   LogCategory.AddChannelWindow, "チャンネル追加: 詳細タブ切替: {0}"),
+        [LogMsg.AddChannelWindowClosed]          = new(LogLevel.Debug,   LogCategory.AddChannelWindow, "チャンネル追加ウィンドウを閉じた"),
+        [LogMsg.AddChannelNewCategoryPanelOpened]= new(LogLevel.Debug,   LogCategory.AddChannelWindow, "チャンネル追加: 新規カテゴリ入力パネルを開いた"),
+        [LogMsg.MovedToDormant]                  = new(LogLevel.Debug,   LogCategory.ChannelListUi,   "{0} を休眠リストへ移動しました"),
+        [LogMsg.MovedToActive]                   = new(LogLevel.Debug,   LogCategory.ChannelListUi,   "{0} をチャンネルリストへ移動しました"),
+        [LogMsg.DormantChannelMovedToCategory]   = new(LogLevel.Debug,   LogCategory.ChannelListUi,   "カテゴリ移動(休眠): {0} → {1}"),
+        [LogMsg.DormantSearchExecuted]           = new(LogLevel.Debug,   LogCategory.ChannelListUi,   "休眠検索: {0}"),
+        [LogMsg.DormantSearchCleared]            = new(LogLevel.Debug,   LogCategory.ChannelListUi,   "休眠検索クリア"),
         // ナビゲーション・サイドバー
-        [LogMsg.NavPageSwitched]            = new(LogLevel.Debug,   "ページ切替: {0}"),
-        [LogMsg.SettingsSubNavSwitched]     = new(LogLevel.Debug,   "設定サブナビ切替: {0}"),
-        [LogMsg.SidebarToggled]             = new(LogLevel.Debug,   "サイドバー{0}"),
-        [LogMsg.ManualCheckTriggered]       = new(LogLevel.Debug,   "手動チェック実行"),
-        [LogMsg.MonitorToggleClicked]       = new(LogLevel.Debug,   "監視{0}"),
+        [LogMsg.NavPageSwitched]            = new(LogLevel.Debug,   LogCategory.Navigation,   "ページ切替: {0}"),
+        [LogMsg.SettingsSubNavSwitched]     = new(LogLevel.Debug,   LogCategory.Navigation,   "設定サブナビ切替: {0}"),
+        [LogMsg.SidebarToggled]             = new(LogLevel.Debug,   LogCategory.Navigation,   "サイドバー{0}"),
+        [LogMsg.ManualCheckTriggered]       = new(LogLevel.Debug,   LogCategory.Monitor,      "手動チェック実行"),
+        [LogMsg.MonitorToggleClicked]       = new(LogLevel.Debug,   LogCategory.Monitor,      "監視{0}"),
         // トレイ
-        [LogMsg.WindowToTray]              = new(LogLevel.Debug,   "ウィンドウをトレイに格納しました"),
-        [LogMsg.TrayWindowOpened]          = new(LogLevel.Debug,   "トレイ: ウィンドウを開く"),
-        [LogMsg.TrayManualCheckTriggered]  = new(LogLevel.Debug,   "トレイ: 今すぐチェック"),
-        [LogMsg.TrayMonitorStarted]        = new(LogLevel.Debug,   "トレイ: 監視開始"),
-        [LogMsg.TrayMonitorStopped]        = new(LogLevel.Debug,   "トレイ: 監視停止"),
+        [LogMsg.WindowToTray]              = new(LogLevel.Debug,   LogCategory.Tray,         "ウィンドウをトレイに格納しました"),
+        [LogMsg.TrayWindowOpened]          = new(LogLevel.Debug,   LogCategory.Tray,         "トレイ: ウィンドウを開く"),
+        [LogMsg.TrayManualCheckTriggered]  = new(LogLevel.Debug,   LogCategory.Tray,         "トレイ: 今すぐチェック"),
+        [LogMsg.TrayMonitorStarted]        = new(LogLevel.Debug,   LogCategory.Tray,         "トレイ: 監視開始"),
+        [LogMsg.TrayMonitorStopped]        = new(LogLevel.Debug,   LogCategory.Tray,         "トレイ: 監視停止"),
         // チャンネル追加ウィンドウ
-        [LogMsg.AddChannelPreviewClicked]   = new(LogLevel.Debug,   "チャンネル検索: {0}"),
-        [LogMsg.ContinuousAddModeChanged]   = new(LogLevel.Debug,   "連続追加モード: {0}"),
+        [LogMsg.AddChannelPreviewClicked]   = new(LogLevel.Debug,   LogCategory.AddChannelWindow, "チャンネル検索: {0}"),
+        [LogMsg.ContinuousAddModeChanged]   = new(LogLevel.Debug,   LogCategory.AddChannelWindow, "連続追加モード: {0}"),
         // チャンネル詳細ウィンドウ
-        [LogMsg.ChannelDetailSaved]         = new(LogLevel.Debug,   "チャンネル詳細保存: {0}"),
-        [LogMsg.ChannelDetailSlotInterval]         = new(LogLevel.Debug,   "監視間隔設定: {0}: {1}"),
-        [LogMsg.ChannelDetailUpcomingModeChanged]  = new(LogLevel.Debug,   "通知方法変更: {0}"),
-        [LogMsg.ChannelDetailUpcomingLeadChanged]  = new(LogLevel.Debug,   "通知タイミング変更: {0}分前"),
-        [LogMsg.ChannelDetailCancelled]            = new(LogLevel.Debug,   "詳細設定キャンセル"),
-        [LogMsg.AddChannelDialogOpened]            = new(LogLevel.Debug,   "チャンネル追加ダイアログを開いた"),
-        [LogMsg.ChannelSearchExecuted]             = new(LogLevel.Debug,   "チャンネル検索: {0}"),
-        [LogMsg.ChannelSearchCleared]              = new(LogLevel.Debug,   "チャンネル検索クリア"),
-        [LogMsg.ChannelFilterApplied]              = new(LogLevel.Debug,   "チャンネルフィルター: {0}"),
-        [LogMsg.ChannelFilterCleared]              = new(LogLevel.Debug,   "チャンネルフィルタークリア"),
-        [LogMsg.FavoriteToggleChanged]              = new(LogLevel.Debug,   "お気に入り変更: {0}"),
-        [LogMsg.LatestVideoDeletedDetected]          = new(LogLevel.Debug,   "表示中の動画が削除されたことを検知しました: {0}"),
-        [LogMsg.LatestVideoRecovered]                = new(LogLevel.Debug,   "表示中の動画が復帰したことを検知しました: {0}"),
-        [LogMsg.ChannelListAllAlive]                 = new(LogLevel.Debug,   "チャンネルリスト内の全てのチャンネルの生存を確認。"),
-        [LogMsg.DormantListAllAlive]                 = new(LogLevel.Debug,   "休眠リスト内の全てのチャンネルの生存を確認。"),
+        [LogMsg.ChannelDetailSaved]         = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "チャンネル詳細保存: {0}"),
+        [LogMsg.ChannelDetailSlotInterval]         = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "監視間隔設定: {0}: {1}"),
+        [LogMsg.ChannelDetailUpcomingModeChanged]  = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "通知方法変更: {0}"),
+        [LogMsg.ChannelDetailUpcomingLeadChanged]  = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "通知タイミング変更: {0}分前"),
+        [LogMsg.ChannelDetailCancelled]            = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "詳細設定キャンセル"),
+        [LogMsg.AddChannelDialogOpened]            = new(LogLevel.Debug,   LogCategory.AddChannelWindow,    "チャンネル追加ダイアログを開いた"),
+        [LogMsg.ChannelSearchExecuted]             = new(LogLevel.Debug,   LogCategory.ChannelListUi,       "チャンネル検索: {0}"),
+        [LogMsg.ChannelSearchCleared]              = new(LogLevel.Debug,   LogCategory.ChannelListUi,       "チャンネル検索クリア"),
+        [LogMsg.ChannelFilterApplied]              = new(LogLevel.Debug,   LogCategory.ChannelListUi,       "チャンネルフィルター: {0}"),
+        [LogMsg.ChannelFilterCleared]              = new(LogLevel.Debug,   LogCategory.ChannelListUi,       "チャンネルフィルタークリア"),
+        [LogMsg.FavoriteToggleChanged]              = new(LogLevel.Debug,   LogCategory.ChannelListUi,       "お気に入り変更: {0}"),
+        [LogMsg.LatestVideoDeletedDetected]          = new(LogLevel.Debug,   LogCategory.Channel,           "表示中の動画が削除されたことを検知しました: {0}"),
+        [LogMsg.LatestVideoRecovered]                = new(LogLevel.Debug,   LogCategory.Channel,           "表示中の動画が復帰したことを検知しました: {0}"),
+        [LogMsg.LatestVideoTitleChanged]             = new(LogLevel.Debug,   LogCategory.Channel,           "表示中の動画のタイトルが変更されたことを検知しました: {0}（{1} → {2}）"),
+        [LogMsg.ChannelListAllAlive]                 = new(LogLevel.Debug,   LogCategory.Channel,           "チャンネルリスト内の全てのチャンネルの生存を確認。"),
+        [LogMsg.DormantListAllAlive]                 = new(LogLevel.Debug,   LogCategory.Channel,           "休眠リスト内の全てのチャンネルの生存を確認。"),
         // 動画要約ポップアップ
-        [LogMsg.VideoSummaryPopupOpened]           = new(LogLevel.Debug,   "動画情報ポップアップを開きました: {0}"),
-        [LogMsg.GeminiSummaryRequested]            = new(LogLevel.Debug,   "Gemini要約リクエスト送信: {0}"),
-        [LogMsg.GeminiSummaryCacheHit]              = new(LogLevel.Debug,   "Gemini要約キャッシュヒット: {0}"),
-        [LogMsg.GeminiSummarySucceeded]             = new(LogLevel.Debug,   "Gemini要約成功: {0}"),
-        [LogMsg.ChannelDetailTabSwitched]   = new(LogLevel.Debug,   "詳細設定タブ切替: {0}"),
-        [LogMsg.ChannelDetailEnabledChanged]= new(LogLevel.Debug,   "詳細設定 有効/無効: {1} → {2}"),
+        [LogMsg.VideoSummaryPopupOpened]           = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "動画情報ポップアップを開きました: {0}"),
+        [LogMsg.VideoListPopupOpened]              = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "動画一覧ポップアップを開きました: {0}（{1}件）"),
+        [LogMsg.GeminiSummaryRequested]            = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約リクエスト送信: {0}"),
+        [LogMsg.GeminiSummaryCacheHit]              = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約キャッシュヒット: {0}"),
+        [LogMsg.GeminiSummarySucceeded]             = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約成功: {0}"),
+        [LogMsg.ChannelDetailTabSwitched]   = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "詳細設定タブ切替: {0}"),
+        [LogMsg.ChannelDetailEnabledChanged]= new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "詳細設定 有効/無効: {1} → {2}"),
         // APIキーウィンドウ
-        [LogMsg.ApiKeyEditStarted]          = new(LogLevel.Debug,   "APIキー変更モード開始"),
-        [LogMsg.ApiKeyUnchanged]            = new(LogLevel.Debug,   "APIキー変更なし"),
+        [LogMsg.ApiKeyEditStarted]          = new(LogLevel.Debug,   LogCategory.ApiKeyWindow, "APIキー変更モード開始"),
+        [LogMsg.ApiKeyUnchanged]            = new(LogLevel.Debug,   LogCategory.ApiKeyWindow, "APIキー変更なし"),
         // 要約用APIキー
-        [LogMsg.GeminiApiKeyEditStarted]    = new(LogLevel.Debug,   "要約用APIキー変更モード開始"),
-        [LogMsg.GeminiApiKeyUnchanged]      = new(LogLevel.Debug,   "要約用APIキー変更なし"),
+        [LogMsg.GeminiApiKeyEditStarted]    = new(LogLevel.Debug,   LogCategory.ApiKeyWindow, "要約用APIキー変更モード開始"),
+        [LogMsg.GeminiApiKeyUnchanged]      = new(LogLevel.Debug,   LogCategory.ApiKeyWindow, "要約用APIキー変更なし"),
         // アクティビティログウィンドウ
-        [LogMsg.ActivityLogWindowOpened]    = new(LogLevel.Debug,   "アクティビティログウィンドウを開きました"),
-        [LogMsg.ActivityLogCleared]         = new(LogLevel.Debug,   "アクティビティログをクリアしました"),
-        [LogMsg.LogFolderOpened]            = new(LogLevel.Debug,   "ログフォルダを開きました"),
+        [LogMsg.ActivityLogWindowOpened]    = new(LogLevel.Debug,   LogCategory.Log,          "アクティビティログウィンドウを開きました"),
+        [LogMsg.ActivityLogCleared]         = new(LogLevel.Debug,   LogCategory.Log,          "アクティビティログをクリアしました"),
+        [LogMsg.LogFolderOpened]            = new(LogLevel.Debug,   LogCategory.Log,          "ログフォルダを開きました"),
+        [LogMsg.ActivityLogSavedToFile]     = new(LogLevel.System,  LogCategory.Log,          "ログをファイルへ保存しました: {0}件"),
         // デバッグ・開発
-        [LogMsg.DebugWindowNotFound]       = new(LogLevel.Debug,   "DebugWindow 型が見つかりません"),
-        [LogMsg.DevToolError]              = new(LogLevel.Debug,   "開発者ツール起動エラー: {0}"),
-        [LogMsg.DebugDllFailed]            = new(LogLevel.Debug,   "Debug DLL 読み込み失敗: {0}"),
-        [LogMsg.UiUpdateFailed]            = new(LogLevel.Debug,   "UI更新エラー ({0}): {1}"),
+        [LogMsg.DebugWindowNotFound]       = new(LogLevel.Debug,   LogCategory.Debug,        "DebugWindow 型が見つかりません"),
+        [LogMsg.DevToolError]              = new(LogLevel.Debug,   LogCategory.Debug,        "開発者ツール起動エラー: {0}"),
+        [LogMsg.DebugDllFailed]            = new(LogLevel.Debug,   LogCategory.Debug,        "Debug DLL 読み込み失敗: {0}"),
+        [LogMsg.UiUpdateFailed]            = new(LogLevel.Debug,   LogCategory.Ui,           "UI更新エラー ({0}): {1}"),
     };
 
     public static void Log(LogMsg id, string? channelName = null, params object[] args)
@@ -463,11 +475,11 @@ public static class AppLogger
 
         switch (def.Level)
         {
-            case LogLevel.System:  LoggerService.Instance.System(msg, channelName);  break;
-            case LogLevel.Info:    LoggerService.Instance.Info(msg, channelName);    break;
-            case LogLevel.Warning: LoggerService.Instance.Warning(msg, channelName); break;
-            case LogLevel.Error:   LoggerService.Instance.Error(msg, channelName);   break;
-            case LogLevel.Debug:   LoggerService.Instance.Debug(msg, channelName);   break;
+            case LogLevel.System:  LoggerService.Instance.System(msg, channelName, def.Category);  break;
+            case LogLevel.Info:    LoggerService.Instance.Info(msg, channelName, def.Category);    break;
+            case LogLevel.Warning: LoggerService.Instance.Warning(msg, channelName, def.Category); break;
+            case LogLevel.Error:   LoggerService.Instance.Error(msg, channelName, def.Category);   break;
+            case LogLevel.Debug:   LoggerService.Instance.Debug(msg, channelName, def.Category);   break;
         }
     }
 }

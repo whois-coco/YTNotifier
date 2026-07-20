@@ -13,7 +13,7 @@ public partial class VideoSummaryPopupWindow : Window
     private readonly VideoKind   _kind;
     private readonly string      _videoId;
 
-    public VideoSummaryPopupWindow(Window owner, ChannelInfo channel, VideoKind kind, string title, string videoId, TimeSpan? duration = null)
+    public VideoSummaryPopupWindow(Window owner, ChannelInfo channel, VideoKind kind, string title, string videoId, TimeSpan? duration = null, bool allowSummary = true, bool isPending = false)
     {
         InitializeComponent();
         Loaded += (_, _) => WindowCornerHelper.Apply(this);
@@ -27,9 +27,9 @@ public partial class VideoSummaryPopupWindow : Window
 
         LoadChannelIcon(channel);
         LoadThumbnailIfAvailable(channel, kind);
-        SetKindPill(kind);
+        SetKindPill(kind, isPending);
         SetDurationText(duration);
-        SetupSummarySection(kind, videoId);
+        if (allowSummary) SetupSummarySection(kind, videoId);
 
         AppLogger.Log(LogMsg.VideoSummaryPopupOpened, null, channel.ChannelName);
     }
@@ -66,7 +66,7 @@ public partial class VideoSummaryPopupWindow : Window
     {
         if (SettingsService.Instance.Settings.ToastStyle != ToastStyle.Thumbnail) return;
 
-        if (ImageCacheService.TryGetCachedThumbnail(channel.ChannelId, kind, out var cached) && cached != null)
+        if (ImageCacheService.TryGetCachedThumbnail(channel.ChannelId, kind, _videoId, out var cached) && cached != null)
         {
             ThumbnailImage.Source      = cached;
             ThumbnailBorder.Visibility = Visibility.Visible;
@@ -77,7 +77,7 @@ public partial class VideoSummaryPopupWindow : Window
 
         Task.Run(async () =>
         {
-            var bmp = await ImageCacheService.GetOrDownloadThumbnailAsync(channel.LatestThumbnailUrl, channel.ChannelId, kind);
+            var bmp = await ImageCacheService.GetOrDownloadThumbnailAsync(channel.LatestThumbnailUrl, channel.ChannelId, kind, _videoId);
             if (bmp == null) return;
             await Dispatcher.InvokeAsync(() =>
             {
@@ -87,13 +87,13 @@ public partial class VideoSummaryPopupWindow : Window
         });
     }
 
-    private void SetKindPill(VideoKind kind)
+    private void SetKindPill(VideoKind kind, bool isPending)
     {
         var (label, bgKey, fgKey) = kind switch
         {
             VideoKind.Video    => ("動画",  "KindPillVideoBgBrush",    "KindPillVideoFgBrush"),
             VideoKind.Short    => ("Short", "KindPillShortBgBrush",    "KindPillShortFgBrush"),
-            VideoKind.Live     => (_channel.ActiveLives.Count == 0 ? "アーカイブ" : "ライブ",
+            VideoKind.Live     => (isPending ? "配信予定" : (_channel.ActiveLives.Count == 0 ? "アーカイブ" : "ライブ"),
                                    "KindPillLiveBgBrush",     "KindPillLiveFgBrush"),
             VideoKind.Premiere => ("プレミア", "KindPillPremiereBgBrush", "KindPillPremiereFgBrush"),
             _                  => (string.Empty, "KindPillVideoBgBrush", "KindPillVideoFgBrush"),

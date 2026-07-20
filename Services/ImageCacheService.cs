@@ -42,6 +42,9 @@ public static class ImageCacheService
         _                   => "video",
     };
 
+    private static string GetThumbnailCacheKey(string channelId, VideoKind kind, string videoId) =>
+        $"{channelId}_{GetKindSuffix(kind)}_{videoId}";
+
     private static BitmapImage? DecodeImage(byte[] bytes)
     {
         try
@@ -79,8 +82,8 @@ public static class ImageCacheService
         TryGetValid(_iconCache, url, out bitmap);
 
     /// <summary>動画サムネイルのキャッシュを参照する（ダウンロードは行わない）</summary>
-    public static bool TryGetCachedThumbnail(string channelId, VideoKind kind, out BitmapImage? bitmap) =>
-        TryGetValid(_thumbnailCache, $"{channelId}_{GetKindSuffix(kind)}", out bitmap);
+    public static bool TryGetCachedThumbnail(string channelId, VideoKind kind, string videoId, out BitmapImage? bitmap) =>
+        TryGetValid(_thumbnailCache, GetThumbnailCacheKey(channelId, kind, videoId), out bitmap);
 
     /// <summary>チャンネルアイコンをキャッシュから取得、なければダウンロードしてメモリキャッシュへ格納する</summary>
     public static async Task<BitmapImage?> GetOrDownloadIconAsync(string url)
@@ -105,9 +108,9 @@ public static class ImageCacheService
     }
 
     /// <summary>動画サムネイルをキャッシュから取得、なければダウンロードしてメモリキャッシュへ格納する</summary>
-    public static async Task<BitmapImage?> GetOrDownloadThumbnailAsync(string url, string channelId, VideoKind kind)
+    public static async Task<BitmapImage?> GetOrDownloadThumbnailAsync(string url, string channelId, VideoKind kind, string videoId)
     {
-        var key = $"{channelId}_{GetKindSuffix(kind)}";
+        var key = GetThumbnailCacheKey(channelId, kind, videoId);
         if (TryGetValid(_thumbnailCache, key, out var cached)) return cached;
 
         try

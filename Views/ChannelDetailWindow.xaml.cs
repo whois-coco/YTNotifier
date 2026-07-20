@@ -71,51 +71,40 @@ public partial class ChannelDetailWindow : Window
         UpdateLeadRowVisibility();
 
         // 監視設定タブ初期化：既存モードをスロット形式に変換
-        List<FocusSlot> slots;
-        if (channel.FocusSlots.Count > 0)
+        // 未設定タブ（Short/ライブ配信）もチャンネル本来のモードを引き継ぐための既定値生成
+        FocusSlot MakeDefaultSlot(VideoKind kind) => channel.MonitorMode switch
         {
-            slots = channel.FocusSlots;
-        }
-        else
-        {
-            slots = channel.MonitorMode switch
+            MonitorMode.LowFreq => new FocusSlot
             {
-                MonitorMode.LowFreq => new List<FocusSlot>
-                {
-                    new FocusSlot
-                    {
-                        SlotMode = MonitorMode.LowFreq,
-                        SlotLowFreqIntervalMinutes = channel.LowFreqIntervalMinutes,
-                        IsEnabled = true
-                    }
-                },
-                MonitorMode.Focus => new List<FocusSlot>
-                {
-                    new FocusSlot
-                    {
-                        SlotMode        = MonitorMode.Focus,
-                        NotifyKind      = VideoKind.Video,
-                        Days            = channel.FocusDays,
-                        Hour            = channel.FocusHour,
-                        Minute          = channel.FocusMinute,
-                        WindowMinutes   = channel.FocusWindowMinutes,
-                        IntervalMinutes = channel.FocusIntervalMinutes,
-                        IsEnabled       = true
-                    }
-                },
-                _ => new List<FocusSlot>
-                {
-                    new FocusSlot { SlotMode = MonitorMode.Normal, IsEnabled = true }
-                }
-            };
-        }
+                SlotMode                   = MonitorMode.LowFreq,
+                SlotLowFreqIntervalMinutes = channel.LowFreqIntervalMinutes,
+                NotifyKind                 = kind,
+                IsEnabled                  = true
+            },
+            MonitorMode.Focus => new FocusSlot
+            {
+                SlotMode        = MonitorMode.Focus,
+                NotifyKind      = kind,
+                Days            = channel.FocusDays,
+                Hour            = channel.FocusHour,
+                Minute          = channel.FocusMinute,
+                WindowMinutes   = channel.FocusWindowMinutes,
+                IntervalMinutes = channel.FocusIntervalMinutes,
+                IsEnabled       = true
+            },
+            _ => new FocusSlot { SlotMode = MonitorMode.Normal, NotifyKind = kind, IsEnabled = true }
+        };
+
+        List<FocusSlot> slots = channel.FocusSlots.Count > 0
+            ? channel.FocusSlots
+            : new List<FocusSlot> { MakeDefaultSlot(VideoKind.Video) };
 
         // 3タブ分作成（デフォルト種別: 動画/Short/ライブ配信）
         VideoKind[] defaultKinds = { VideoKind.Video, VideoKind.Short, VideoKind.Live };
         bool[] kindEnabled = { channel.NotifyVideo, channel.NotifyShort, channel.NotifyLive };
         for (int i = 0; i < 3; i++)
         {
-            var slot = i < slots.Count ? slots[i] : new FocusSlot { NotifyKind = defaultKinds[i] };
+            var slot = i < slots.Count ? slots[i] : MakeDefaultSlot(defaultKinds[i]);
             slot.IsEnabled = kindEnabled[i]; // チャンネル一覧の種別ON/OFFを反映
             _tabPanels.Add(new FocusTabPanel(slot));
         }
@@ -359,7 +348,10 @@ public partial class ChannelDetailWindow : Window
         var currentSlots = _tabPanels.Select(p => p.GetSlot()).ToList();
         var otherTotal   = ApiQuotaHelper.EstimateDailyUnitsForChannels(globalInterval, otherChannels);
         var thisTotal    = ApiQuotaHelper.EstimateDailyUnitsForFocusSlots(currentSlots, globalInterval);
-        var totalUnits   = otherTotal + thisTotal;
+        var banCheckUnits = ApiQuotaHelper.EstimateDailyUnitsForBanCheck(
+            channels.Count(c => c.IsEnabled && !c.IsDormant),
+            channels.Count(c => c.IsDormant));
+        var totalUnits   = otherTotal + thisTotal + banCheckUnits;
 
         // セグメントバー用の内訳（比率表示のみ。合計は totalUnits に従う）
         var (otherNormal, otherLowFreq, otherFocus) =
@@ -373,18 +365,19 @@ public partial class ChannelDetailWindow : Window
                 case MonitorMode.Normal:
                     var ni = slot.SlotNormalIntervalMinutes > 0
                         ? slot.SlotNormalIntervalMinutes : Math.Max(1, globalInterval);
-                    thisNormal += (ApiQuotaHelper.MinutesPerDay / Math.Max(1, ni)) * ApiQuotaHelper.UnitsPerCheck;
+                    var normalChecks = ApiQuotaHelper.MinutesPerDay / Math.Max(1, ni);
+                    thisNormal += normalChecks + Math.Min(normalChecks, ApiQuotaHelper.DailyUploadLimitPerChannel);
                     break;
                 case MonitorMode.LowFreq:
-                    thisLowFreq += (ApiQuotaHelper.MinutesPerDay / Math.Max(1, slot.SlotLowFreqIntervalMinutes))
-                                   * ApiQuotaHelper.UnitsPerCheck;
+                    var lowFreqChecks = ApiQuotaHelper.MinutesPerDay / Math.Max(1, slot.SlotLowFreqIntervalMinutes);
+                    thisLowFreq += lowFreqChecks + Math.Min(lowFreqChecks, ApiQuotaHelper.DailyUploadLimitPerChannel);
                     break;
                 case MonitorMode.Focus:
                     // IntervalMinutes == 0 は30秒（0.5分）を意味する
                     var fi        = slot.IntervalMinutes == 0 ? 0.5 : Math.Max(1, slot.IntervalMinutes);
                     int activeDays = slot.Days == 0 ? 7 : CountBitsSet(slot.Days);
-                    thisFocus += (int)Math.Round(
-                        (slot.WindowMinutes / (double)fi) * ApiQuotaHelper.UnitsPerCheck * activeDays / 7.0);
+                    var focusChecks = (int)Math.Round((slot.WindowMinutes / (double)fi) * activeDays / 7.0);
+                    thisFocus += focusChecks + Math.Min(focusChecks, ApiQuotaHelper.DailyUploadLimitPerChannel);
                     break;
             }
         }
@@ -409,10 +402,11 @@ public partial class ChannelDetailWindow : Window
             var totalBarW = Math.Max(0, maxW * pct / 100.0);
 
             double normalW = 0, lowFreqW = 0, focusW = 0;
-            if (totalUnits > 0)
+            var breakdownTotal = normalUnits + lowFreqUnits + focusUnits;
+            if (breakdownTotal > 0)
             {
-                normalW  = Math.Floor(totalBarW * normalUnits  / (double)totalUnits);
-                lowFreqW = Math.Floor(totalBarW * lowFreqUnits / (double)totalUnits);
+                normalW  = Math.Floor(totalBarW * normalUnits  / (double)breakdownTotal);
+                lowFreqW = Math.Floor(totalBarW * lowFreqUnits / (double)breakdownTotal);
                 focusW   = totalBarW - normalW - lowFreqW;
             }
             else if (totalBarW > 0)

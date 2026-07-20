@@ -273,6 +273,15 @@ public partial class MainWindow : System.Windows.Window
 
     private void DormantChannelList_Drop(object sender, DragEventArgs e)     => CategoryListDropCore(DormantCategoryDnd, e);
 
+    // 指定チャンネルを、同じ IsDormant・CategoryId を持つチャンネル群の最後尾（該当が無ければ全体の最後尾）へ再配置する
+    private static void MoveChannelToCategoryEnd(ChannelInfo ch)
+    {
+        var channels = SettingsService.Instance.Channels;
+        channels.Remove(ch);
+        var lastIdx = channels.FindLastIndex(c => c.IsDormant == ch.IsDormant && c.CategoryId == ch.CategoryId);
+        channels.Insert(lastIdx < 0 ? channels.Count : lastIdx + 1, ch);
+    }
+
     private void MoveChannelToDormant(ChannelInfo ch)
     {
         var oldCategoryId = ch.CategoryId;
@@ -281,9 +290,51 @@ public partial class MainWindow : System.Windows.Window
             var monCat = SettingsService.Instance.Categories
                 .FirstOrDefault(c => c.CategoryId == ch.CategoryId);
             if (monCat != null)
-                SettingsService.Instance.EnsureDormantCategory(monCat.CategoryId, monCat.CategoryName);
+                ch.CategoryId = SettingsService.Instance.EnsureDormantCategory(monCat.CategoryId, monCat.CategoryName);
         }
         ch.IsDormant = true;
+
+        // 休眠中は一切のチェックを許容しない（015修正）：通知種別トグル・時間指定スロットを強制OFF
+        ch.NotifyVideo = false;
+        ch.NotifyShort = false;
+        ch.NotifyLive  = false;
+        foreach (var slot in ch.FocusSlots) slot.IsEnabled = false;
+
+        // 休眠移動時、これまでの動画チェック情報を全て破棄する（015修正）
+        ch.LastCheckedVideoId          = string.Empty;
+        ch.LastCheckedVideoPublishedAt = null;
+        lock (MonitorService._pendingListLock)
+        {
+            ch.PendingLives.Clear();
+            ch.PendingPremieres.Clear();
+            ch.ActiveLives.Clear();
+            ch.ActivePremieres.Clear();
+        }
+        ch.LastLiveNotifiedId          = string.Empty;
+        ch.LastPremiereNotifiedId      = string.Empty;
+        ch.LastLiveId                  = string.Empty;
+        ch.LastPremiereId              = string.Empty;
+        ch.NextLiveCheckAt             = null;
+        ch.LiveGraceRemaining          = 0;
+        ch.NextPremiereCheckAt         = null;
+        ch.LastVideoTitle              = string.Empty;
+        ch.LastVideoNotifiedAt         = null;
+        ch.LastShortNotifiedId         = string.Empty;
+        ch.LastShortTitle              = string.Empty;
+        ch.LastShortNotifiedAt         = null;
+        ch.LastLiveNotifiedTitle       = string.Empty;
+        ch.LastLiveNotifiedAt          = null;
+        ch.LastPremiereNotifiedTitle   = string.Empty;
+        ch.LastPremiereNotifiedAt      = null;
+        ch.LatestTitle                 = null;
+        ch.LatestKind                  = null;
+        ch.LatestVideoId               = null;
+        ch.LatestDuration              = null;
+        ch.LatestThumbnailUrl          = null;
+        ch.LatestVideoDeleted          = false;
+        ch.NoVideosFound               = false;
+
+        MoveChannelToCategoryEnd(ch);
         SettingsService.Instance.UpdateChannel(ch);
         AppLogger.Log(LogMsg.MovedToDormant, null, ch.ChannelName);
         RefreshChannelList();
@@ -299,13 +350,15 @@ public partial class MainWindow : System.Windows.Window
             var dormantCat = SettingsService.Instance.DormantCategories
                 .FirstOrDefault(c => c.CategoryId == ch.CategoryId);
             if (dormantCat != null)
-                SettingsService.Instance.EnsureCategory(dormantCat.CategoryId, dormantCat.CategoryName);
+                ch.CategoryId = SettingsService.Instance.EnsureCategory(dormantCat.CategoryId, dormantCat.CategoryName);
         }
         ch.IsDormant        = false;
         ch.NotifyVideo      = false;
         ch.NotifyShort      = false;
         ch.NotifyLive       = false;
         foreach (var slot in ch.FocusSlots) slot.IsEnabled = false;
+
+        MoveChannelToCategoryEnd(ch);
         SettingsService.Instance.UpdateChannel(ch);
         AppLogger.Log(LogMsg.MovedToActive, null, ch.ChannelName);
         RefreshChannelList();

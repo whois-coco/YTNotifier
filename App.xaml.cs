@@ -174,7 +174,6 @@ public partial class App : System.Windows.Application
         if (Interlocked.Exchange(ref _flushed, 1) != 0) return;
         try { SettingsService.Instance.FlushAll(); } catch { }
         try { SettingsService.Instance.SaveAutoBackupIfDirty(); } catch { }
-        try { LoggerService.Instance.FlushLog(); } catch { }
     }
 
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)

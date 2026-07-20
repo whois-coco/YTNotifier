@@ -7,18 +7,20 @@ namespace YTNotifier.Services;
 /// YouTube Data API v3 クォータ計算ヘルパー
 /// 無料枠: 10,000 ユニット/日
 /// チェック1回あたりのコスト:
-///   playlistItems.list = 1ユニット × チャンネル数
-///   videos.list        = 1ユニット × 新着数（最大チャンネル数と仮定）
-/// = 最大 2ユニット × チャンネル数 / チェック
+///   playlistItems.list = 1ユニット（毎回）
+///   videos.list        = 1ユニット（新着検知時のみ）
+/// YouTube側の投稿本数上限（1チャンネルあたり動画+Short合計で1日20本）により、
+/// 「新着検知」が発生しうる回数は1日20回が上限となる。よって
+///   1チャンネルの1日の推定消費量 = チェック回数 + min(チェック回数, 20)
 /// </summary>
 public static class ApiQuotaHelper
 {
-    public const int    DailyLimit              = 10_000; // ユニット/日
-    public const int    UnitsPerCheck           = 2;      // playlistItems.list + videos.list
-    public const double QuotaDisableThresholdPct  = 95.0;  // この%以上で手動チェックボタンを無効化
-    public const int    QuotaWarnHighThresholdPct = 90;    // この%以上で高警告色
-    public const int    QuotaWarnLowThresholdPct  = 85;    // この%以上で低警告色
-    public const int    MinutesPerDay            = 1_440;
+    public const int    DailyLimit                 = 10_000; // ユニット/日
+    public const int    DailyUploadLimitPerChannel  = 20;     // 1チャンネルの1日の投稿上限（動画+Short合計、YouTube仕様）
+    public const double QuotaDisableThresholdPct    = 95.0;   // この%以上で手動チェックボタンを無効化
+    public const int    QuotaWarnHighThresholdPct   = 90;     // この%以上で高警告色
+    public const int    QuotaWarnLowThresholdPct    = 85;     // この%以上で低警告色
+    public const int    MinutesPerDay               = 1_440;
 
     /// <summary>チェック間隔の推奨候補（分）</summary>
     private static readonly int[] CheckIntervalCandidates = { 1, 5, 10, 30, 60 };
@@ -28,7 +30,8 @@ public static class ApiQuotaHelper
     {
         if (intervalMinutes <= 0 || channelCount <= 0) return 0;
         var checksPerDay = MinutesPerDay / intervalMinutes;
-        return checksPerDay * channelCount * UnitsPerCheck;
+        var perChannel   = checksPerDay + Math.Min(checksPerDay, DailyUploadLimitPerChannel);
+        return perChannel * channelCount;
     }
 
     /// <summary>
@@ -56,24 +59,6 @@ public static class ApiQuotaHelper
         return (false, 60);
     }
 
-    /// <summary>後方互換：チャンネル数だけ分かる場合の簡易検証（全チャンネル通常モード仮定）</summary>
-    public static (bool safe, int recommendedMinutes) ValidateInterval(
-        int intervalMinutes, int channelCount)
-    {
-        if (channelCount <= 0) return (true, intervalMinutes);
-
-        var daily = EstimateDailyUnits(intervalMinutes, channelCount);
-        if (daily <= DailyLimit) return (true, intervalMinutes);
-
-        var maxChecks = DailyLimit / (channelCount * UnitsPerCheck);
-        if (maxChecks <= 0) return (false, 60);
-
-        var minInterval = (int)Math.Ceiling((double)MinutesPerDay / maxChecks);
-        var candidates   = CheckIntervalCandidates;
-        var recommended  = candidates.FirstOrDefault(c => c >= minInterval);
-        return (false, recommended == 0 ? 60 : recommended);
-    }
-
     /// <summary>
     /// 1チャンネル分の1日推定消費ユニット数を、監視モード別パラメータから計算する。
     /// 全チャンネル合算（EstimateDailyUnitsForChannels）と上級設定のプレビューで
@@ -86,21 +71,30 @@ public static class ApiQuotaHelper
         int focusIntervalMinutes,
         int lowFreqIntervalMinutes)
     {
+        int checks;
         switch (mode)
         {
             case YTNotifier.Models.MonitorMode.LowFreq:
+            {
                 var lowInterval = Math.Max(1, lowFreqIntervalMinutes);
-                return (MinutesPerDay / lowInterval) * UnitsPerCheck;
-
+                checks = MinutesPerDay / lowInterval;
+                break;
+            }
             case YTNotifier.Models.MonitorMode.Focus:
+            {
                 var window   = focusWindowMinutes;
                 var interval = Math.Max(1, focusIntervalMinutes);
-                return (window / interval) * UnitsPerCheck;
-
+                checks = window / interval;
+                break;
+            }
             default: // Normal
+            {
                 var globalInterval = Math.Max(1, globalIntervalMinutes);
-                return (MinutesPerDay / globalInterval) * UnitsPerCheck;
+                checks = MinutesPerDay / globalInterval;
+                break;
+            }
         }
+        return checks + Math.Min(checks, DailyUploadLimitPerChannel);
     }
 
     /// <summary>
@@ -135,22 +129,22 @@ public static class ApiQuotaHelper
             }
         }
 
-        int total;
+        double totalChecks;
         if (baseInterval == int.MaxValue)
         {
             // Normal/LowFreq スロットなし（Focus スロットのみ）
-            total = 0;
+            totalChecks = 0;
             foreach (var slot in enabledSlots.Where(s => s.SlotMode == YTNotifier.Models.MonitorMode.Focus))
             {
                 var interval   = ToIntervalMinutes(slot.IntervalMinutes);
                 int activeDays = slot.Days == 0 ? 7 : CountBits(slot.Days);
-                total += (int)Math.Round((slot.WindowMinutes / interval) * UnitsPerCheck * activeDays / 7.0);
+                totalChecks += (slot.WindowMinutes / interval) * activeDays / 7.0;
             }
         }
         else
         {
             // ベース: 1日中 baseInterval 間隔でチェック
-            total = (MinutesPerDay / baseInterval) * UnitsPerCheck;
+            totalChecks = MinutesPerDay / baseInterval;
 
             // Focus スロット: ウィンドウ内でベースより高頻度な分のみ追加
             foreach (var slot in enabledSlots.Where(s => s.SlotMode == YTNotifier.Models.MonitorMode.Focus))
@@ -158,14 +152,15 @@ public static class ApiQuotaHelper
                 var focusInterval = ToIntervalMinutes(slot.IntervalMinutes);
                 if (focusInterval >= baseInterval) continue;
 
-                int activeDays     = slot.Days == 0 ? 7 : CountBits(slot.Days);
-                var additionalChecks = slot.WindowMinutes / (double)focusInterval
-                                     - slot.WindowMinutes / (double)baseInterval;
-                total += (int)Math.Round(additionalChecks * UnitsPerCheck * activeDays / 7.0);
+                int activeDays        = slot.Days == 0 ? 7 : CountBits(slot.Days);
+                var additionalChecks  = slot.WindowMinutes / (double)focusInterval
+                                       - slot.WindowMinutes / (double)baseInterval;
+                totalChecks += additionalChecks * activeDays / 7.0;
             }
         }
 
-        return total;
+        var checks = (int)Math.Round(totalChecks);
+        return checks + Math.Min(checks, DailyUploadLimitPerChannel);
     }
 
     /// <summary>IntervalMinutes == 0 は30秒（0.5分）を意味する</summary>
@@ -200,11 +195,6 @@ public static class ApiQuotaHelper
         }
         return total;
     }
-    public static int SafeMinInterval(int channelCount)
-    {
-        var (_, rec) = ValidateInterval(1, channelCount);
-        return rec;
-    }
 
     /// <summary>
     /// 全チャンネルの推定ユニット数をモード別（通常・低頻度・時間指定）に集計して返す。
@@ -225,34 +215,44 @@ public static class ApiQuotaHelper
 
             foreach (var slot in enabledSlots)
             {
-                int units;
+                int checks;
                 switch (slot.SlotMode)
                 {
                     case YTNotifier.Models.MonitorMode.Normal:
                         var ni = slot.SlotNormalIntervalMinutes > 0
                             ? slot.SlotNormalIntervalMinutes
                             : globalInterval;
-                        units   = (MinutesPerDay / Math.Max(1, ni)) * UnitsPerCheck;
-                        normal += units;
+                        checks  = MinutesPerDay / Math.Max(1, ni);
+                        normal += checks + Math.Min(checks, DailyUploadLimitPerChannel);
                         break;
 
                     case YTNotifier.Models.MonitorMode.LowFreq:
                         var li = Math.Max(1, slot.SlotLowFreqIntervalMinutes);
-                        units    = (MinutesPerDay / li) * UnitsPerCheck;
-                        lowFreq += units;
+                        checks   = MinutesPerDay / li;
+                        lowFreq += checks + Math.Min(checks, DailyUploadLimitPerChannel);
                         break;
 
                     case YTNotifier.Models.MonitorMode.Focus:
-                        var fi        = ToIntervalMinutes(slot.IntervalMinutes);
+                        var fi         = ToIntervalMinutes(slot.IntervalMinutes);
                         int activeDays = slot.Days == 0 ? 7 : CountBits(slot.Days);
-                        units  = (int)Math.Round(
-                            (slot.WindowMinutes / (double)fi) * UnitsPerCheck * activeDays / 7.0);
-                        focus += units;
+                        checks  = (int)Math.Round((slot.WindowMinutes / (double)fi) * activeDays / 7.0);
+                        focus  += checks + Math.Min(checks, DailyUploadLimitPerChannel);
                         break;
                 }
             }
         }
 
         return (normal, lowFreq, focus);
+    }
+
+    /// <summary>
+    /// チャンネル生存確認バッチ（channels.list）の1日の消費量。
+    /// 50件ごとに1ユニット（BanCheckChunkSize）。チャンネル一覧・休眠リストは別々に区切られるため、
+    /// それぞれ独立して切り上げ計算してから合算する。チェック間隔・監視モードに関係なく1日1回発生する固定コスト。
+    /// </summary>
+    public static int EstimateDailyUnitsForBanCheck(int activeChannelCount, int dormantChannelCount)
+    {
+        int Chunks(int count) => count <= 0 ? 0 : (int)Math.Ceiling(count / (double)YouTubeConstants.BanCheckChunkSize);
+        return Chunks(activeChannelCount) + Chunks(dormantChannelCount);
     }
 }

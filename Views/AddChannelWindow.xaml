@@ -9,7 +9,8 @@
         ResizeMode="NoResize"
         WindowStyle="None"
         Background="Transparent"
-        SizeToContent="Height">
+        SizeToContent="Height"
+        FontFamily="Noto Sans JP">
 
     <Border Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"

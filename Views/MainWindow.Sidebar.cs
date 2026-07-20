@@ -14,6 +14,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using YTNotifier.Constants;
 using YTNotifier.Models;
 using YTNotifier.Services;
 using Application      = System.Windows.Application;
@@ -276,6 +277,23 @@ public partial class MainWindow : System.Windows.Window
         SetNavSelectorBar(NavSettings, sender == NavSettings);
     }
 
+    // ===== ナビゲーション・ホットキー =====
+    private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.FocusedElement is TextBox) return;
+
+        switch (e.Key)
+        {
+            case Key.D1: e.Handled = true; Nav_Click(NavWatch,    new RoutedEventArgs()); break;
+            case Key.D2: e.Handled = true; Nav_Click(NavDormant,  new RoutedEventArgs()); break;
+            case Key.D3: e.Handled = true; Nav_Click(NavSettings, new RoutedEventArgs()); break;
+            case Key.D4: e.Handled = true; SidebarToggle_Click(SidebarToggleButton, new RoutedEventArgs()); break;
+            case Key.D5: e.Handled = true; MuteButton_Click(MuteButton, new RoutedEventArgs()); break;
+            case Key.D6: e.Handled = true; CompactModeButton_Click(CompactModeButton, new RoutedEventArgs()); break;
+            case Key.D7: e.Handled = true; PinButton_Click(PinButton, new RoutedEventArgs()); break;
+        }
+    }
+
     private void NavWatch_RightClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         e.Handled = true;
@@ -363,6 +381,10 @@ public partial class MainWindow : System.Windows.Window
         NotificationToggle.IsChecked      = s.ShowDesktopNotification;
         NotificationSoundToggle.IsChecked = s.NotificationSound;
         FlashTaskbarToggle.IsChecked      = s.FlashTaskbar;
+        ToastStyleComboBox.IsEnabled           = s.ShowDesktopNotification;
+        ToastStyleComboBox.Opacity             = s.ShowDesktopNotification ? 1.0 : AppConstants.DisabledControlOpacity;
+        NotificationSoundSetComboBox.IsEnabled = s.NotificationSound;
+        NotificationSoundSetComboBox.Opacity   = s.NotificationSound ? 1.0 : AppConstants.DisabledControlOpacity;
         _loadingSettings = false;
         UpdateMuteButton(_isMuted);
         SettingsService.Instance.MarkDirty();
