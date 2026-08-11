@@ -6,10 +6,11 @@ YouTube チャンネルの新着動画・ライブ配信・プレミア公開を
 
 ---
 
-## 必要環境
+## 動作環境
 
-- Windows 10 (build 17763) 以降
+- Windows 10 (build 17763) 以降、Windows11推奨
 - YouTube Data API v3 の API キー
+- (オプション)Gemini API キー
 
 ---
 
