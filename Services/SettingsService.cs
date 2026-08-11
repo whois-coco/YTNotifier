@@ -17,6 +17,8 @@ public class SettingsService
     private const string FileAutoBackup = "auto_backup.ytbk";
     private const string FileDormantCategories = "dormant_categories.json";
     private const string SoundsZipPrefix = "Sounds/";
+    /// <summary>バックアップ対象とする通知音ファイルの拡張子</summary>
+    private const string SoundFileExtension = ".wav";
     private const int    StateWriteIntervalMs = 60 * 60 * 1000; // 1時間
 
     private static readonly Lazy<SettingsService> _lazy = new(() => new SettingsService());
@@ -29,6 +31,7 @@ public class SettingsService
     private readonly string _dormantCategoriesPath;
     private readonly string _statePath;
     private readonly string _apiKeyPath;
+    private readonly string _geminiApiKeyPath;
     private readonly string _confDir;
 
     public string ConfDir => _confDir;
@@ -86,6 +89,7 @@ public class SettingsService
         _dormantCategoriesPath  = Path.Combine(confDir, FileDormantCategories);
         _statePath              = Path.Combine(confDir, FileState);
         _apiKeyPath             = Path.Combine(confDir, AppConstants.FileApiKey);
+        _geminiApiKeyPath       = Path.Combine(confDir, AppConstants.FileGeminiApiKey);
         _confDir                = confDir;
 
         // 旧パス（フラット構造）からの移行
@@ -112,6 +116,16 @@ public class SettingsService
                 ?? System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "",
             AppConstants.DirSounds);
 
+    /// <summary>
+    /// ファイル名の拡張子が .wav と完全一致するか判定する。
+    /// Directory.GetFiles の検索パターン（"*.wav"）は拡張子がちょうど3文字の場合に
+    /// 前方一致となり、余分なファイル（例: file.wavx）まで拾うため、検索パターンには頼らず
+    /// 明示的に比較する。
+    /// </summary>
+    private static bool IsWavFile(string fileName)
+        => string.Equals(Path.GetExtension(fileName), SoundFileExtension,
+                         StringComparison.OrdinalIgnoreCase);
+
     public string ExportBackup(string destPath, bool includeState = false)
     {
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
@@ -127,16 +141,18 @@ public class SettingsService
             System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
         {
             // 設定ファイル群
-            foreach (var file in new[] { _configPath, _channelsPath, _categoriesPath, _dormantCategoriesPath, _apiKeyPath })
+            foreach (var file in new[] { _configPath, _channelsPath, _categoriesPath, _dormantCategoriesPath, _apiKeyPath, _geminiApiKeyPath })
                 if (File.Exists(file)) zip.CreateEntryFromFile(file, Path.GetFileName(file));
             if (includeState && File.Exists(_statePath))
                 zip.CreateEntryFromFile(_statePath, Path.GetFileName(_statePath));
 
-            // Sounds フォルダ（フォルダごと・全ファイル再帰）
+            // Sounds フォルダ（フォルダごと再帰。.wav のみを対象とする）
             var soundsDir = SoundsDir;
             if (Directory.Exists(soundsDir))
                 foreach (var file in Directory.GetFiles(soundsDir, "*", SearchOption.AllDirectories))
                 {
+                    if (!IsWavFile(file)) continue;
+
                     // Sounds\ からの相対パスで ZIPエントリ名を構築
                     var relativePath = file.Substring(soundsDir.Length).TrimStart(Path.DirectorySeparatorChar);
                     var entryName    = SoundsZipPrefix + relativePath.Replace(Path.DirectorySeparatorChar, '/');
@@ -178,7 +194,7 @@ public class SettingsService
             using var zip   = new System.IO.Compression.ZipArchive(zipMs,
                 System.IO.Compression.ZipArchiveMode.Read);
 
-            var allowedFiles = new[] { FileConfig, FileChannels, FileCategories, FileDormantCategories, AppConstants.FileApiKey, FileState };
+            var allowedFiles = new[] { FileConfig, FileChannels, FileCategories, FileDormantCategories, AppConstants.FileApiKey, AppConstants.FileGeminiApiKey, FileState };
 
             foreach (var entry in zip.Entries)
             {
@@ -197,11 +213,15 @@ public class SettingsService
                     continue;
                 }
 
-                // Sounds フォルダ（フォルダ構造ごと exe ディレクトリに復元）
+                // Sounds フォルダ（フォルダ構造ごと exe ディレクトリに復元。.wav のみ）
                 var fullNameFwd = entry.FullName.Replace('\\', '/');
                 if (fullNameFwd.StartsWith(SoundsZipPrefix, StringComparison.OrdinalIgnoreCase)
                     && !string.IsNullOrEmpty(entry.Name))
                 {
+                    // .wav 以外は展開しない（旧バージョンで作成されたバックアップ・
+                    // 細工されたバックアップに .wav 以外が含まれている場合の防御）
+                    if (!IsWavFile(entry.Name)) continue;
+
                     var exeDir = Path.GetDirectoryName(
                                      Environment.ProcessPath)
                               ?? Path.GetDirectoryName(
@@ -669,12 +689,15 @@ public class SettingsService
     private bool CleanupExpiredGraceEntries()
     {
         bool cleaned = false;
-        lock (MonitorService._pendingListLock)
+        lock (_persistLock)
         {
-            foreach (var ch in Channels)
+            lock (MonitorService._pendingListLock)
             {
-                if (ch.PendingLives.RemoveAll(p => p.GraceRemaining == -1) > 0) cleaned = true;
-                if (ch.PendingPremieres.RemoveAll(p => p.GraceRemaining == -1) > 0) cleaned = true;
+                foreach (var ch in Channels)
+                {
+                    if (ch.PendingLives.RemoveAll(p => p.GraceRemaining == -1) > 0) cleaned = true;
+                    if (ch.PendingPremieres.RemoveAll(p => p.GraceRemaining == -1) > 0) cleaned = true;
+                }
             }
         }
         return cleaned;
@@ -741,34 +764,11 @@ public class SettingsService
         {
             if (ch.FocusSlots.Count > 0) continue;
 
-            FocusSlot MakeDefaultSlot(VideoKind kind) => ch.MonitorMode switch
-            {
-                MonitorMode.LowFreq => new FocusSlot
-                {
-                    SlotMode                   = MonitorMode.LowFreq,
-                    SlotLowFreqIntervalMinutes = ch.LowFreqIntervalMinutes,
-                    NotifyKind                 = kind,
-                    IsEnabled                  = true
-                },
-                MonitorMode.Focus => new FocusSlot
-                {
-                    SlotMode        = MonitorMode.Focus,
-                    NotifyKind      = kind,
-                    Days            = ch.FocusDays,
-                    Hour            = ch.FocusHour,
-                    Minute          = ch.FocusMinute,
-                    WindowMinutes   = ch.FocusWindowMinutes,
-                    IntervalMinutes = ch.FocusIntervalMinutes,
-                    IsEnabled       = true
-                },
-                _ => new FocusSlot { SlotMode = MonitorMode.Normal, NotifyKind = kind, IsEnabled = true }
-            };
-
             bool[] kindEnabled = { ch.NotifyVideo, ch.NotifyShort, ch.NotifyLive };
             var slots = new List<FocusSlot>();
             for (int i = 0; i < 3; i++)
             {
-                var slot = MakeDefaultSlot(defaultKinds[i]);
+                var slot = ch.CreateDefaultFocusSlot(defaultKinds[i]);
                 slot.IsEnabled = kindEnabled[i];
                 slots.Add(slot);
             }
@@ -921,6 +921,7 @@ public class SettingsService
                 LatestVideoId          = ch.LatestVideoId,
                 LatestDuration         = ch.LatestDuration,
                 LatestThumbnailUrl     = ch.LatestThumbnailUrl,
+                RecentUploads          = ch.RecentUploads.ToList(),
                 IsBanned               = ch.IsBanned,
                 LatestVideoDeleted     = ch.LatestVideoDeleted,
                 NoVideosFound          = ch.NoVideosFound,
@@ -960,6 +961,7 @@ public class SettingsService
         ch.LatestVideoId          = state.LatestVideoId;
         ch.LatestDuration         = state.LatestDuration;
         ch.LatestThumbnailUrl     = state.LatestThumbnailUrl;
+        ch.RecentUploads          = state.RecentUploads ?? new();
         ch.IsBanned               = state.IsBanned;
         ch.LatestVideoDeleted     = state.LatestVideoDeleted;
         ch.NoVideosFound          = state.NoVideosFound;

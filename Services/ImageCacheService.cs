@@ -14,8 +14,8 @@ public static class ImageCacheService
     private const string DirThumbCache = "thumbcache";
     private const string DirIcons      = "icons";
 
-    /// <summary>アイコンキャッシュの件数上限（MainWindow の旧 IconCacheMaxEntries を踏襲）</summary>
-    private const int IconCacheMaxEntries = 300;
+    /// <summary>アイコン・サムネイル各キャッシュの件数上限（MainWindow の旧 IconCacheMaxEntries を踏襲）</summary>
+    private const int CacheMaxEntries = 300;
 
     /// <summary>キャッシュエントリの有効期間（日）</summary>
     private const int CacheExpiryDays = 30;
@@ -77,6 +77,20 @@ public static class ImageCacheService
         }
     }
 
+    /// <summary>
+    /// 有効期限（CacheExpiryDays）を過ぎた＝もう参照されていない古いエントリをキャッシュから除去する。
+    /// 呼び出し側で _lock を保持していること。
+    /// </summary>
+    private static void PurgeExpired(Dictionary<string, CacheEntry> cache)
+    {
+        var now = DateTime.Now;
+        var expiredKeys = cache
+            .Where(kv => (now - kv.Value.CachedAt).TotalDays >= CacheExpiryDays)
+            .Select(kv => kv.Key)
+            .ToList();
+        foreach (var k in expiredKeys) cache.Remove(k);
+    }
+
     /// <summary>チャンネルアイコンのキャッシュを参照する（ダウンロードは行わない）</summary>
     public static bool TryGetCachedIcon(string url, out BitmapImage? bitmap) =>
         TryGetValid(_iconCache, url, out bitmap);
@@ -98,7 +112,7 @@ public static class ImageCacheService
 
             lock (_lock)
             {
-                if (_iconCache.Count >= IconCacheMaxEntries)
+                if (_iconCache.Count >= CacheMaxEntries)
                     _iconCache.Remove(_iconCache.Keys.First());
                 _iconCache[url] = new CacheEntry { Bitmap = bmp, CachedAt = DateTime.Now };
             }
@@ -121,6 +135,9 @@ public static class ImageCacheService
 
             lock (_lock)
             {
+                PurgeExpired(_thumbnailCache);
+                if (_thumbnailCache.Count >= CacheMaxEntries)
+                    _thumbnailCache.Remove(_thumbnailCache.Keys.First());
                 _thumbnailCache[key] = new CacheEntry { Bitmap = bmp, CachedAt = DateTime.Now };
             }
             return bmp;

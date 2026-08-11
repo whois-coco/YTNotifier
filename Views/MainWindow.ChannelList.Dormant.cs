@@ -331,8 +331,10 @@ public partial class MainWindow : System.Windows.Window
         ch.LatestVideoId               = null;
         ch.LatestDuration              = null;
         ch.LatestThumbnailUrl          = null;
+        ch.RecentUploads.Clear();
         ch.LatestVideoDeleted          = false;
         ch.NoVideosFound               = false;
+        ch.HasUnread                   = false;
 
         MoveChannelToCategoryEnd(ch);
         SettingsService.Instance.UpdateChannel(ch);

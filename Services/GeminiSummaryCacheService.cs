@@ -13,6 +13,9 @@ public static class GeminiSummaryCacheService
 {
     private const string FileGeminiSummaryCache = "gemini_summary_cache.json";
 
+    /// <summary>キャッシュファイルの read-modify-write を直列化するロック</summary>
+    private static readonly object _lock = new();
+
     private static string GetPath(string appDataDir)
         => Path.Combine(appDataDir, FileGeminiSummaryCache);
 
@@ -35,8 +38,11 @@ public static class GeminiSummaryCacheService
     public static GeminiSummaryEntry? Get(string appDataDir, string videoId)
     {
         if (string.IsNullOrEmpty(videoId)) return null;
-        var cache = Load(appDataDir);
-        return cache.TryGetValue(videoId, out var entry) ? entry : null;
+        lock (_lock)
+        {
+            var cache = Load(appDataDir);
+            return cache.TryGetValue(videoId, out var entry) ? entry : null;
+        }
     }
 
     /// <summary>動画IDをキーに要約結果を保存する</summary>
@@ -45,13 +51,16 @@ public static class GeminiSummaryCacheService
         if (string.IsNullOrEmpty(videoId)) return;
         try
         {
-            var cache = Load(appDataDir);
-            cache[videoId] = entry;
-            var json = JsonConvert.SerializeObject(cache, Formatting.Indented);
-            var path = GetPath(appDataDir);
-            var tmp  = path + ".tmp";
-            File.WriteAllText(tmp, json, Encoding.UTF8);
-            File.Move(tmp, path, overwrite: true);
+            lock (_lock)
+            {
+                var cache = Load(appDataDir);
+                cache[videoId] = entry;
+                var json = JsonConvert.SerializeObject(cache, Formatting.Indented);
+                var path = GetPath(appDataDir);
+                var tmp  = path + ".tmp";
+                File.WriteAllText(tmp, json, Encoding.UTF8);
+                File.Move(tmp, path, overwrite: true);
+            }
         }
         catch { }
     }

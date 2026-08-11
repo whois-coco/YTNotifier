@@ -317,17 +317,17 @@ public class MonitorService : IDisposable
         }
         else
         {
-            bool isPendingLive, isPendingPremiere;
+            bool proceed;
             lock (_pendingListLock)
             {
-                isPendingLive     = ch.PendingLives.Any(p => p.VideoId == entry.VideoId);
-                isPendingPremiere = ch.PendingPremieres.Any(p => p.VideoId == entry.VideoId);
+                var isPendingLive     = ch.PendingLives.Any(p => p.VideoId == entry.VideoId);
+                var isPendingPremiere = ch.PendingPremieres.Any(p => p.VideoId == entry.VideoId);
+                proceed = (isPendingLive || isPendingPremiere) && entry.GraceRemaining == 0;
+                if (proceed) entry.GraceRemaining = GracePeriodAttempts;
             }
-            if (!isPendingLive && !isPendingPremiere) return;
-            if (entry.GraceRemaining != 0) return;
+            if (!proceed) return;
 
-            entry.GraceRemaining = GracePeriodAttempts;
-            ch.NextCheckAt       = DateTime.Now;
+            ch.NextCheckAt = DateTime.Now;
             SettingsService.Instance.UpdateChannelSilent(ch);
             AppLogger.Log(LogMsg.SchedulerGracePeriodStarted, ch.ChannelName, entry.VideoId);
         }
@@ -490,16 +490,37 @@ public class MonitorService : IDisposable
                 await PrepareChannelAsync(channel);
                 ActivateGracePeriods(channel);
 
-                var pendingIds = channel.PendingLives.Select(p => p.VideoId)
-                    .Concat(channel.PendingPremieres.Select(p => p.VideoId))
-                    .Concat(channel.ActiveLives.Select(p => p.VideoId))
-                    .Concat(channel.ActivePremieres.Select(p => p.VideoId))
-                    .ToList();
+                List<string> pendingIds;
+                lock (_pendingListLock)
+                    pendingIds = channel.PendingLives.Select(p => p.VideoId)
+                        .Concat(channel.PendingPremieres.Select(p => p.VideoId))
+                        .Concat(channel.ActiveLives.Select(p => p.VideoId))
+                        .Concat(channel.ActivePremieres.Select(p => p.VideoId))
+                        .ToList();
 
                 (videos, pendingTransitioned, allScanned, allScannedBasic, playlistEmpty) = await _youtubeClient.CheckLatestVideosAsync(
                     channel.ChannelId, channel.LastCheckedVideoId,
                     channel.UploadsPlaylistId, pendingIds,
                     lastVideoPublishedAt: channel.LastCheckedVideoPublishedAt);
+            }
+
+            // チャンネルの最新投稿スナップショット（RecentUploads）を更新する。
+            // allScanned は新着有無に関わらず取得済み・追加API呼び出しなしのため毎回のチェックで実行。
+            // 空（デバッグチャンネル、または問い合わせ結果なし）の場合は既存の RecentUploads を維持する。
+            if (allScanned.Count > 0)
+            {
+                channel.RecentUploads = allScanned
+                    .Select(v => new RecentUploadEntry
+                    {
+                        VideoId      = v.VideoId,
+                        Title        = v.Title,
+                        ThumbnailUrl = v.ThumbnailUrl,
+                        Kind         = v.Kind,
+                        Duration     = v.Duration,
+                        PublishedAt  = v.PublishedAt
+                    })
+                    .ToList();
+                SettingsService.Instance.UpdateChannelSilent(channel);
             }
 
             // 表示中の最新動画が削除・非公開になった/復帰したかの判定
@@ -753,14 +774,17 @@ public class MonitorService : IDisposable
     /// </summary>
     private static void ActivateGracePeriods(ChannelInfo channel)
     {
-        foreach (var entry in channel.PendingLives.Concat(channel.PendingPremieres))
+        lock (_pendingListLock)
         {
-            if (entry.ScheduledAt.HasValue
-                && entry.ScheduledAt.Value <= DateTime.Now
-                && entry.GraceRemaining == 0)
+            foreach (var entry in channel.PendingLives.Concat(channel.PendingPremieres))
             {
-                entry.GraceRemaining = GracePeriodAttempts;
-                AppLogger.Log(LogMsg.GracePeriodStarted, channel.ChannelName, entry.VideoId, GracePeriodAttempts);
+                if (entry.ScheduledAt.HasValue
+                    && entry.ScheduledAt.Value <= DateTime.Now
+                    && entry.GraceRemaining == 0)
+                {
+                    entry.GraceRemaining = GracePeriodAttempts;
+                    AppLogger.Log(LogMsg.GracePeriodStarted, channel.ChannelName, entry.VideoId, GracePeriodAttempts);
+                }
             }
         }
     }
@@ -962,8 +986,12 @@ public class MonitorService : IDisposable
         foreach (var video in pendingTransitioned)
         {
             // Phase2 の再分類に頼らず、追跡元リスト（PendingLives / PendingPremieres）で種別を確定する
-            bool wasLive    = channel.PendingLives.Any(p => p.VideoId == video.VideoId);
-            bool wasPremiere = channel.PendingPremieres.Any(p => p.VideoId == video.VideoId);
+            bool wasLive, wasPremiere;
+            lock (_pendingListLock)
+            {
+                wasLive     = channel.PendingLives.Any(p => p.VideoId == video.VideoId);
+                wasPremiere = channel.PendingPremieres.Any(p => p.VideoId == video.VideoId);
+            }
 
             if (wasLive)
             {
@@ -1077,12 +1105,15 @@ public class MonitorService : IDisposable
     private static bool TickGracePeriods(ChannelInfo ch)
     {
         bool anyGrace = false;
-        foreach (var entry in ch.PendingLives.Concat(ch.PendingPremieres))
+        lock (_pendingListLock)
         {
-            if (entry.GraceRemaining <= 0) continue;
-            anyGrace = true;
-            entry.GraceRemaining--;
-            if (entry.GraceRemaining == 0) entry.GraceRemaining = -1;
+            foreach (var entry in ch.PendingLives.Concat(ch.PendingPremieres))
+            {
+                if (entry.GraceRemaining <= 0) continue;
+                anyGrace = true;
+                entry.GraceRemaining--;
+                if (entry.GraceRemaining == 0) entry.GraceRemaining = -1;
+            }
         }
         return anyGrace;
     }

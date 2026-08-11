@@ -36,6 +36,9 @@ namespace YTNotifier.Views;
 
 public partial class MainWindow : System.Windows.Window
 {
+    /// <summary>「📜 最新動画一覧」表示時に絞り込む最新投稿件数の上限</summary>
+    private const int RecentUploadsMaxEntries = 25;
+
     private const int    ChannelRowHeight        = 60;
     private const int    ChannelRowHeightCompact    = 36;
 
@@ -523,6 +526,17 @@ public partial class MainWindow : System.Windows.Window
         var clearItem = new MenuItem { Header = "🔔 NEWバッジを消す" };
         clearItem.Click += (_, _) => { AppLogger.Log(LogMsg.ChannelContextClearNew, null, ch.ChannelName); ch.HasUnread = false; SettingsService.Instance.UpdateChannelSilent(ch); RefreshChannelList(); };
 
+        var recentUploadsItem = new MenuItem { Header = "📜 最新動画一覧" };
+        recentUploadsItem.Click += (_, _) =>
+        {
+            var filteredUploads = ch.RecentUploads
+                .Where(v => IsRecentUploadKindEnabled(ch, v.Kind))
+                .Take(RecentUploadsMaxEntries)
+                .ToList();
+            AppLogger.Log(LogMsg.RecentUploadsPopupOpened, null, ch.ChannelName, filteredUploads.Count);
+            new VideoListPopupWindow(this, ch, filteredUploads).Show();
+        };
+
         var renameItem = new MenuItem { Header = "✏ 名称を変更" };
         renameItem.Click += (_, _) => ShowRenameDialog(ch);
 
@@ -558,7 +572,11 @@ public partial class MainWindow : System.Windows.Window
         dormantItem.Click += (_, _) => MoveChannelToDormant(ch);
         var sepDormant = new Separator();
 
+        var sepClearRecent = new Separator();
+
         menu.Items.Add(clearItem);
+        menu.Items.Add(sepClearRecent);
+        menu.Items.Add(recentUploadsItem);
         menu.Items.Add(detailItem);
         menu.Items.Add(sepDormant);
         menu.Items.Add(renameItem);
@@ -574,6 +592,9 @@ public partial class MainWindow : System.Windows.Window
             clearItem.Visibility     = _editMode ? Visibility.Collapsed : Visibility.Visible;
             clearItem.IsEnabled      = ch.HasUnread;
             clearItem.Opacity        = ch.HasUnread ? 1.0 : 0.4;
+            sepClearRecent.Visibility    = _editMode ? Visibility.Collapsed : Visibility.Visible;
+            recentUploadsItem.Visibility = _editMode ? Visibility.Collapsed : Visibility.Visible;
+            recentUploadsItem.IsEnabled  = ch.RecentUploads.Any(v => IsRecentUploadKindEnabled(ch, v.Kind));
             renameItem.Visibility    = vis; sepRename.Visibility    = vis;
             newCatItem.Visibility    = vis; moveToCatItem.Visibility = vis;
             sep.Visibility           = vis; detailItem.Visibility   = vis;
@@ -612,6 +633,15 @@ public partial class MainWindow : System.Windows.Window
 
         return menu;
     }
+
+    /// <summary>RecentUploads（最新動画一覧）表示用に、動画種別が対応する通知トグルでONになっているかを判定する。</summary>
+    private static bool IsRecentUploadKindEnabled(ChannelInfo channel, VideoKind kind) => kind switch
+    {
+        VideoKind.Video or VideoKind.Premiere => channel.NotifyVideo,
+        VideoKind.Short                       => channel.NotifyShort,
+        VideoKind.Live                         => channel.NotifyLive,
+        _                                      => false
+    };
 
     // ===== 種別トグル =====
     private static UIElement MakeKindToggle(string label, bool initial,

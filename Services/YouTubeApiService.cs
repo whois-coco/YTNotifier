@@ -153,6 +153,7 @@ public partial class YouTubeApiClient : IYouTubeApiClient
                 var req = svc.Channels.List("snippet,statistics");
                 req.ForHandle = handle;
                 var resp = await req.ExecuteAsync();
+                SettingsService.Instance.AddApiUnits(1); // channels.list = 1unit
                 if (resp.Items?.Count > 0) return MapChannel(resp.Items[0]);
             }
             if (isChannelId)
@@ -160,6 +161,7 @@ public partial class YouTubeApiClient : IYouTubeApiClient
                 var req = svc.Channels.List("snippet,statistics");
                 req.Id = input;
                 var resp = await req.ExecuteAsync();
+                SettingsService.Instance.AddApiUnits(1); // channels.list = 1unit
                 if (resp.Items?.Count > 0) return MapChannel(resp.Items[0]);
             }
             if (isUrl)
@@ -181,8 +183,10 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         }
     }
 
-    private static ChannelInfo MapChannel(Google.Apis.YouTube.v3.Data.Channel ch)
+    private static ChannelInfo? MapChannel(Google.Apis.YouTube.v3.Data.Channel ch)
     {
+        if (ch.Snippet == null) return null;   // snippet 欠落の異常応答は取得失敗（=見つからない）として扱う
+
         var subs = ch.Statistics?.SubscriberCount;
         return new ChannelInfo
         {
@@ -315,11 +319,13 @@ public partial class YouTubeApiClient : IYouTubeApiClient
                 return VideoKind.Video;
             }
             AppLogger.Log(LogMsg.UushFallbackFailed, null, videoId, ClassifyApiException(gex));
+            SettingsService.Instance.AddApiUnits(1);
             return VideoKind.Video;
         }
         catch (Exception ex)
         {
             AppLogger.Log(LogMsg.UushFallbackFailed, null, videoId, ClassifyNetworkException(ex));
+            SettingsService.Instance.AddApiUnits(1);
             return VideoKind.Video;
         }
 

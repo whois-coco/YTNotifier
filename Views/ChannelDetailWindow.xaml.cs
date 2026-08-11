@@ -72,39 +72,16 @@ public partial class ChannelDetailWindow : Window
 
         // 監視設定タブ初期化：既存モードをスロット形式に変換
         // 未設定タブ（Short/ライブ配信）もチャンネル本来のモードを引き継ぐための既定値生成
-        FocusSlot MakeDefaultSlot(VideoKind kind) => channel.MonitorMode switch
-        {
-            MonitorMode.LowFreq => new FocusSlot
-            {
-                SlotMode                   = MonitorMode.LowFreq,
-                SlotLowFreqIntervalMinutes = channel.LowFreqIntervalMinutes,
-                NotifyKind                 = kind,
-                IsEnabled                  = true
-            },
-            MonitorMode.Focus => new FocusSlot
-            {
-                SlotMode        = MonitorMode.Focus,
-                NotifyKind      = kind,
-                Days            = channel.FocusDays,
-                Hour            = channel.FocusHour,
-                Minute          = channel.FocusMinute,
-                WindowMinutes   = channel.FocusWindowMinutes,
-                IntervalMinutes = channel.FocusIntervalMinutes,
-                IsEnabled       = true
-            },
-            _ => new FocusSlot { SlotMode = MonitorMode.Normal, NotifyKind = kind, IsEnabled = true }
-        };
-
         List<FocusSlot> slots = channel.FocusSlots.Count > 0
             ? channel.FocusSlots
-            : new List<FocusSlot> { MakeDefaultSlot(VideoKind.Video) };
+            : new List<FocusSlot> { channel.CreateDefaultFocusSlot(VideoKind.Video) };
 
         // 3タブ分作成（デフォルト種別: 動画/Short/ライブ配信）
         VideoKind[] defaultKinds = { VideoKind.Video, VideoKind.Short, VideoKind.Live };
         bool[] kindEnabled = { channel.NotifyVideo, channel.NotifyShort, channel.NotifyLive };
         for (int i = 0; i < 3; i++)
         {
-            var slot = i < slots.Count ? slots[i] : MakeDefaultSlot(defaultKinds[i]);
+            var slot = i < slots.Count ? slots[i] : channel.CreateDefaultFocusSlot(defaultKinds[i]);
             slot.IsEnabled = kindEnabled[i]; // チャンネル一覧の種別ON/OFFを反映
             _tabPanels.Add(new FocusTabPanel(slot));
         }

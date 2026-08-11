@@ -243,6 +243,10 @@ public class ChannelInfo
     [JsonIgnore]
     public string?    LatestThumbnailUrl { get; set; }
 
+    /// <summary>チャンネルの最新投稿スナップショット（右クリック一覧表示用）。state.json で管理</summary>
+    [JsonIgnore]
+    public List<RecentUploadEntry> RecentUploads { get; set; } = new();
+
     /// <summary>チャンネルBAN／自主削除が確定した場合 true。state.json で管理</summary>
     [JsonIgnore]
     public bool IsBanned { get; set; } = false;
@@ -366,6 +370,34 @@ public class ChannelInfo
         };
         return idx < FocusSlots.Count ? FocusSlots[idx].SlotMode : MonitorMode.Normal;
     }
+
+    /// <summary>
+    /// このチャンネルの旧来の監視モード設定（MonitorMode / Focus* / LowFreq*）から、
+    /// 指定種別の既定 FocusSlot を1つ生成する。FocusSlots 初期化時の変換ルールとして
+    /// SettingsService（データ移行）と ChannelDetailWindow（詳細画面）で共用する。
+    /// </summary>
+    public FocusSlot CreateDefaultFocusSlot(VideoKind kind) => MonitorMode switch
+    {
+        MonitorMode.LowFreq => new FocusSlot
+        {
+            SlotMode                   = MonitorMode.LowFreq,
+            SlotLowFreqIntervalMinutes = LowFreqIntervalMinutes,
+            NotifyKind                 = kind,
+            IsEnabled                  = true
+        },
+        MonitorMode.Focus => new FocusSlot
+        {
+            SlotMode        = MonitorMode.Focus,
+            NotifyKind      = kind,
+            Days            = FocusDays,
+            Hour            = FocusHour,
+            Minute          = FocusMinute,
+            WindowMinutes   = FocusWindowMinutes,
+            IntervalMinutes = FocusIntervalMinutes,
+            IsEnabled       = true
+        },
+        _ => new FocusSlot { SlotMode = MonitorMode.Normal, NotifyKind = kind, IsEnabled = true }
+    };
 }
 
 public enum MonitorMode
@@ -450,6 +482,28 @@ public enum LogCategory
     Startup,              // 起動時エラー（設定読込・チャンネル一覧・監視開始）
     Ui,                   // アイコン・トレイ初期化等の汎用UIエラー
     Debug,                // デバッグ・開発者ツール
+}
+
+/// <summary>チャンネルの最新投稿スナップショット1件分の情報（右クリック一覧表示用）</summary>
+public class RecentUploadEntry
+{
+    [JsonProperty("videoId")]
+    public string    VideoId      { get; set; } = string.Empty;
+
+    [JsonProperty("title")]
+    public string    Title        { get; set; } = string.Empty;
+
+    [JsonProperty("thumbnailUrl")]
+    public string?   ThumbnailUrl { get; set; }
+
+    [JsonProperty("kind")]
+    public VideoKind Kind         { get; set; } = VideoKind.Video;
+
+    [JsonProperty("duration")]
+    public TimeSpan? Duration     { get; set; } = null;
+
+    [JsonProperty("publishedAt")]
+    public DateTime? PublishedAt  { get; set; } = null;
 }
 
 /// <summary>upcoming 待ち中のライブ/プレミア1件分の情報</summary>
@@ -625,6 +679,10 @@ public class ChannelState
 
     [JsonProperty("latestThumbnailUrl")]
     public string?    LatestThumbnailUrl { get; set; }
+
+    /// <summary>チャンネルの最新投稿スナップショット（右クリック一覧表示用）</summary>
+    [JsonProperty("recentUploads")]
+    public List<RecentUploadEntry> RecentUploads { get; set; } = new();
 
     [JsonProperty("isBanned")]
     public bool IsBanned { get; set; } = false;

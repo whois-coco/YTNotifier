@@ -16,7 +16,7 @@ public class LoggerService
     public ObservableCollection<LogEntry> TodayEntries { get; } = new();
     private readonly string _logDir;
     private readonly object _fileLock = new();
-    private string? _debugDbPath;
+    private Microsoft.Data.Sqlite.SqliteConnection? _debugConn;
     private DateTime _debugDbDate = DateTime.MinValue;
     private readonly object _dbLock = new();
     private const int MaxUiEntries      = 200;
@@ -279,40 +279,49 @@ public class LoggerService
         Application.Current?.Dispatcher.Invoke(() => ErrorEntries.Clear());
     }
 
-    private void InitDebugDb(DateTime date)
+    /// <summary>
+    /// _debugConn を指定日付のトレースDBに対して開く。未オープン、または日付が変わったときのみ
+    /// 旧接続を閉じて開き直す。呼び出し側で _dbLock を保持していること。
+    /// </summary>
+    private void EnsureDebugDb(DateTime date)
     {
-        _debugDbPath = Path.Combine(_logDir, $"trace_{date:yyyyMMdd}.db");
+        if (_debugConn != null && date == _debugDbDate) return;
+
+        _debugConn?.Dispose();
+        _debugConn   = null;
         _debugDbDate = date;
-        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_debugDbPath}");
+
+        var path = Path.Combine(_logDir, $"trace_{date:yyyyMMdd}.db");
+        var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}");
         conn.Open();
-        var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            CREATE TABLE IF NOT EXISTS log (
-                id  INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts  INTEGER NOT NULL,
-                lvl INTEGER NOT NULL,
-                ch  TEXT,
-                cat TEXT,
-                msg TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_ts ON log(ts);
-            """;
-        cmd.ExecuteNonQuery();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS log (
+                    id  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts  INTEGER NOT NULL,
+                    lvl INTEGER NOT NULL,
+                    ch  TEXT,
+                    cat TEXT,
+                    msg TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_ts ON log(ts);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        _debugConn = conn;   // オープン・テーブル作成が成功してから確定
     }
 
     private void WriteToDebugDb(LogEntry entry, LogCategory category)
     {
         if (!SettingsService.Instance.Settings.TraceLogEnabled) return;
-        if (_debugDbPath == null) InitDebugDb(entry.Timestamp.Date);
         try
         {
-            if (entry.Timestamp.Date > _debugDbDate)
-                InitDebugDb(entry.Timestamp.Date);
             lock (_dbLock)
             {
-                using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_debugDbPath}");
-                conn.Open();
-                var cmd = conn.CreateCommand();
+                EnsureDebugDb(entry.Timestamp.Date);
+
+                using var cmd = _debugConn!.CreateCommand();
                 cmd.CommandText = "INSERT INTO log (ts, lvl, ch, cat, msg) VALUES ($ts, $lvl, $ch, $cat, $msg)";
                 cmd.Parameters.AddWithValue("$ts",  new DateTimeOffset(entry.Timestamp).ToUnixTimeMilliseconds());
                 cmd.Parameters.AddWithValue("$lvl", (int)entry.Level);
@@ -323,5 +332,16 @@ public class LoggerService
             }
         }
         catch { }
+    }
+
+    /// <summary>保持しているトレースDB接続を閉じる（アプリ終了時に呼ぶ）。</summary>
+    public void CloseDebugDb()
+    {
+        lock (_dbLock)
+        {
+            _debugConn?.Dispose();
+            _debugConn   = null;
+            _debugDbDate = DateTime.MinValue;
+        }
     }
 }

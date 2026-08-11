@@ -3,10 +3,11 @@ namespace YTNotifier.Constants;
 internal static class AppConstants
 {
     public const string AppName          = "YTNotifier";
-    public const string AppVersion       = "0.8.7";
+    public const string AppVersion       = "0.8.8";
     public const string DirLogs          = "logs";
     public const string DirSounds        = "Sounds";
     public const string FileApiKey              = "api_key.dat";
+    public const string FileGeminiApiKey        = "gemini_api_key.dat";
     public const string BackupFileFilter     = "YTNotifierバックアップ (*.ytbk)|*.ytbk|ZIPファイル (*.zip)|*.zip";
 
     /// <summary>全曜日ビットマスク（bit0=日〜bit6=土）</summary>

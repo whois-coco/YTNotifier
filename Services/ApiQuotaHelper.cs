@@ -9,9 +9,12 @@ namespace YTNotifier.Services;
 /// チェック1回あたりのコスト:
 ///   playlistItems.list = 1ユニット（毎回）
 ///   videos.list        = 1ユニット（新着検知時のみ）
+///   playlistItems.list（UUSH Short判定） = 1ユニット（新着検知した動画のうち
+///                                          再生時間180秒以下のときのみ）
 /// YouTube側の投稿本数上限（1チャンネルあたり動画+Short合計で1日20本）により、
-/// 「新着検知」が発生しうる回数は1日20回が上限となる。よって
-///   1チャンネルの1日の推定消費量 = チェック回数 + min(チェック回数, 20)
+/// 「新着検知」が発生しうる回数は1日20回が上限となる。最大値見積もりのため、
+/// 新着検知した動画はすべてUUSH判定（+1ユニット）が発生すると仮定する。よって
+///   1チャンネルの1日の推定消費量 = チェック回数 + 2 * min(チェック回数, 20)
 /// </summary>
 public static class ApiQuotaHelper
 {
@@ -94,7 +97,8 @@ public static class ApiQuotaHelper
                 break;
             }
         }
-        return checks + Math.Min(checks, DailyUploadLimitPerChannel);
+        // videos.list（新着検知）+ UUSH判定playlistItems.list（新着すべてがShort候補と仮定した最大値見積もり）
+        return checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
     }
 
     /// <summary>
@@ -160,7 +164,7 @@ public static class ApiQuotaHelper
         }
 
         var checks = (int)Math.Round(totalChecks);
-        return checks + Math.Min(checks, DailyUploadLimitPerChannel);
+        return checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
     }
 
     /// <summary>IntervalMinutes == 0 は30秒（0.5分）を意味する</summary>
@@ -223,20 +227,20 @@ public static class ApiQuotaHelper
                             ? slot.SlotNormalIntervalMinutes
                             : globalInterval;
                         checks  = MinutesPerDay / Math.Max(1, ni);
-                        normal += checks + Math.Min(checks, DailyUploadLimitPerChannel);
+                        normal += checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
                         break;
 
                     case YTNotifier.Models.MonitorMode.LowFreq:
                         var li = Math.Max(1, slot.SlotLowFreqIntervalMinutes);
                         checks   = MinutesPerDay / li;
-                        lowFreq += checks + Math.Min(checks, DailyUploadLimitPerChannel);
+                        lowFreq += checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
                         break;
 
                     case YTNotifier.Models.MonitorMode.Focus:
                         var fi         = ToIntervalMinutes(slot.IntervalMinutes);
                         int activeDays = slot.Days == 0 ? 7 : CountBits(slot.Days);
                         checks  = (int)Math.Round((slot.WindowMinutes / (double)fi) * activeDays / 7.0);
-                        focus  += checks + Math.Min(checks, DailyUploadLimitPerChannel);
+                        focus  += checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
                         break;
                 }
             }

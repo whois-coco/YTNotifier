@@ -62,6 +62,9 @@ public partial class App : System.Windows.Application
         try { ApplyTheme(SettingsService.Instance.Settings.IsDarkMode); }
         catch (Exception ex) { ShowFatalError("テーマの適用に失敗しました", ex); Shutdown(); return; }
 
+        // プラグインが置かれている場合、いつ差し替わったかを後から追えるよう記録する
+        SummaryScriptService.LogPluginDetection();
+
         // システムトレイアイコン初期化
         _trayIconService = new TrayIconService(ShowMainWindow, ExitApp);
         _trayIconService.Initialize();
@@ -174,6 +177,7 @@ public partial class App : System.Windows.Application
         if (Interlocked.Exchange(ref _flushed, 1) != 0) return;
         try { SettingsService.Instance.FlushAll(); } catch { }
         try { SettingsService.Instance.SaveAutoBackupIfDirty(); } catch { }
+        try { LoggerService.Instance.CloseDebugDb(); } catch { }
     }
 
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)

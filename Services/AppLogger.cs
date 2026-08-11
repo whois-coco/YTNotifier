@@ -66,6 +66,10 @@ public enum LogMsg
     SchedulerError            = 4023,  // {0}=message
     // Gemini要約
     GeminiSummaryFailed       = 4021,  // {0}=videoId {1}=message
+    // 外部要約DLL（YTS.dll）バイパス
+    ExternalSummaryBridgeFailed = 4024,  // {0}=videoId {1}=message
+    // 要約スクリプト（Plugins）
+    SummaryScriptFailed        = 4025,  // {0}=videoId {1}=message
     // 通知
     NotifyFailed              = 4013,  // {0}=message
     TestNotifyFailed          = 4009,  // {0}=message  (MainWindow.Settings)
@@ -208,9 +212,17 @@ public enum LogMsg
     // 動画要約ポップアップ
     VideoSummaryPopupOpened           = 5109,  // {0}=channelName
     VideoListPopupOpened              = 5130,  // {0}=channelName {1}=件数
+    RecentUploadsPopupOpened          = 5132,  // {0}=channelName {1}=件数
+    RecentUploadThumbnailOpened       = 5134,  // {0}=channelName
     GeminiSummaryRequested            = 5110,  // {0}=videoId
     GeminiSummaryCacheHit             = 5111,  // {0}=videoId
     GeminiSummarySucceeded            = 5112,  // {0}=videoId
+    ExternalSummaryBridgeRequested     = 5133,  // {0}=videoId
+    // 要約スクリプト（Plugins）
+    SummaryScriptRequested             = 5135,  // {0}=videoId
+    SummaryScriptLog                   = 5136,  // {0}=スクリプトから渡されたメッセージ
+    // プラグイン
+    PluginDetected                     = 5137,  // {0}=プラグインのパス {1}=最終更新日時
     // APIキーウィンドウ
     ApiKeyEditStarted          = 5067,
     ApiKeyChanged              = 5068,
@@ -251,6 +263,8 @@ public static class AppLogger
         [LogMsg.SettingTraceLogEnabled]    = new(LogLevel.Debug,   LogCategory.Settings,     "トレースログの取得: {0}"),
         [LogMsg.SettingBackupExported]      = new(LogLevel.System,  LogCategory.Settings,     "バックアップをエクスポートしました: {0}"),
         [LogMsg.SettingBackupImported]      = new(LogLevel.System,  LogCategory.Settings,     "バックアップをインポートしました: {0}"),
+        // プラグイン
+        [LogMsg.PluginDetected]             = new(LogLevel.System,  LogCategory.Startup,      "プラグインを検出しました: {0}（最終更新 {1}）"),
 
         // INFO ────────────────────────────────────────────────────────
         // 監視・通知
@@ -307,6 +321,10 @@ public static class AppLogger
         [LogMsg.SchedulerError]            = new(LogLevel.Error,   LogCategory.VideoFilter,  "スケジューラーエラー: {0}"),
         // Gemini要約
         [LogMsg.GeminiSummaryFailed]       = new(LogLevel.Error,   LogCategory.VideoSummaryPopup, "Gemini要約失敗({0}): {1}"),
+        // 外部要約DLL（YTS.dll）バイパス
+        [LogMsg.ExternalSummaryBridgeFailed] = new(LogLevel.Error, LogCategory.VideoSummaryPopup, "YTS.dll要約失敗、既存ロジックへフォールバック({0}): {1}"),
+        // 要約スクリプト（Plugins）
+        [LogMsg.SummaryScriptFailed]         = new(LogLevel.Error, LogCategory.VideoSummaryPopup, "Pluginsスクリプト要約失敗、既存ロジックへフォールバック({0}): {1}"),
         // 通知
         [LogMsg.NotifyFailed]              = new(LogLevel.Error,   LogCategory.Notification, "通知送信失敗: {0}"),
         [LogMsg.TestNotifyFailed]          = new(LogLevel.Error,   LogCategory.Notification, "テスト通知失敗: {0}"),
@@ -440,12 +458,18 @@ public static class AppLogger
         [LogMsg.LatestVideoTitleChanged]             = new(LogLevel.Debug,   LogCategory.Channel,           "表示中の動画のタイトルが変更されたことを検知しました: {0}（{1} → {2}）"),
         [LogMsg.ChannelListAllAlive]                 = new(LogLevel.Debug,   LogCategory.Channel,           "チャンネルリスト内の全てのチャンネルの生存を確認。"),
         [LogMsg.DormantListAllAlive]                 = new(LogLevel.Debug,   LogCategory.Channel,           "休眠リスト内の全てのチャンネルの生存を確認。"),
+        [LogMsg.RecentUploadsPopupOpened]            = new(LogLevel.Debug,   LogCategory.Channel,           "最新動画一覧を開きました: {0}（{1}件）"),
+        [LogMsg.RecentUploadThumbnailOpened]         = new(LogLevel.Debug,   LogCategory.Channel,           "最新動画一覧のサムネイルから動画を開きました: {0}"),
         // 動画要約ポップアップ
         [LogMsg.VideoSummaryPopupOpened]           = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "動画情報ポップアップを開きました: {0}"),
         [LogMsg.VideoListPopupOpened]              = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "動画一覧ポップアップを開きました: {0}（{1}件）"),
         [LogMsg.GeminiSummaryRequested]            = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約リクエスト送信: {0}"),
         [LogMsg.GeminiSummaryCacheHit]              = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約キャッシュヒット: {0}"),
         [LogMsg.GeminiSummarySucceeded]             = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約成功: {0}"),
+        [LogMsg.ExternalSummaryBridgeRequested]     = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "YTS.dll経由で要約リクエスト送信: {0}"),
+        // 要約スクリプト（Plugins）
+        [LogMsg.SummaryScriptRequested]              = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Pluginsスクリプト経由で要約リクエスト送信: {0}"),
+        [LogMsg.SummaryScriptLog]                    = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Pluginsスクリプトログ: {0}"),
         [LogMsg.ChannelDetailTabSwitched]   = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "詳細設定タブ切替: {0}"),
         [LogMsg.ChannelDetailEnabledChanged]= new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "詳細設定 有効/無効: {1} → {2}"),
         // APIキーウィンドウ
