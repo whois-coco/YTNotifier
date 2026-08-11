@@ -9,7 +9,6 @@ YouTube チャンネルの新着動画・ライブ配信・プレミア公開を
 ## 必要環境
 
 - Windows 10 (build 17763) 以降
-- .NET 8.0 ランタイム
 - YouTube Data API v3 の API キー
 
 ---
