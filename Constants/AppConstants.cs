@@ -3,7 +3,7 @@ namespace YTNotifier.Constants;
 internal static class AppConstants
 {
     public const string AppName          = "YTNotifier";
-    public const string AppVersion       = "0.8.8";
+    public const string AppVersion       = "0.9.0";
     public const string DirLogs          = "logs";
     public const string DirSounds        = "Sounds";
     public const string FileApiKey              = "api_key.dat";
