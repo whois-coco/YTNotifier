@@ -56,6 +56,9 @@ public partial class App : System.Windows.Application
 
             // 画像ディスクキャッシュ廃止（指示書053）に伴う旧キャッシュの一時クリーンアップ
             ImageCacheService.CleanupLegacyDiskCache(SettingsService.Instance.AppDataDir);
+
+            // 要約結果キャッシュ廃止（指示書024）に伴う旧キャッシュの一時クリーンアップ
+            GeminiSummaryService.CleanupLegacySummaryCache(SettingsService.Instance.AppDataDir);
         }
         catch (Exception ex) { ShowFatalError("設定ファイルの読み込みに失敗しました", ex); Shutdown(); return; }
 

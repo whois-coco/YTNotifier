@@ -112,28 +112,22 @@ public partial class MainWindow : System.Windows.Window
     private enum ChannelStatusFilter
     {
         Favorite,
-        LiveNow,
-        PremiereNow,
-        LiveScheduled,
-        PremiereScheduled,
         Video,
         Short,
-        Archive,
+        Live,
+        Premiere,
     }
 
     private ChannelStatusFilter? _channelStatusFilter;
 
     private static string GetChannelStatusFilterLabel(ChannelStatusFilter filter) => filter switch
     {
-        ChannelStatusFilter.LiveNow           => "ライブ配信中",
-        ChannelStatusFilter.PremiereNow       => "プレミア公開中",
-        ChannelStatusFilter.LiveScheduled     => "ライブ予約",
-        ChannelStatusFilter.PremiereScheduled => "プレミア公開予約",
-        ChannelStatusFilter.Video             => "動画",
-        ChannelStatusFilter.Short             => "Short",
-        ChannelStatusFilter.Archive           => "アーカイブ",
-        ChannelStatusFilter.Favorite          => "お気に入り",
-        _                                     => string.Empty,
+        ChannelStatusFilter.Favorite => "お気に入り",
+        ChannelStatusFilter.Video    => "動画",
+        ChannelStatusFilter.Short    => "Short",
+        ChannelStatusFilter.Live     => "ライブ",
+        ChannelStatusFilter.Premiere => "プレミア公開",
+        _                            => string.Empty,
     };
 
     // カード表示（BuildStatusRow）と同じ判定元（ResolveCardStatus）を使い、フィルター結果とカード表示を常に一致させる。
@@ -154,16 +148,16 @@ public partial class MainWindow : System.Windows.Window
 
         return filter switch
         {
-            ChannelStatusFilter.Favorite          => ch.IsFavorite,
-            ChannelStatusFilter.LiveNow           => cardStatus.ActiveLiveEntries.Count > 0
-                                                     || (kindPillShown && ch.LatestKind == VideoKind.Live && ch.ActiveLives.Count > 0),
-            ChannelStatusFilter.PremiereNow       => cardStatus.ActivePremiereEntries.Count > 0,
-            ChannelStatusFilter.LiveScheduled     => cardStatus.PendingLiveDisplay != null,
-            ChannelStatusFilter.PremiereScheduled => cardStatus.PendingPremiereDisplay != null,
-            ChannelStatusFilter.Video             => kindPillShown && (ch.LatestKind == VideoKind.Video || ch.LatestKind == VideoKind.Premiere),
-            ChannelStatusFilter.Short             => kindPillShown && ch.LatestKind == VideoKind.Short,
-            ChannelStatusFilter.Archive           => kindPillShown && ch.LatestKind == VideoKind.Live && ch.ActiveLives.Count == 0,
-            _                                     => false,
+            ChannelStatusFilter.Favorite => ch.IsFavorite,
+            ChannelStatusFilter.Video    => kindPillShown && ch.LatestKind == VideoKind.Video,
+            ChannelStatusFilter.Short    => kindPillShown && ch.LatestKind == VideoKind.Short,
+            ChannelStatusFilter.Live     => cardStatus.ActiveLiveEntries.Count > 0
+                                            || cardStatus.PendingLiveDisplay != null
+                                            || (kindPillShown && ch.LatestKind == VideoKind.Live),
+            ChannelStatusFilter.Premiere => cardStatus.ActivePremiereEntries.Count > 0
+                                            || cardStatus.PendingPremiereDisplay != null
+                                            || (kindPillShown && ch.LatestKind == VideoKind.Premiere),
+            _                            => false,
         };
     }
 

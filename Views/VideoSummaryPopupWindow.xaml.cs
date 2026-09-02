@@ -117,13 +117,6 @@ public partial class VideoSummaryPopupWindow : Window
         if (string.IsNullOrEmpty(apiKey)) return;
 
         SummaryPanel.Visibility = Visibility.Visible;
-
-        var cached = GeminiSummaryCacheService.Get(SettingsService.Instance.AppDataDir, videoId);
-        if (cached != null)
-        {
-            AppLogger.Log(LogMsg.GeminiSummaryCacheHit, null, videoId);
-            ShowSummaryResult(cached.Headline, cached.Detail);
-        }
     }
 
     private void ShowSummaryResult(string headline, string detail)
@@ -153,7 +146,6 @@ public partial class VideoSummaryPopupWindow : Window
             var scripted       = await SummaryScriptService.TrySummarizeAsync(scriptVideoUrl, apiKey);
             if (scripted != null && !string.IsNullOrEmpty(scripted.Headline))
             {
-                GeminiSummaryCacheService.Save(SettingsService.Instance.AppDataDir, _videoId, scripted);
                 ShowSummaryResult(scripted.Headline, scripted.Detail);
                 return;
             }
@@ -167,7 +159,6 @@ public partial class VideoSummaryPopupWindow : Window
             var bridged  = await ExternalSummaryBridge.TrySummarizeAsync(_videoId, videoUrl, apiKey);
             if (bridged != null && !string.IsNullOrEmpty(bridged.Headline))
             {
-                GeminiSummaryCacheService.Save(SettingsService.Instance.AppDataDir, _videoId, bridged);
                 ShowSummaryResult(bridged.Headline, bridged.Detail);
                 return;
             }
@@ -180,8 +171,6 @@ public partial class VideoSummaryPopupWindow : Window
 
         if (result.Success && result.Headline != null && result.Detail != null)
         {
-            GeminiSummaryCacheService.Save(SettingsService.Instance.AppDataDir, _videoId,
-                new GeminiSummaryEntry { Headline = result.Headline, Detail = result.Detail });
             ShowSummaryResult(result.Headline, result.Detail);
         }
         else

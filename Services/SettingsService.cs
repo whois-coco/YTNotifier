@@ -16,6 +16,7 @@ public class SettingsService
     private const string FileState      = "state.json";
     private const string FileAutoBackup = "auto_backup.ytbk";
     private const string FileDormantCategories = "dormant_categories.json";
+    private const string FileRecentUploads = "recent_uploads.json";
     private const string SoundsZipPrefix = "Sounds/";
     /// <summary>バックアップ対象とする通知音ファイルの拡張子</summary>
     private const string SoundFileExtension = ".wav";
@@ -30,6 +31,7 @@ public class SettingsService
     private readonly string _categoriesPath;
     private readonly string _dormantCategoriesPath;
     private readonly string _statePath;
+    private readonly string _recentUploadsPath;
     private readonly string _apiKeyPath;
     private readonly string _geminiApiKeyPath;
     private readonly string _confDir;
@@ -88,6 +90,7 @@ public class SettingsService
         _categoriesPath         = Path.Combine(confDir, FileCategories);
         _dormantCategoriesPath  = Path.Combine(confDir, FileDormantCategories);
         _statePath              = Path.Combine(confDir, FileState);
+        _recentUploadsPath      = Path.Combine(confDir, FileRecentUploads);
         _apiKeyPath             = Path.Combine(confDir, AppConstants.FileApiKey);
         _geminiApiKeyPath       = Path.Combine(confDir, AppConstants.FileGeminiApiKey);
         _confDir                = confDir;
@@ -102,7 +105,7 @@ public class SettingsService
         }
 
         _stateTimer = new System.Threading.Timer(
-            _ => SaveStateInternal(), null, StateWriteIntervalMs, StateWriteIntervalMs);
+            _ => SaveStateAndSnapshotsInternal(), null, StateWriteIntervalMs, StateWriteIntervalMs);
     }
 
     public string AppDataDir => _appDataDir;
@@ -617,6 +620,14 @@ public class SettingsService
         LoadCategories();
         LoadDormantCategories();
         LoadState();
+
+        // recent_uploads.json があればそれを正とする。
+        // なければ（＝更新後の初回起動）LoadState が旧 state.json から移行した
+        // ch.RecentUploads の内容をそのまま新ファイルへ書き出す（1バージョンだけの読み取り移行）。
+        if (File.Exists(_recentUploadsPath))
+            LoadRecentUploads();
+        else
+            SaveRecentUploadsInternal();
     }
 
     private void LoadSettings()
@@ -682,6 +693,7 @@ public class SettingsService
         bool migrated = MigrateChannelsToFocusSlots();
         migrated |= MigrateNotifyUpcomingToNullable();
         migrated |= MigrateUpcomingNotifyMode();
+        migrated |= MigrateUpcomingNotifySplit();
         migrated |= CleanupExpiredGraceEntries();
         if (migrated) { SaveChannelsSilent(); MarkDirty(); }
     }
@@ -736,6 +748,27 @@ public class SettingsService
             ch.NotifyUpcoming            = null;
         }
         Settings.UpcomingMigrated = true;
+        SaveSettings();
+        return true;
+    }
+
+    /// <summary>
+    /// 共通 UpcomingNotifyMode / UpcomingNotifyLeadMinutes を
+    /// Premiere 用・Live 用の別フィールドへ複製する。
+    /// Settings.UpcomingSplitMigrated が false の場合のみ実行する。
+    /// </summary>
+    private bool MigrateUpcomingNotifySplit()
+    {
+        if (Settings.UpcomingSplitMigrated) return false;
+
+        foreach (var ch in Channels)
+        {
+            ch.PremiereUpcomingNotifyMode        = ch.UpcomingNotifyMode;
+            ch.PremiereUpcomingNotifyLeadMinutes = ch.UpcomingNotifyLeadMinutes;
+            ch.LiveUpcomingNotifyMode            = ch.UpcomingNotifyMode;
+            ch.LiveUpcomingNotifyLeadMinutes     = ch.UpcomingNotifyLeadMinutes;
+        }
+        Settings.UpcomingSplitMigrated = true;
         SaveSettings();
         return true;
     }
@@ -880,6 +913,7 @@ public class SettingsService
         SaveCategoriesInternal();
         SaveDormantCategoriesInternal(markDirty: false);
         SaveStateInternal();
+        SaveRecentUploadsInternal();
         SaveStateToBackup();
     }
 
@@ -921,7 +955,6 @@ public class SettingsService
                 LatestVideoId          = ch.LatestVideoId,
                 LatestDuration         = ch.LatestDuration,
                 LatestThumbnailUrl     = ch.LatestThumbnailUrl,
-                RecentUploads          = ch.RecentUploads.ToList(),
                 IsBanned               = ch.IsBanned,
                 LatestVideoDeleted     = ch.LatestVideoDeleted,
                 NoVideosFound          = ch.NoVideosFound,
@@ -1049,6 +1082,94 @@ public class SettingsService
         }
         CleanupExpiredGraceEntries();
         SaveStateInternal();
+        SaveRecentUploadsInternal();
+    }
+
+    /// <summary>state.json と recent_uploads.json をまとめて保存する（定期保存タイマー用）</summary>
+    private void SaveStateAndSnapshotsInternal()
+    {
+        SaveStateInternal();
+        SaveRecentUploadsInternal();
+    }
+
+    /// <summary>
+    /// state.json のシリアライズ設定。
+    /// 既定値・null・空文字・空コレクションのプロパティを出力しないことでファイルサイズを抑える。
+    /// 本体は可読性のため Indented のまま維持する。
+    /// </summary>
+    private static readonly JsonSerializerSettings _stateSerializerSettings = new()
+    {
+        ContractResolver     = StateOmitEmptyContractResolver.Instance,
+        Formatting           = Formatting.Indented,
+        NullValueHandling    = NullValueHandling.Ignore,
+        DefaultValueHandling = DefaultValueHandling.Ignore,
+    };
+
+    /// <summary>
+    /// recent_uploads.json のシリアライズ設定。
+    /// 人間が編集しない純粋な表示キャッシュのため、詰めて（Formatting.None）書き出す。
+    /// </summary>
+    private static readonly JsonSerializerSettings _recentUploadsSerializerSettings = new()
+    {
+        Formatting        = Formatting.None,
+        NullValueHandling = NullValueHandling.Ignore,
+    };
+
+    /// <summary>
+    /// state.json 書き出し用のコントラクトリゾルバ。
+    /// - すべてのプロパティで既定値・null を省略する
+    /// - string プロパティは null／空文字なら出力しない
+    /// - string 以外の IEnumerable プロパティは null／要素0件なら出力しない
+    /// Json.NET はコントラクトをリゾルバインスタンス単位でキャッシュするため、インスタンスは1つだけ保持して再利用する。
+    /// </summary>
+    private sealed class StateOmitEmptyContractResolver : Newtonsoft.Json.Serialization.DefaultContractResolver
+    {
+        public static readonly StateOmitEmptyContractResolver Instance = new();
+
+        protected override Newtonsoft.Json.Serialization.JsonProperty CreateProperty(
+            System.Reflection.MemberInfo member,
+            Newtonsoft.Json.MemberSerialization memberSerialization)
+        {
+            var property = base.CreateProperty(member, memberSerialization);
+
+            property.DefaultValueHandling = DefaultValueHandling.Ignore;
+            property.NullValueHandling    = NullValueHandling.Ignore;
+
+            var propertyType = property.PropertyType;
+            if (propertyType == null)
+                return property;
+
+            if (propertyType == typeof(string))
+            {
+                var valueProvider = property.ValueProvider;
+                property.ShouldSerialize = target =>
+                    !string.IsNullOrEmpty(valueProvider?.GetValue(target) as string);
+            }
+            else if (typeof(System.Collections.IEnumerable).IsAssignableFrom(propertyType))
+            {
+                var valueProvider = property.ValueProvider;
+                property.ShouldSerialize = target =>
+                    HasAnyElement(valueProvider?.GetValue(target) as System.Collections.IEnumerable);
+            }
+
+            return property;
+        }
+
+        private static bool HasAnyElement(System.Collections.IEnumerable? source)
+        {
+            if (source == null)
+                return false;
+
+            var enumerator = source.GetEnumerator();
+            try
+            {
+                return enumerator.MoveNext();
+            }
+            finally
+            {
+                (enumerator as IDisposable)?.Dispose();
+            }
+        }
     }
 
     public void SaveStateInternal()
@@ -1060,10 +1181,66 @@ public class SettingsService
                 foreach (var ch in Channels)
                     AppState.Channels[ch.ChannelId] = ExtractStateFromChannel(ch);
             }
-            var json = JsonConvert.SerializeObject(AppState, Formatting.Indented);
+            var json = JsonConvert.SerializeObject(AppState, _stateSerializerSettings);
             WriteAtomic(_statePath, json);
         }
         catch (Exception ex) { WriteSaveError("SaveState", ex.Message); }
+    }
+
+    /// <summary>
+    /// 最新動画スナップショット（表示用キャッシュ）を recent_uploads.json へ保存する。
+    /// state.json とは切り離し、バックアップ対象外の再生成可能ファイルとして扱う。
+    /// </summary>
+    private void SaveRecentUploadsInternal()
+    {
+        try
+        {
+            string json;
+            lock (_persistLock)
+            {
+                var snapshot = new Dictionary<string, List<RecentUploadEntry>>();
+                foreach (var ch in Channels)
+                {
+                    if (ch.RecentUploads.Count > 0)
+                        snapshot[ch.ChannelId] = ch.RecentUploads.ToList();
+                }
+                json = JsonConvert.SerializeObject(snapshot, _recentUploadsSerializerSettings);
+            }
+            WriteAtomic(_recentUploadsPath, json);
+        }
+        catch (Exception ex) { WriteSaveError("SaveRecentUploads", ex.Message); }
+    }
+
+    /// <summary>
+    /// recent_uploads.json を読み込み、各チャンネルの表示用スナップショットへ反映する。
+    /// 破損・空・null の場合はバックアップからの復元は行わず、そのまま戻る（次回チェックで自己修復するため）。
+    /// </summary>
+    private void LoadRecentUploads()
+    {
+        try
+        {
+            if (!File.Exists(_recentUploadsPath))
+                return;
+
+            var json = File.ReadAllText(_recentUploadsPath);
+            if (string.IsNullOrWhiteSpace(json))
+                return;
+
+            var snapshot = JsonConvert.DeserializeObject<Dictionary<string, List<RecentUploadEntry>>>(json);
+            if (snapshot == null || snapshot.Count == 0)
+                return;
+
+            lock (_persistLock)
+            {
+                foreach (var ch in Channels)
+                {
+                    ch.RecentUploads = snapshot.TryGetValue(ch.ChannelId, out var uploads) && uploads != null
+                        ? uploads
+                        : new();
+                }
+            }
+        }
+        catch (Exception ex) { WriteSaveError("LoadRecentUploads", ex.Message); }
     }
 
     private void SaveStateToBackup()

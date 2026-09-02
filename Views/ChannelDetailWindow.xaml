@@ -65,50 +65,6 @@
                                    VerticalAlignment="Center"/>
                     </Grid>
 
-                    <!-- 待機所通知オプション -->
-                    <Border Background="{DynamicResource SurfaceAltBrush}"
-                            CornerRadius="6" Padding="12,10" Margin="0,0,0,12">
-                        <StackPanel>
-                            <Grid Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="プレミア/ライブ通知方法"
-                                           FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <ComboBox x:Name="UpcomingNotifyModeCombo"
-                                          Grid.Column="1" Width="160"
-                                          Style="{StaticResource ModernComboBox}"
-                                          SelectionChanged="UpcomingNotifyModeCombo_Changed">
-                                    <ComboBoxItem Content="待機所のみ"       Tag="WaitingRoomOnly" Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="開始時のみ"       Tag="LiveStartOnly"   Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="両方"             Tag="Both"            Style="{StaticResource ModernComboBoxItem}"/>
-                                </ComboBox>
-                            </Grid>
-                            <Grid x:Name="UpcomingLeadRow">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="待機所通知タイミング"
-                                           FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <ComboBox x:Name="UpcomingLeadCombo"
-                                          Grid.Column="1" Width="110"
-                                          Style="{StaticResource ModernComboBox}">
-                                    <ComboBoxItem Content="5分前"  Tag="5"  Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="10分前" Tag="10" Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="15分前" Tag="15" Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="30分前" Tag="30" Style="{StaticResource ModernComboBoxItem}"/>
-                                    <ComboBoxItem Content="60分前" Tag="60" Style="{StaticResource ModernComboBoxItem}"/>
-                                </ComboBox>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
                     <!-- 監視設定 -->
                     <Separator Style="{StaticResource HorizontalSeparator}" Margin="0,0,0,12"/>
                     <TextBlock Text="監視設定" FontSize="10" FontWeight="Bold"

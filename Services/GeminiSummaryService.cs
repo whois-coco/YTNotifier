@@ -1,5 +1,6 @@
 using Google.GenAI;
 using Google.GenAI.Types;
+using System.IO;
 using YTNotifier.Constants;
 
 namespace YTNotifier.Services;
@@ -27,6 +28,23 @@ public static class GeminiSummaryService
 
     /// <summary>音声中心の要約実験用：動画フレームのサンプリング頻度（fps）を極小化</summary>
     private const double GeminiAudioOnlyFps = 0.1;
+
+    /// <summary>要約結果キャッシュ廃止（指示書024）に伴う旧キャッシュファイルのファイル名</summary>
+    private const string LegacySummaryCacheFileName = "gemini_summary_cache.json";
+
+    /// <summary>要約結果キャッシュ廃止（指示書024）に伴う旧キャッシュファイルの一時クリーンアップ。起動時に一度だけ呼ぶ</summary>
+    public static void CleanupLegacySummaryCache(string appDataDir)
+    {
+        foreach (var path in new[]
+        {
+            Path.Combine(appDataDir, LegacySummaryCacheFileName),
+            Path.Combine(appDataDir, LegacySummaryCacheFileName + ".tmp"),
+        })
+        {
+            try { if (System.IO.File.Exists(path)) System.IO.File.Delete(path); }
+            catch { }
+        }
+    }
 
     private static string ClassifyClientError(ClientError ex)
     {

@@ -27,11 +27,11 @@ public static class BackupCryptoService
 
     private static byte[] DeriveKey()
     {
-        using var kdf = new Rfc2898DeriveBytes(
+        return Rfc2898DeriveBytes.Pbkdf2(
             "YTNotifier_v1_Backup_Secret",
             Salt, Iterations,
-            HashAlgorithmName.SHA256);
-        return kdf.GetBytes(KeySize);
+            HashAlgorithmName.SHA256,
+            KeySize);
     }
 
     /// <summary>ZIPバイナリを暗号化して .ytbk ファイルに書き出す</summary>

@@ -40,6 +40,18 @@ public partial class MainWindow : System.Windows.Window
     private const int    CategoryRowHeightCompact   = 24;
     private const int    CategoryBadgeSize          = 18;
 
+    /// <summary>未分類見出し行の Tag 値（開閉状態の識別に使う）</summary>
+    private const string UncategorizedRowTag = "uncategorized";
+
+    /// <summary>
+    /// カテゴリ開閉アニメーションの所要時間（ミリ秒）。
+    /// 検索ボックスの開閉アニメーション（SearchAnimateDurationMs = 200）と同じ体感に揃える。
+    /// </summary>
+    private const int CategoryToggleAnimDurationMs = 200;
+
+    /// <summary>カテゴリ開閉アニメーションの実行中フラグ（多重クリック抑止）</summary>
+    private bool _categoryToggleAnimating = false;
+
     // ===== カテゴリ行の共通ヘッダー生成 =====
     private Border CreateGroupHeaderRow(string label, int unreadCount, bool isCollapsed, object tag)
     {
@@ -111,8 +123,16 @@ public partial class MainWindow : System.Windows.Window
 
     private Border CreateUncategorizedRow(int unreadCount, bool isCollapsed)
     {
-        var row = CreateGroupHeaderRow("未分類", unreadCount, isCollapsed, "uncategorized");
-        row.MouseLeftButtonUp += (_, _) => { _uncategorizedCollapsed = !_uncategorizedCollapsed; AppLogger.Log(LogMsg.CategoryCollapsed, null, "未分類", _uncategorizedCollapsed ? "折り畳み" : "展開"); RefreshChannelList(); };
+        var row = CreateGroupHeaderRow("未分類", unreadCount, isCollapsed, UncategorizedRowTag);
+        row.MouseLeftButtonUp += (_, _) =>
+        {
+            if (_categoryToggleAnimating) return;
+            AppLogger.Log(LogMsg.CategoryCollapsed, null, "未分類", !_uncategorizedCollapsed ? "折り畳み" : "展開");
+            AnimateCategoryToggle(UncategorizedRowTag, _uncategorizedCollapsed, () =>
+            {
+                _uncategorizedCollapsed = !_uncategorizedCollapsed;
+            });
+        };
         row.ContextMenu = BuildUncategorizedContextMenu();
         return row;
     }
@@ -155,10 +175,14 @@ public partial class MainWindow : System.Windows.Window
 
         row.MouseLeftButtonUp += (_, _) =>
         {
-            cat.IsCollapsed = !cat.IsCollapsed;
-            AppLogger.Log(LogMsg.CategoryCollapsed, null, cat.CategoryName, cat.IsCollapsed ? "折り畳み" : "展開");
-            SettingsService.Instance.MarkDirty();
-            RefreshChannelList();
+            if (_categoryToggleAnimating) return;
+            // ログは従来どおり「変更後の状態」を出す（従来は反転後に評価していたため !cat.IsCollapsed と等価）
+            AppLogger.Log(LogMsg.CategoryCollapsed, null, cat.CategoryName, !cat.IsCollapsed ? "折り畳み" : "展開");
+            AnimateCategoryToggle(cat, cat.IsCollapsed, () =>
+            {
+                cat.IsCollapsed = !cat.IsCollapsed;
+                SettingsService.Instance.MarkDirty();
+            });
         };
 
         System.Windows.Point catDragStart = default;
@@ -317,5 +341,122 @@ public partial class MainWindow : System.Windows.Window
                 seps[i].Visibility = (i == 0 || _editMode) ? Visibility.Visible : Visibility.Collapsed;
         };
         return menu;
+    }
+
+    // ===== カテゴリ開閉アニメーション =====
+
+    /// <summary>
+    /// カテゴリ見出し（カテゴリ行 or 未分類行）配下のチャンネル行を、高さ＋透明度のアニメーションで開閉する。
+    /// </summary>
+    /// <param name="headerTag">見出し行の Tag（CategoryInfo または UncategorizedRowTag）。再構築後の再検索に使う。</param>
+    /// <param name="currentlyCollapsed">クリック時点で折り畳み状態か（true = これから展開する）。</param>
+    /// <param name="applyNewState">開閉状態を実際に反転する処理（IsCollapsed 反転・必要なら MarkDirty）。</param>
+    private void AnimateCategoryToggle(object headerTag, bool currentlyCollapsed, Action applyNewState)
+    {
+        _categoryToggleAnimating = true;
+
+        if (currentlyCollapsed)
+        {
+            // ---- 展開: 先に再構築して行を生成 → 畳んだ状態から開く ----
+            applyNewState();
+            RefreshChannelList();
+
+            var rows = CollectCategoryChildRows(headerTag);
+            if (rows.Count == 0) { _categoryToggleAnimating = false; return; }
+
+            RunCategoryRowsAnimation(rows, expand: true, onCompleted: () =>
+            {
+                foreach (var r in rows)
+                {
+                    r.BeginAnimation(FrameworkElement.HeightProperty, null);
+                    r.BeginAnimation(UIElement.OpacityProperty, null);
+                    r.Height        = GetChannelRowTargetHeight();
+                    r.Opacity       = 1.0;
+                    r.ClipToBounds  = false;
+                }
+                _categoryToggleAnimating = false;
+            });
+        }
+        else
+        {
+            // ---- 折り畳み: 現在の行を畳んでから再構築 ----
+            var rows = CollectCategoryChildRows(headerTag);
+            if (rows.Count == 0)
+            {
+                applyNewState();
+                RefreshChannelList();
+                _categoryToggleAnimating = false;
+                return;
+            }
+
+            RunCategoryRowsAnimation(rows, expand: false, onCompleted: () =>
+            {
+                // アニメーションのクロックが Border を参照し続けないよう停止してから破棄
+                foreach (var r in rows)
+                {
+                    r.BeginAnimation(FrameworkElement.HeightProperty, null);
+                    r.BeginAnimation(UIElement.OpacityProperty, null);
+                }
+                applyNewState();
+                RefreshChannelList();
+                _categoryToggleAnimating = false;
+            });
+        }
+    }
+
+    /// <summary>指定タグの見出し行の直後に連続して並ぶチャンネル行（Tag が ChannelInfo の Border）を集める。</summary>
+    private List<Border> CollectCategoryChildRows(object headerTag)
+    {
+        var result = new List<Border>();
+        int headerIdx = -1;
+        for (int i = 0; i < ChannelList.Children.Count; i++)
+        {
+            if (ChannelList.Children[i] is Border b && Equals(b.Tag, headerTag)) { headerIdx = i; break; }
+        }
+        if (headerIdx < 0) return result;
+
+        for (int i = headerIdx + 1; i < ChannelList.Children.Count; i++)
+        {
+            if (ChannelList.Children[i] is not Border b) break;
+            if (b.Tag is ChannelInfo) result.Add(b);
+            else break;   // 次のカテゴリ見出し / 未分類見出しに到達
+        }
+        return result;
+    }
+
+    /// <summary>チャンネル行の本来の高さ（コンパクト設定で変わる）。</summary>
+    private static double GetChannelRowTargetHeight()
+        => SettingsService.Instance.Settings.CompactMode
+            ? ChannelRowHeightCompact
+            : ChannelRowHeight;
+
+    /// <summary>チャンネル行群を一括で開閉アニメーションする。最後の行の完了で onCompleted を呼ぶ。</summary>
+    private static void RunCategoryRowsAnimation(List<Border> rows, bool expand, Action onCompleted)
+    {
+        var target   = GetChannelRowTargetHeight();
+        var duration = TimeSpan.FromMilliseconds(CategoryToggleAnimDurationMs);
+        var ease     = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var r = rows[i];
+            r.ClipToBounds = true;
+
+            double fromH = expand ? 0.0    : target;
+            double toH   = expand ? target : 0.0;
+            double fromO = expand ? 0.0    : 1.0;
+            double toO   = expand ? 1.0    : 0.0;
+
+            if (expand) { r.Height = 0.0; r.Opacity = 0.0; }
+
+            var heightAnim = new DoubleAnimation(fromH, toH, duration) { EasingFunction = ease };
+            var opacityAnim = new DoubleAnimation(fromO, toO, duration) { EasingFunction = ease };
+
+            if (i == rows.Count - 1)
+                heightAnim.Completed += (_, _) => onCompleted();
+
+            r.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
+            r.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
+        }
     }
 }

@@ -35,6 +35,10 @@ public class AppSettings
     [JsonProperty("upcomingMigrated")]
     public bool UpcomingMigrated { get; set; } = false;
 
+    /// <summary>Premiere/Live 別 UpcomingNotifyMode へのマイグレーション完了フラグ</summary>
+    [JsonProperty("upcomingSplitMigrated")]
+    public bool UpcomingSplitMigrated { get; set; } = false;
+
     [JsonProperty("minimizeToTray")]
     public bool MinimizeToTray { get; set; } = false;
 
@@ -286,14 +290,32 @@ public class ChannelInfo
     [JsonProperty("notifyUpcoming")]
     public bool? NotifyUpcoming { get; set; } = null;
 
-    /// <summary>ライブ/プレミア upcoming の通知方法</summary>
+    /// <summary>ライブ/プレミア upcoming の通知方法（移行元として保持。移行後は Premiere/Live 別フィールドを使用）</summary>
     [JsonProperty("upcomingNotifyMode")]
     [Newtonsoft.Json.JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
     public UpcomingNotifyMode UpcomingNotifyMode { get; set; } = UpcomingNotifyMode.WaitingRoomOnly;
 
-    /// <summary>待機所通知リードタイム（分）</summary>
+    /// <summary>待機所通知リードタイム（分）（移行元として保持。移行後は Premiere/Live 別フィールドを使用）</summary>
     [JsonProperty("upcomingNotifyLeadMinutes")]
     public int UpcomingNotifyLeadMinutes { get; set; } = 10;
+
+    /// <summary>プレミア公開 upcoming の通知方法</summary>
+    [JsonProperty("premiereUpcomingNotifyMode")]
+    [Newtonsoft.Json.JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
+    public UpcomingNotifyMode PremiereUpcomingNotifyMode { get; set; } = UpcomingNotifyMode.WaitingRoomOnly;
+
+    /// <summary>プレミア待機所通知リードタイム（分）</summary>
+    [JsonProperty("premiereUpcomingNotifyLeadMinutes")]
+    public int PremiereUpcomingNotifyLeadMinutes { get; set; } = 10;
+
+    /// <summary>ライブ配信 upcoming の通知方法</summary>
+    [JsonProperty("liveUpcomingNotifyMode")]
+    [Newtonsoft.Json.JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
+    public UpcomingNotifyMode LiveUpcomingNotifyMode { get; set; } = UpcomingNotifyMode.WaitingRoomOnly;
+
+    /// <summary>ライブ待機所通知リードタイム（分）</summary>
+    [JsonProperty("liveUpcomingNotifyLeadMinutes")]
+    public int LiveUpcomingNotifyLeadMinutes { get; set; } = 10;
 
     [JsonProperty("testDataPath")]
     public string TestDataPath { get; set; } = string.Empty;
@@ -694,7 +716,7 @@ public class ChannelState
     public bool NoVideosFound { get; set; } = false;
 }
 
-/// <summary>Gemini 要約結果1件分（gemini_summary_cache.json で管理）</summary>
+/// <summary>Gemini 要約結果1件分（見出し＋詳細。要約スクリプト／外部DLL／既存ロジックの共通の戻り値型）</summary>
 public class GeminiSummaryEntry
 {
     [JsonProperty("headline")]

@@ -39,6 +39,9 @@ public partial class MainWindow : System.Windows.Window
     /// <summary>「📜 最新動画一覧」表示時に絞り込む最新投稿件数の上限</summary>
     private const int RecentUploadsMaxEntries = 25;
 
+    /// <summary>「🔄 最新情報取得」の多重実行防止</summary>
+    private bool _channelManualCheckInProgress;
+
     private const int    ChannelRowHeight        = 60;
     private const int    ChannelRowHeightCompact    = 36;
 
@@ -118,6 +121,7 @@ public partial class MainWindow : System.Windows.Window
             {
                 Text = ch.ChannelName, FontSize = 12, FontWeight = FontWeights.SemiBold,
                 TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(8, 0, 0, 0)
             };
             SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
@@ -537,6 +541,27 @@ public partial class MainWindow : System.Windows.Window
             new VideoListPopupWindow(this, ch, filteredUploads).Show();
         };
 
+        var manualCheckItem = new MenuItem { Header = "🔄 最新情報取得" };
+        manualCheckItem.Click += async (_, _) =>
+        {
+            if (_channelManualCheckInProgress) return;
+            AppLogger.Log(LogMsg.ChannelContextManualCheck, null, ch.ChannelName);
+            _channelManualCheckInProgress = true;
+            try
+            {
+                await MonitorService.Instance.ManualCheckChannelAsync(ch);
+                RefreshChannelList();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log(LogMsg.CheckFailed, ch.ChannelName, ex.Message);
+            }
+            finally
+            {
+                _channelManualCheckInProgress = false;
+            }
+        };
+
         var renameItem = new MenuItem { Header = "✏ 名称を変更" };
         renameItem.Click += (_, _) => ShowRenameDialog(ch);
 
@@ -576,6 +601,7 @@ public partial class MainWindow : System.Windows.Window
 
         menu.Items.Add(clearItem);
         menu.Items.Add(sepClearRecent);
+        menu.Items.Add(manualCheckItem);
         menu.Items.Add(recentUploadsItem);
         menu.Items.Add(detailItem);
         menu.Items.Add(sepDormant);
@@ -595,6 +621,13 @@ public partial class MainWindow : System.Windows.Window
             sepClearRecent.Visibility    = _editMode ? Visibility.Collapsed : Visibility.Visible;
             recentUploadsItem.Visibility = _editMode ? Visibility.Collapsed : Visibility.Visible;
             recentUploadsItem.IsEnabled  = ch.RecentUploads.Any(v => IsRecentUploadKindEnabled(ch, v.Kind));
+            manualCheckItem.Visibility = _editMode ? Visibility.Collapsed : Visibility.Visible;
+
+            var appState    = SettingsService.Instance.AppState;
+            var quotaKey    = AppConstants.GetQuotaDayKey();
+            var actualUnits = appState.TodayApiDate == quotaKey ? appState.TodayApiUnits : 0;
+            var actualPct   = actualUnits * 100.0 / ApiQuotaHelper.DailyLimit;
+            manualCheckItem.IsEnabled = actualPct <= ApiQuotaHelper.QuotaDisableThresholdPct;
             renameItem.Visibility    = vis; sepRename.Visibility    = vis;
             newCatItem.Visibility    = vis; moveToCatItem.Visibility = vis;
             sep.Visibility           = vis; detailItem.Visibility   = vis;

@@ -25,8 +25,10 @@ public partial class ChannelDetailWindow : Window
     private readonly bool _origNotifyVideo;
     private readonly bool _origNotifyShort;
     private readonly bool _origNotifyLive;
-    private readonly UpcomingNotifyMode _origUpcomingNotifyMode;
-    private readonly int _origUpcomingNotifyLeadMinutes;
+    private readonly UpcomingNotifyMode _origPremiereUpcomingMode;
+    private readonly int _origPremiereUpcomingLead;
+    private readonly UpcomingNotifyMode _origLiveUpcomingMode;
+    private readonly int _origLiveUpcomingLead;
     private readonly List<FocusSlot> _origFocusSlots;
 
     public ChannelDetailWindow(ChannelInfo channel, Window owner)
@@ -44,8 +46,10 @@ public partial class ChannelDetailWindow : Window
         _origNotifyVideo              = channel.NotifyVideo;
         _origNotifyShort              = channel.NotifyShort;
         _origNotifyLive               = channel.NotifyLive;
-        _origUpcomingNotifyMode       = channel.UpcomingNotifyMode;
-        _origUpcomingNotifyLeadMinutes = channel.UpcomingNotifyLeadMinutes;
+        _origPremiereUpcomingMode = channel.PremiereUpcomingNotifyMode;
+        _origPremiereUpcomingLead = channel.PremiereUpcomingNotifyLeadMinutes;
+        _origLiveUpcomingMode     = channel.LiveUpcomingNotifyMode;
+        _origLiveUpcomingLead     = channel.LiveUpcomingNotifyLeadMinutes;
         _origFocusSlots     = channel.FocusSlots.Select(s => new FocusSlot
         {
             NotifyKind                 = s.NotifyKind,
@@ -59,16 +63,6 @@ public partial class ChannelDetailWindow : Window
             SlotNormalIntervalMinutes  = s.SlotNormalIntervalMinutes,
             SlotLowFreqIntervalMinutes = s.SlotLowFreqIntervalMinutes,
         }).ToList();
-
-        // 通知方法ドロップダウン初期選択
-        SelectComboByTag(UpcomingNotifyModeCombo, channel.UpcomingNotifyMode switch
-        {
-            UpcomingNotifyMode.LiveStartOnly => "LiveStartOnly",
-            UpcomingNotifyMode.Both          => "Both",
-            _                                => "WaitingRoomOnly",
-        });
-        SelectComboByTag(UpcomingLeadCombo, channel.UpcomingNotifyLeadMinutes > 0 ? channel.UpcomingNotifyLeadMinutes.ToString() : "10");
-        UpdateLeadRowVisibility();
 
         // 監視設定タブ初期化：既存モードをスロット形式に変換
         // 未設定タブ（Short/ライブ配信）もチャンネル本来のモードを引き継ぐための既定値生成
@@ -86,13 +80,19 @@ public partial class ChannelDetailWindow : Window
             _tabPanels.Add(new FocusTabPanel(slot));
         }
 
+        // upcoming（プレミア／ライブ）通知方法をタブ内へ配置：プレミアは動画タブ(0)、ライブはライブ配信タブ(2)
+        _tabPanels[0].EnableUpcomingSection(
+            channel.PremiereUpcomingNotifyMode, channel.PremiereUpcomingNotifyLeadMinutes);
+        _tabPanels[2].EnableUpcomingSection(
+            channel.LiveUpcomingNotifyMode, channel.LiveUpcomingNotifyLeadMinutes);
+
         BuildTabUI();
         SelectTab(0);
         UpdateEstimate();
     }
 
     // ===== タブUI構築 =====
-    private static readonly string[] TabKindLabels = { "動画", "Short", "ライブ配信" };
+    private static readonly string[] TabKindLabels = { "動画", "Short", "ライブ" };
     private static readonly VideoKind[] TabKinds = { VideoKind.Video, VideoKind.Short, VideoKind.Live };
 
     private void BuildTabUI()
@@ -245,60 +245,16 @@ public partial class ChannelDetailWindow : Window
         }
     }
 
-    // ===== ドロップダウン操作ヘルパー =====
-    private static void SelectComboByTag(ComboBox combo, string tag)
-    {
-        foreach (ComboBoxItem item in combo.Items)
-        {
-            if (item.Tag?.ToString() == tag)
-            {
-                combo.SelectedItem = item;
-                return;
-            }
-        }
-        if (combo.Items.Count > 0)
-            combo.SelectedIndex = 0;
-    }
-
-    private UpcomingNotifyMode GetSelectedUpcomingMode()
-    {
-        var tag = (UpcomingNotifyModeCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString();
-        return tag switch
-        {
-            "LiveStartOnly" => UpcomingNotifyMode.LiveStartOnly,
-            "Both"          => UpcomingNotifyMode.Both,
-            _               => UpcomingNotifyMode.WaitingRoomOnly,
-        };
-    }
-
-    private int GetSelectedLeadMinutes()
-    {
-        var tag = (UpcomingLeadCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString();
-        return int.TryParse(tag, out var v) ? v : 0;
-    }
-
-    private void UpdateLeadRowVisibility()
-    {
-        var mode = GetSelectedUpcomingMode();
-        UpcomingLeadRow.Visibility = mode == UpcomingNotifyMode.LiveStartOnly
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-    }
-
-    // ===== イベントハンドラ =====
-    private void UpcomingNotifyModeCombo_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        UpdateLeadRowVisibility();
-    }
-
     private void RevertAndClose()
     {
         _channel.NotifyVideo               = _origNotifyVideo;
         _channel.NotifyShort               = _origNotifyShort;
         _channel.NotifyLive                = _origNotifyLive;
-        _channel.UpcomingNotifyMode        = _origUpcomingNotifyMode;
-        _channel.UpcomingNotifyLeadMinutes = _origUpcomingNotifyLeadMinutes;
-        _channel.FocusSlots                = _origFocusSlots;
+        _channel.PremiereUpcomingNotifyMode        = _origPremiereUpcomingMode;
+        _channel.PremiereUpcomingNotifyLeadMinutes = _origPremiereUpcomingLead;
+        _channel.LiveUpcomingNotifyMode            = _origLiveUpcomingMode;
+        _channel.LiveUpcomingNotifyLeadMinutes     = _origLiveUpcomingLead;
+        _channel.FocusSlots                        = _origFocusSlots;
         SettingsService.Instance.UpdateChannel(_channel);
         AppLogger.Log(LogMsg.ChannelDetailCancelled, _channel.ChannelName);
         if (Owner is MainWindow mw)
@@ -334,30 +290,8 @@ public partial class ChannelDetailWindow : Window
         var (otherNormal, otherLowFreq, otherFocus) =
             ApiQuotaHelper.EstimateDailyUnitsByMode(globalInterval, otherChannels);
 
-        int thisNormal = 0, thisLowFreq = 0, thisFocus = 0;
-        foreach (var slot in currentSlots.Where(s => s.IsEnabled))
-        {
-            switch (slot.SlotMode)
-            {
-                case MonitorMode.Normal:
-                    var ni = slot.SlotNormalIntervalMinutes > 0
-                        ? slot.SlotNormalIntervalMinutes : Math.Max(1, globalInterval);
-                    var normalChecks = ApiQuotaHelper.MinutesPerDay / Math.Max(1, ni);
-                    thisNormal += normalChecks + Math.Min(normalChecks, ApiQuotaHelper.DailyUploadLimitPerChannel);
-                    break;
-                case MonitorMode.LowFreq:
-                    var lowFreqChecks = ApiQuotaHelper.MinutesPerDay / Math.Max(1, slot.SlotLowFreqIntervalMinutes);
-                    thisLowFreq += lowFreqChecks + Math.Min(lowFreqChecks, ApiQuotaHelper.DailyUploadLimitPerChannel);
-                    break;
-                case MonitorMode.Focus:
-                    // IntervalMinutes == 0 は30秒（0.5分）を意味する
-                    var fi        = slot.IntervalMinutes == 0 ? 0.5 : Math.Max(1, slot.IntervalMinutes);
-                    int activeDays = slot.Days == 0 ? 7 : CountBitsSet(slot.Days);
-                    var focusChecks = (int)Math.Round((slot.WindowMinutes / (double)fi) * activeDays / 7.0);
-                    thisFocus += focusChecks + Math.Min(focusChecks, ApiQuotaHelper.DailyUploadLimitPerChannel);
-                    break;
-            }
-        }
+        var (thisNormal, thisLowFreq, thisFocus) =
+            ApiQuotaHelper.EstimateDailyUnitsByModeForSlots(currentSlots, globalInterval);
 
         var normalUnits  = otherNormal  + thisNormal;
         var lowFreqUnits = otherLowFreq + thisLowFreq;
@@ -418,13 +352,6 @@ public partial class ChannelDetailWindow : Window
 
     private SizeChangedEventHandler? _detailQuotaBarHandler;
 
-    private static int CountBitsSet(int v)
-    {
-        int c = 0;
-        for (int i = 0; i < 7; i++) if ((v & (1 << i)) != 0) c++;
-        return c;
-    }
-
     // ===== 保存 =====
     private void Save_Click(object sender, RoutedEventArgs e)
     {
@@ -459,8 +386,10 @@ public partial class ChannelDetailWindow : Window
         _channel.NotifyVideo               = _tabPanels[0].GetSlot().IsEnabled;
         _channel.NotifyShort               = _tabPanels[1].GetSlot().IsEnabled;
         _channel.NotifyLive                = _tabPanels[2].GetSlot().IsEnabled;
-        _channel.UpcomingNotifyMode        = GetSelectedUpcomingMode();
-        _channel.UpcomingNotifyLeadMinutes = GetSelectedLeadMinutes();
+        _channel.PremiereUpcomingNotifyMode        = _tabPanels[0].GetUpcomingMode();
+        _channel.PremiereUpcomingNotifyLeadMinutes = _tabPanels[0].GetUpcomingLead();
+        _channel.LiveUpcomingNotifyMode            = _tabPanels[2].GetUpcomingMode();
+        _channel.LiveUpcomingNotifyLeadMinutes     = _tabPanels[2].GetUpcomingLead();
 
         // 常にスロットベースで保存
         _channel.MonitorMode = MonitorMode.Focus;
@@ -503,19 +432,10 @@ public partial class ChannelDetailWindow : Window
             AppLogger.Log(LogMsg.ChannelDetailSlotInterval, _channel.ChannelName, TabKindLabels[i], intervalDesc);
         }
 
-        if (_channel.UpcomingNotifyMode != _origUpcomingNotifyMode)
-        {
-            var modeLabel = _channel.UpcomingNotifyMode switch
-            {
-                UpcomingNotifyMode.LiveStartOnly => "開始時のみ",
-                UpcomingNotifyMode.Both          => "両方",
-                _                                => "待機所のみ",
-            };
-            AppLogger.Log(LogMsg.ChannelDetailUpcomingModeChanged, _channel.ChannelName, modeLabel);
-        }
-
-        if (_channel.UpcomingNotifyLeadMinutes != _origUpcomingNotifyLeadMinutes)
-            AppLogger.Log(LogMsg.ChannelDetailUpcomingLeadChanged, _channel.ChannelName, _channel.UpcomingNotifyLeadMinutes);
+        LogUpcomingChange(UpcomingKindLabelPremiere, _origPremiereUpcomingMode, _origPremiereUpcomingLead,
+            _channel.PremiereUpcomingNotifyMode, _channel.PremiereUpcomingNotifyLeadMinutes);
+        LogUpcomingChange(UpcomingKindLabelLive, _origLiveUpcomingMode, _origLiveUpcomingLead,
+            _channel.LiveUpcomingNotifyMode, _channel.LiveUpcomingNotifyLeadMinutes);
 
         if (needsIntervalAdjust && Owner is MainWindow mw)
             mw.Dispatcher.BeginInvoke(mw.AutoAdjustIntervalForQuota);
@@ -547,6 +467,26 @@ public partial class ChannelDetailWindow : Window
         return $"時間指定 [{daysStr}] {slot.Hour:D2}:{slot.Minute:D2}〜{slot.WindowMinutes}分 / {intervalLabel}間隔";
     }
 
+    // ===== upcoming（プレミア／ライブ）通知方法の変更ログ =====
+    private const string UpcomingKindLabelPremiere = "プレミア";
+    private const string UpcomingKindLabelLive     = "ライブ";
+
+    private static string UpcomingModeLabel(UpcomingNotifyMode mode) => mode switch
+    {
+        UpcomingNotifyMode.LiveStartOnly => "開始時のみ",
+        UpcomingNotifyMode.Both          => "両方",
+        _                                => "待機所のみ",
+    };
+
+    private void LogUpcomingChange(string kindLabel, UpcomingNotifyMode origMode, int origLead,
+        UpcomingNotifyMode newMode, int newLead)
+    {
+        if (newMode != origMode)
+            AppLogger.Log(LogMsg.ChannelDetailUpcomingModeChanged, _channel.ChannelName, kindLabel, UpcomingModeLabel(newMode));
+        if (newLead != origLead)
+            AppLogger.Log(LogMsg.ChannelDetailUpcomingLeadChanged, _channel.ChannelName, kindLabel, newLead);
+    }
+
 }
 
 // ===== 監視設定タブパネル =====
@@ -573,6 +513,27 @@ internal class FocusTabPanel
     private StackPanel? _settingsPanel;
     private StackPanel? _normalPanel, _lowFreqPanel, _focusPanel;
 
+    // ===== upcoming（プレミア／ライブ）通知方法：チャンネル個別設定（スロット非依存） =====
+    private const int    DefaultLeadMinutes           = 10;
+    private const double UpcomingModeComboWidth       = 160;
+    private const double UpcomingLeadComboWidth       = 110;
+    private const string UpcomingModeTagWaitingRoom   = "WaitingRoomOnly";
+    private const string UpcomingModeTagLiveStart     = "LiveStartOnly";
+    private const string UpcomingModeTagBoth          = "Both";
+    private const string UpcomingModeRowLabelLive     = "ライブ通知方法";
+    private const string UpcomingModeRowLabelPremiere = "プレミア通知方法";
+    private const string UpcomingLeadRowLabel         = "待機所通知タイミング";
+    private const string EnabledCheckLabelVideo       = "動画チェック";
+    private const string EnabledCheckLabelShort       = "Shortチェック";
+    private const string EnabledCheckLabelLive        = "ライブチェック";
+
+    private bool _showUpcoming = false;
+    private UpcomingNotifyMode _upcomingMode = UpcomingNotifyMode.WaitingRoomOnly;
+    private int _upcomingLead = DefaultLeadMinutes;
+    private ComboBox? _upcomingModeBox;
+    private ComboBox? _upcomingLeadBox;
+    private Grid? _upcomingLeadRow;
+
     private static readonly string[] DayLabels = { "Sun","Mon","Tue","Wed","Thu","Fri","Sat" };
 
     public FocusTabPanel(FocusSlot slot) => _slot = slot;
@@ -595,13 +556,58 @@ internal class FocusTabPanel
 
     public void ResetContent()
     {
-        if (HasContent) SaveToSlot();
+        if (HasContent) { SaveToSlot(); SaveUpcoming(); }
         HasContent    = false;
         _enabledCheck = null;
         _dayBtns      = Array.Empty<System.Windows.Controls.Primitives.ToggleButton>();
         _modeBox = _windowBox = _intervalBox = null;
         _hourBox = _minuteBox = _normalIntervalBox = _lowFreqBox = null;
         _settingsPanel = _normalPanel = _lowFreqPanel = _focusPanel = null;
+        _upcomingModeBox = _upcomingLeadBox = null;
+        _upcomingLeadRow = null;
+    }
+
+    // ===== upcoming（プレミア／ライブ）通知方法 =====
+    public void EnableUpcomingSection(UpcomingNotifyMode mode, int leadMinutes)
+    {
+        _showUpcoming = true;
+        _upcomingMode = mode;
+        _upcomingLead = leadMinutes > 0 ? leadMinutes : DefaultLeadMinutes;
+    }
+
+    public UpcomingNotifyMode GetUpcomingMode()
+    {
+        if (HasContent) SaveUpcoming();
+        return _upcomingMode;
+    }
+
+    public int GetUpcomingLead()
+    {
+        if (HasContent) SaveUpcoming();
+        return _upcomingLead;
+    }
+
+    private void SaveUpcoming()
+    {
+        if (!_showUpcoming) return;
+        if (_upcomingModeBox?.SelectedItem is ComboBoxItem mi && mi.Tag is string mt)
+            _upcomingMode = mt switch
+            {
+                UpcomingModeTagLiveStart => UpcomingNotifyMode.LiveStartOnly,
+                UpcomingModeTagBoth      => UpcomingNotifyMode.Both,
+                _                        => UpcomingNotifyMode.WaitingRoomOnly,
+            };
+        if (_upcomingLeadBox?.SelectedItem is ComboBoxItem li && li.Tag is string ls && int.TryParse(ls, out var lv))
+            _upcomingLead = lv;
+    }
+
+    private void UpdateUpcomingLeadRowVisibility()
+    {
+        if (_upcomingLeadRow == null || _upcomingModeBox == null) return;
+        var tag = (_upcomingModeBox.SelectedItem as ComboBoxItem)?.Tag?.ToString();
+        _upcomingLeadRow.Visibility = tag == UpcomingModeTagLiveStart
+            ? Visibility.Collapsed
+            : Visibility.Visible;
     }
 
     private void SaveToSlot()
@@ -657,9 +663,9 @@ internal class FocusTabPanel
         {
             Content    = FixedKind switch
             {
-                VideoKind.Short => "Shortチェック",
-                VideoKind.Live  => "ライブ配信チェック",
-                _               => "動画チェック"
+                VideoKind.Short => EnabledCheckLabelShort,
+                VideoKind.Live  => EnabledCheckLabelLive,
+                _               => EnabledCheckLabelVideo
             },
             IsChecked  = _slot.IsEnabled,
             FontSize   = 12,
@@ -831,6 +837,48 @@ internal class FocusTabPanel
         _focusPanel.Children.Add(wiGrid);
 
         _settingsPanel.Children.Add(_focusPanel);
+
+        // 5. upcoming（プレミア／ライブ）通知方法 ※チャンネル個別設定（_slot には保存しない）
+        //    _settingsPanel の子にすることで、タブのチェック OFF 時に自動でグレーアウトされる
+        if (_showUpcoming)
+        {
+            _settingsPanel.Children.Add(new Separator { Style = (Style)res["HorizontalSeparator"] });
+
+            _upcomingModeBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = UpcomingModeComboWidth };
+            foreach (var (lbl, tag) in new[]
+            {
+                ("待機所のみ", UpcomingModeTagWaitingRoom),
+                ("開始時のみ", UpcomingModeTagLiveStart),
+                ("両方",       UpcomingModeTagBoth),
+            })
+                _upcomingModeBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
+            var upcomingModeTag = _upcomingMode switch
+            {
+                UpcomingNotifyMode.LiveStartOnly => UpcomingModeTagLiveStart,
+                UpcomingNotifyMode.Both          => UpcomingModeTagBoth,
+                _                                => UpcomingModeTagWaitingRoom,
+            };
+            SelectComboByTagStr(_upcomingModeBox, upcomingModeTag);
+            var upcomingModeRowLabel = FixedKind == VideoKind.Live ? UpcomingModeRowLabelLive : UpcomingModeRowLabelPremiere;
+            _settingsPanel.Children.Add(MakeRow(upcomingModeRowLabel, _upcomingModeBox, res));
+
+            _upcomingLeadBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = UpcomingLeadComboWidth };
+            foreach (var (lbl, tag) in new[] { ("5分前","5"),("10分前","10"),("15分前","15"),("30分前","30"),("60分前","60") })
+                _upcomingLeadBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
+            var upcomingLeadTag = new[] { 5, 10, 15, 30, 60 }.Contains(_upcomingLead)
+                ? _upcomingLead.ToString()
+                : DefaultLeadMinutes.ToString();
+            SelectComboByTagStr(_upcomingLeadBox, upcomingLeadTag);
+            _upcomingLeadRow = MakeRow(UpcomingLeadRowLabel, _upcomingLeadBox, res);
+            _settingsPanel.Children.Add(_upcomingLeadRow);
+
+            _upcomingModeBox.SelectionChanged += (_, _) =>
+            {
+                UpdateUpcomingLeadRowVisibility();
+                if (!_suppressEnabledEvent) OnEnabledChanged?.Invoke();
+            };
+            UpdateUpcomingLeadRowVisibility();
+        }
 
         // モード切替でパネル表示を切り替え
         UpdateModePanels();

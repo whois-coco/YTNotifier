@@ -497,7 +497,7 @@ public partial class AddChannelWindow : Window
     }
 
     // ===== 詳細設定タブ =====
-    private static readonly string[] DetailTabKindLabels = { "動画", "Short", "ライブ配信" };
+    private static readonly string[] DetailTabKindLabels = { "動画", "Short", "ライブ" };
     private static readonly VideoKind[] DetailTabKinds   = { VideoKind.Video, VideoKind.Short, VideoKind.Live };
 
     private void BuildDetailTabUI()

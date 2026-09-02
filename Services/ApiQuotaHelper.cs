@@ -11,15 +11,15 @@ namespace YTNotifier.Services;
 ///   videos.list        = 1ユニット（新着検知時のみ）
 ///   playlistItems.list（UUSH Short判定） = 1ユニット（新着検知した動画のうち
 ///                                          再生時間180秒以下のときのみ）
-/// YouTube側の投稿本数上限（1チャンネルあたり動画+Short合計で1日20本）により、
-/// 「新着検知」が発生しうる回数は1日20回が上限となる。最大値見積もりのため、
+/// 1チャンネルが1日に「新着検知」を起こす回数には想定上限があり、その値が
+/// DailyUploadLimitPerChannel である。最大値見積もりのため、
 /// 新着検知した動画はすべてUUSH判定（+1ユニット）が発生すると仮定する。よって
-///   1チャンネルの1日の推定消費量 = チェック回数 + 2 * min(チェック回数, 20)
+///   1チャンネルの1日の推定消費量 = チェック回数 + 2 * min(チェック回数, DailyUploadLimitPerChannel)
 /// </summary>
 public static class ApiQuotaHelper
 {
     public const int    DailyLimit                 = 10_000; // ユニット/日
-    public const int    DailyUploadLimitPerChannel  = 20;     // 1チャンネルの1日の投稿上限（動画+Short合計、YouTube仕様）
+    public const int    DailyUploadLimitPerChannel  = 10;     // 1チャンネルが1日に新着を出すと想定する上限本数（動画+Short合計）。見積もり用の想定値
     public const double QuotaDisableThresholdPct    = 95.0;   // この%以上で手動チェックボタンを無効化
     public const int    QuotaWarnHighThresholdPct   = 90;     // この%以上で高警告色
     public const int    QuotaWarnLowThresholdPct    = 85;     // この%以上で低警告色
@@ -27,15 +27,6 @@ public static class ApiQuotaHelper
 
     /// <summary>チェック間隔の推奨候補（分）</summary>
     private static readonly int[] CheckIntervalCandidates = { 1, 5, 10, 30, 60 };
-
-    /// <summary>1日の推定消費ユニット数を計算する</summary>
-    public static int EstimateDailyUnits(int intervalMinutes, int channelCount)
-    {
-        if (intervalMinutes <= 0 || channelCount <= 0) return 0;
-        var checksPerDay = MinutesPerDay / intervalMinutes;
-        var perChannel   = checksPerDay + Math.Min(checksPerDay, DailyUploadLimitPerChannel);
-        return perChannel * channelCount;
-    }
 
     /// <summary>
     /// チャンネルリストと間隔指定がクォータ内に収まるか検証し、
@@ -201,6 +192,49 @@ public static class ApiQuotaHelper
     }
 
     /// <summary>
+    /// スロット一覧の推定ユニット数をモード別（通常・低頻度・時間指定）に集計して返す。
+    /// 設定画面（全チャンネル集計）とチャンネル詳細画面（編集中スロットのプレビュー）で
+    /// 同じ計算式を共有するための単一ソース。
+    /// </summary>
+    public static (int normal, int lowFreq, int focus) EstimateDailyUnitsByModeForSlots(
+        IEnumerable<YTNotifier.Models.FocusSlot> slots,
+        int globalIntervalMinutes)
+    {
+        int normal = 0, lowFreq = 0, focus = 0;
+        var globalInterval = Math.Max(1, globalIntervalMinutes);
+
+        foreach (var slot in slots.Where(s => s.IsEnabled))
+        {
+            int checks;
+            switch (slot.SlotMode)
+            {
+                case YTNotifier.Models.MonitorMode.Normal:
+                    var ni = slot.SlotNormalIntervalMinutes > 0
+                        ? slot.SlotNormalIntervalMinutes
+                        : globalInterval;
+                    checks  = MinutesPerDay / Math.Max(1, ni);
+                    normal += checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
+                    break;
+
+                case YTNotifier.Models.MonitorMode.LowFreq:
+                    var li = Math.Max(1, slot.SlotLowFreqIntervalMinutes);
+                    checks   = MinutesPerDay / li;
+                    lowFreq += checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
+                    break;
+
+                case YTNotifier.Models.MonitorMode.Focus:
+                    var fi         = ToIntervalMinutes(slot.IntervalMinutes);
+                    int activeDays = slot.Days == 0 ? 7 : CountBits(slot.Days);
+                    checks  = (int)Math.Round((slot.WindowMinutes / (double)fi) * activeDays / 7.0);
+                    focus  += checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
+                    break;
+            }
+        }
+
+        return (normal, lowFreq, focus);
+    }
+
+    /// <summary>
     /// 全チャンネルの推定ユニット数をモード別（通常・低頻度・時間指定）に集計して返す。
     /// 各スロットを独立して計算した値の合計のため、EstimateDailyUnitsForChannels とは
     /// 若干異なる場合があるが、割合の算出（セグメントバー表示）用として使用する。
@@ -210,42 +244,13 @@ public static class ApiQuotaHelper
         IEnumerable<YTNotifier.Models.ChannelInfo> channels)
     {
         int normal = 0, lowFreq = 0, focus = 0;
-        var globalInterval = Math.Max(1, globalIntervalMinutes);
-
         foreach (var ch in channels.Where(c => c.IsEnabled && !c.IsDormant))
         {
-            var enabledSlots = ch.FocusSlots.Where(s => s.IsEnabled).ToList();
-            if (enabledSlots.Count == 0) continue;
-
-            foreach (var slot in enabledSlots)
-            {
-                int checks;
-                switch (slot.SlotMode)
-                {
-                    case YTNotifier.Models.MonitorMode.Normal:
-                        var ni = slot.SlotNormalIntervalMinutes > 0
-                            ? slot.SlotNormalIntervalMinutes
-                            : globalInterval;
-                        checks  = MinutesPerDay / Math.Max(1, ni);
-                        normal += checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
-                        break;
-
-                    case YTNotifier.Models.MonitorMode.LowFreq:
-                        var li = Math.Max(1, slot.SlotLowFreqIntervalMinutes);
-                        checks   = MinutesPerDay / li;
-                        lowFreq += checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
-                        break;
-
-                    case YTNotifier.Models.MonitorMode.Focus:
-                        var fi         = ToIntervalMinutes(slot.IntervalMinutes);
-                        int activeDays = slot.Days == 0 ? 7 : CountBits(slot.Days);
-                        checks  = (int)Math.Round((slot.WindowMinutes / (double)fi) * activeDays / 7.0);
-                        focus  += checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
-                        break;
-                }
-            }
+            var (n, l, f) = EstimateDailyUnitsByModeForSlots(ch.FocusSlots, globalIntervalMinutes);
+            normal  += n;
+            lowFreq += l;
+            focus   += f;
         }
-
         return (normal, lowFreq, focus);
     }
 

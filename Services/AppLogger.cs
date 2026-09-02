@@ -153,6 +153,7 @@ public enum LogMsg
     ChannelNameClicked         = 5126,  // {0}=channelName
     ChannelContextClearNew     = 5050,  // {0}=channelName
     ChannelContextOpenDetail   = 5051,  // {0}=channelName
+    ChannelContextManualCheck  = 5138,  // {0}=channelName
     ChannelMovedToCategory     = 5052,  // {0}=channelName {1}=categoryName
     // カテゴリ操作
     CategoryCollapsed          = 5048,  // {0}=categoryName {1}=折り畳み/展開
@@ -194,8 +195,8 @@ public enum LogMsg
     QuotaExceededOnSave        = 5074,  // {0}=channelName {1}=pct
     // チャンネル詳細ウィンドウ（間隔）
     ChannelDetailSlotInterval         = 5075,  // {0}=kindLabel {1}=intervalDesc
-    ChannelDetailUpcomingModeChanged  = 5091,  // {0}=modeLabel
-    ChannelDetailUpcomingLeadChanged  = 5092,  // {0}=minutes
+    ChannelDetailUpcomingModeChanged  = 5091,  // {0}=種別ラベル {1}=modeLabel
+    ChannelDetailUpcomingLeadChanged  = 5092,  // {0}=種別ラベル {1}=minutes
     ChannelDetailCancelled            = 5093,
     AddChannelDialogOpened            = 5094,
     ChannelSearchExecuted             = 5095,  // {0}=query
@@ -215,7 +216,6 @@ public enum LogMsg
     RecentUploadsPopupOpened          = 5132,  // {0}=channelName {1}=件数
     RecentUploadThumbnailOpened       = 5134,  // {0}=channelName
     GeminiSummaryRequested            = 5110,  // {0}=videoId
-    GeminiSummaryCacheHit             = 5111,  // {0}=videoId
     GeminiSummarySucceeded            = 5112,  // {0}=videoId
     ExternalSummaryBridgeRequested     = 5133,  // {0}=videoId
     // 要約スクリプト（Plugins）
@@ -408,6 +408,7 @@ public static class AppLogger
         [LogMsg.ChannelNameClicked]         = new(LogLevel.Debug,   LogCategory.ChannelListUi, "チャンネル名クリック: {0}"),
         [LogMsg.ChannelContextClearNew]     = new(LogLevel.Debug,   LogCategory.ChannelListUi, "NEWバッジ消去: {0}"),
         [LogMsg.ChannelContextOpenDetail]   = new(LogLevel.Debug,   LogCategory.ChannelListUi, "詳細設定を開く: {0}"),
+        [LogMsg.ChannelContextManualCheck]  = new(LogLevel.Debug,   LogCategory.ChannelListUi, "最新情報を取得: {0}"),
         [LogMsg.ChannelMovedToCategory]     = new(LogLevel.Debug,   LogCategory.ChannelListUi, "カテゴリ移動: {0} → {1}"),
         // カテゴリ操作
         [LogMsg.CategoryCollapsed]          = new(LogLevel.Debug,   LogCategory.CategoryUi,    "カテゴリ{1}: {0}"),
@@ -444,8 +445,8 @@ public static class AppLogger
         // チャンネル詳細ウィンドウ
         [LogMsg.ChannelDetailSaved]         = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "チャンネル詳細保存: {0}"),
         [LogMsg.ChannelDetailSlotInterval]         = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "監視間隔設定: {0}: {1}"),
-        [LogMsg.ChannelDetailUpcomingModeChanged]  = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "通知方法変更: {0}"),
-        [LogMsg.ChannelDetailUpcomingLeadChanged]  = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "通知タイミング変更: {0}分前"),
+        [LogMsg.ChannelDetailUpcomingModeChanged]  = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "{0}通知方法変更: {1}"),
+        [LogMsg.ChannelDetailUpcomingLeadChanged]  = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "{0}通知タイミング変更: {1}分前"),
         [LogMsg.ChannelDetailCancelled]            = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "詳細設定キャンセル"),
         [LogMsg.AddChannelDialogOpened]            = new(LogLevel.Debug,   LogCategory.AddChannelWindow,    "チャンネル追加ダイアログを開いた"),
         [LogMsg.ChannelSearchExecuted]             = new(LogLevel.Debug,   LogCategory.ChannelListUi,       "チャンネル検索: {0}"),
@@ -464,7 +465,6 @@ public static class AppLogger
         [LogMsg.VideoSummaryPopupOpened]           = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "動画情報ポップアップを開きました: {0}"),
         [LogMsg.VideoListPopupOpened]              = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "動画一覧ポップアップを開きました: {0}（{1}件）"),
         [LogMsg.GeminiSummaryRequested]            = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約リクエスト送信: {0}"),
-        [LogMsg.GeminiSummaryCacheHit]              = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約キャッシュヒット: {0}"),
         [LogMsg.GeminiSummarySucceeded]             = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約成功: {0}"),
         [LogMsg.ExternalSummaryBridgeRequested]     = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "YTS.dll経由で要約リクエスト送信: {0}"),
         // 要約スクリプト（Plugins）

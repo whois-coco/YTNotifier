@@ -16,6 +16,11 @@ public class MonitorService : IDisposable
 
     private const int GracePeriodIntervalSeconds = 30;
 
+    /// <summary>カード「🔄 最新情報取得」で他チェック完了を待つ最大時間（秒）</summary>
+    private const int ChannelManualCheckMaxWaitSeconds = 90;
+    /// <summary>上記待機中に _isChecking を再取得しにいく間隔（ミリ秒）</summary>
+    private const int ChannelManualCheckPollIntervalMs = 250;
+
     /// <summary>ライブ/プレミア配信開始後に継続チェックする猶予回数</summary>
     private const int GracePeriodAttempts = 10;
 
@@ -239,18 +244,19 @@ public class MonitorService : IDisposable
 
         foreach (var ch in SettingsService.Instance.GetEnabledChannelsSnapshot())
         {
-            var leadMin = ch.UpcomingNotifyLeadMinutes;
-            var mode    = ch.UpcomingNotifyMode;
-
-            List<PendingVideoEntry> entries;
+            List<(PendingVideoEntry entry, bool isLive)> entries;
             lock (_pendingListLock)
-                entries = ch.PendingLives.Concat(ch.PendingPremieres).ToList();
-            foreach (var entry in entries)
+                entries = ch.PendingLives.Select(e => (e, true))
+                    .Concat(ch.PendingPremieres.Select(e => (e, false)))
+                    .ToList();
+            foreach (var (entry, isLive) in entries)
             {
                 if (!entry.ScheduledAt.HasValue) continue;
                 if (entry.GraceRemaining != 0) continue; // 集中監視中は除外
 
                 var scheduledAt = entry.ScheduledAt.Value;
+                var mode    = isLive ? ch.LiveUpcomingNotifyMode         : ch.PremiereUpcomingNotifyMode;
+                var leadMin = isLive ? ch.LiveUpcomingNotifyLeadMinutes  : ch.PremiereUpcomingNotifyLeadMinutes;
 
                 // 待機所通知アクション（LiveStartOnly 以外）
                 if (!entry.UpcomingNotified && mode != UpcomingNotifyMode.LiveStartOnly)
@@ -937,7 +943,7 @@ public class MonitorService : IDisposable
         lock (_pendingListLock)
             channel.PendingLives.RemoveAll(p => p.VideoId == video.VideoId);
 
-        if (channel.UpcomingNotifyMode == YTNotifier.Models.UpcomingNotifyMode.WaitingRoomOnly)
+        if (channel.LiveUpcomingNotifyMode == YTNotifier.Models.UpcomingNotifyMode.WaitingRoomOnly)
         {
             AppLogger.Log(LogMsg.LiveStartSkipped, channel.ChannelName, video.Title);
             return null;
@@ -954,7 +960,7 @@ public class MonitorService : IDisposable
         lock (_pendingListLock)
             channel.PendingPremieres.RemoveAll(p => p.VideoId == video.VideoId);
 
-        if (channel.UpcomingNotifyMode == YTNotifier.Models.UpcomingNotifyMode.WaitingRoomOnly)
+        if (channel.PremiereUpcomingNotifyMode == YTNotifier.Models.UpcomingNotifyMode.WaitingRoomOnly)
         {
             AppLogger.Log(LogMsg.PremiereStartSkipped, channel.ChannelName, video.Title);
             return null;
@@ -1012,7 +1018,7 @@ public class MonitorService : IDisposable
                 }
                 else if (pendingNotifyLive == null)
                 {
-                    if (channel.UpcomingNotifyMode == YTNotifier.Models.UpcomingNotifyMode.WaitingRoomOnly)
+                    if (channel.LiveUpcomingNotifyMode == YTNotifier.Models.UpcomingNotifyMode.WaitingRoomOnly)
                     {
                         AppLogger.Log(LogMsg.LiveStartSkipped, channel.ChannelName, video.Title);
                     }
@@ -1039,7 +1045,7 @@ public class MonitorService : IDisposable
                 }
                 else if (pendingNotifyPremiere == null)
                 {
-                    if (channel.UpcomingNotifyMode == YTNotifier.Models.UpcomingNotifyMode.WaitingRoomOnly)
+                    if (channel.PremiereUpcomingNotifyMode == YTNotifier.Models.UpcomingNotifyMode.WaitingRoomOnly)
                     {
                         AppLogger.Log(LogMsg.PremiereStartSkipped, channel.ChannelName, video.Title);
                     }
@@ -1370,6 +1376,35 @@ public class MonitorService : IDisposable
 
     public Task<bool> ManualCheckAsync()
         => CheckAllChannelsAsync(forceAll: true);
+
+    /// <summary>指定した1チャンネルだけを即時チェックする（チャンネルカードの「最新情報取得」用）。
+    /// 他のチェックが実行中の場合は完了を待ってから実行する。</summary>
+    public async Task<bool> ManualCheckChannelAsync(ChannelInfo channel)
+    {
+        if (channel is null || channel.IsDormant) return false;
+
+        lock (_quotaLock)
+        {
+            if (_quotaSuspendedUntil.HasValue && DateTime.Now < _quotaSuspendedUntil.Value)
+                return false;
+        }
+
+        var waitUntil = DateTime.Now.AddSeconds(ChannelManualCheckMaxWaitSeconds);
+        while (Interlocked.CompareExchange(ref _isChecking, 1, 0) != 0)
+        {
+            if (DateTime.Now >= waitUntil) return false;
+            await Task.Delay(ChannelManualCheckPollIntervalMs);
+        }
+        try
+        {
+            await CheckChannelAsync(channel);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isChecking, 0);
+        }
+        return true;
+    }
 
     public void Dispose()
     {

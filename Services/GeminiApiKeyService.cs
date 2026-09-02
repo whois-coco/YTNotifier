@@ -28,11 +28,11 @@ public static class GeminiApiKeyService
 
     private static byte[] DeriveKey()
     {
-        using var kdf = new Rfc2898DeriveBytes(
+        return Rfc2898DeriveBytes.Pbkdf2(
             "YTNotifier_v1_GeminiApiKey_Secret",
             Salt, Iterations,
-            HashAlgorithmName.SHA256);
-        return kdf.GetBytes(KeySize);
+            HashAlgorithmName.SHA256,
+            KeySize);
     }
 
     /// <summary>Gemini APIキーを暗号化して gemini_api_key.dat に保存する</summary>
