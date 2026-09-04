@@ -8,6 +8,15 @@
     <DropShadowEffect x:Key="GlowPrimary"  BlurRadius="8"  ShadowDepth="0" Opacity="0.30" Color="#3B82F6"/>
     <DropShadowEffect x:Key="GlowAccent"   BlurRadius="8"  ShadowDepth="0" Opacity="0.30" Color="#EF4444"/>
 
+    <!-- ===== 編集モード：種別トグルの固定色（ウィンドウ色＝差し色に依存しない。値は DarkTheme.xaml 由来） ===== -->
+    <SolidColorBrush x:Key="KindToggleOnNormalBrush"  Color="#3B82F6"/>
+    <SolidColorBrush x:Key="KindToggleOnLowFreqBrush" Color="#F59E0B"/>
+    <SolidColorBrush x:Key="KindToggleOnFocusBrush"   Color="#22C55E"/>
+    <SolidColorBrush x:Key="KindToggleOffBrush"       Color="#334155"/>
+    <SolidColorBrush x:Key="KindToggleBorderBrush"    Color="#334155"/>
+    <SolidColorBrush x:Key="KindToggleIconOnBrush"    Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="KindToggleIconOffBrush"   Color="#64748B"/>
+
     <!-- ===== プライマリボタン ===== -->
     <Style x:Key="PrimaryButton" TargetType="Button">
         <Setter Property="Background"       Value="{DynamicResource PrimaryBrush}"/>

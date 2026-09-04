@@ -9,7 +9,10 @@ internal static class UpdateCheckService
 {
     private const string GitHubReleasesApiUrl = "https://api.github.com/repos/whois-coco/YTNotifier/releases/latest";
 
-    private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
+    /// <summary>リリース確認のタイムアウト（秒）</summary>
+    private const int ReleaseCheckTimeoutSeconds = 10;
+
+    private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(ReleaseCheckTimeoutSeconds) };
 
     static UpdateCheckService()
     {

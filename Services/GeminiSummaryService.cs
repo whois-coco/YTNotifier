@@ -29,10 +29,10 @@ public static class GeminiSummaryService
     /// <summary>音声中心の要約実験用：動画フレームのサンプリング頻度（fps）を極小化</summary>
     private const double GeminiAudioOnlyFps = 0.1;
 
-    /// <summary>要約結果キャッシュ廃止（指示書024）に伴う旧キャッシュファイルのファイル名</summary>
+    /// <summary>旧バージョンが作成した要約結果キャッシュファイルの名前（現行は要約結果を永続化しない）</summary>
     private const string LegacySummaryCacheFileName = "gemini_summary_cache.json";
 
-    /// <summary>要約結果キャッシュ廃止（指示書024）に伴う旧キャッシュファイルの一時クリーンアップ。起動時に一度だけ呼ぶ</summary>
+    /// <summary>旧バージョンが残した要約結果キャッシュファイル（本体・.tmp）を削除する。現行は毎回要約し直すため残存ファイルは不要。起動時に一度だけ呼ぶ</summary>
     public static void CleanupLegacySummaryCache(string appDataDir)
     {
         foreach (var path in new[]
@@ -46,10 +46,14 @@ public static class GeminiSummaryService
         }
     }
 
+    /// <summary>Gemini API のエラー分類に使う HTTP ステータスコード</summary>
+    private const int HttpStatusForbidden       = 403;
+    private const int HttpStatusTooManyRequests = 429;
+
     private static string ClassifyClientError(ClientError ex)
     {
-        if (ex.StatusCode == 403) return $"Gemini APIキーが無効または権限がありません（HTTP {ex.StatusCode}）";
-        if (ex.StatusCode == 429) return "Gemini APIクォータの上限に達しました";
+        if (ex.StatusCode == HttpStatusForbidden) return $"Gemini APIキーが無効または権限がありません（HTTP {ex.StatusCode}）";
+        if (ex.StatusCode == HttpStatusTooManyRequests) return "Gemini APIクォータの上限に達しました";
         return $"Gemini API エラー（HTTP {ex.StatusCode}: {ex.Message}）";
     }
 
@@ -72,7 +76,7 @@ public static class GeminiSummaryService
 
             using var client = new Client(apiKey: apiKey, httpOptions: new HttpOptions
             {
-                Timeout = GeminiRequestTimeoutMinutes * 60 * 1000
+                Timeout = (int)TimeSpan.FromMinutes(GeminiRequestTimeoutMinutes).TotalMilliseconds
             });
 
             var content = new Content

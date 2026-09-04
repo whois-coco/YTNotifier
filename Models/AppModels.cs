@@ -12,6 +12,19 @@ public class AppSettings
     [JsonProperty("isDarkMode")]
     public bool IsDarkMode { get; set; } = false;
 
+    /// <summary>ウィンドウ色（テーマ）。isDarkMode からの移行後はこちらを使用する</summary>
+    [JsonProperty("theme")]
+    [Newtonsoft.Json.JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
+    public AppTheme Theme { get; set; } = AppTheme.Light;
+
+    /// <summary>差し色（テーマの上から適用するアクセント色）。null / 空 はテーマ既定。書式 "#RRGGBB"</summary>
+    [JsonProperty("accentColorOverride")]
+    public string? AccentColorOverride { get; set; } = null;
+
+    /// <summary>isDarkMode → Theme への移行完了フラグ</summary>
+    [JsonProperty("themeMigrated")]
+    public bool ThemeMigrated { get; set; } = false;
+
     /// <summary>ONにするとカテゴリヘッダーを非表示にして全チャンネルをフラット表示する</summary>
     [JsonProperty("noCategoryMode")]
     public bool NoCategoryMode { get; set; } = false;
@@ -251,6 +264,11 @@ public class ChannelInfo
     [JsonIgnore]
     public List<RecentUploadEntry> RecentUploads { get; set; } = new();
 
+    /// <summary>動画種別判定（フェーズ4＝ショート判定）の確定済み結果。動画ID → 種別。state.json で管理。
+    /// 種別は一度確定すれば変わらないため再問い合わせを省略する。並列判定から書き込むため ConcurrentDictionary を使う</summary>
+    [JsonIgnore]
+    public System.Collections.Concurrent.ConcurrentDictionary<string, VideoKind> VideoKindCache { get; set; } = new();
+
     /// <summary>チャンネルBAN／自主削除が確定した場合 true。state.json で管理</summary>
     [JsonIgnore]
     public bool IsBanned { get; set; } = false;
@@ -302,7 +320,7 @@ public class ChannelInfo
     /// <summary>プレミア公開 upcoming の通知方法</summary>
     [JsonProperty("premiereUpcomingNotifyMode")]
     [Newtonsoft.Json.JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
-    public UpcomingNotifyMode PremiereUpcomingNotifyMode { get; set; } = UpcomingNotifyMode.WaitingRoomOnly;
+    public UpcomingNotifyMode PremiereUpcomingNotifyMode { get; set; } = UpcomingNotifyMode.Both;
 
     /// <summary>プレミア待機所通知リードタイム（分）</summary>
     [JsonProperty("premiereUpcomingNotifyLeadMinutes")]
@@ -311,7 +329,7 @@ public class ChannelInfo
     /// <summary>ライブ配信 upcoming の通知方法</summary>
     [JsonProperty("liveUpcomingNotifyMode")]
     [Newtonsoft.Json.JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
-    public UpcomingNotifyMode LiveUpcomingNotifyMode { get; set; } = UpcomingNotifyMode.WaitingRoomOnly;
+    public UpcomingNotifyMode LiveUpcomingNotifyMode { get; set; } = UpcomingNotifyMode.Both;
 
     /// <summary>ライブ待機所通知リードタイム（分）</summary>
     [JsonProperty("liveUpcomingNotifyLeadMinutes")]
@@ -462,15 +480,6 @@ public class LogEntry
 
     public string FormattedTime => Timestamp.ToString("HH:mm:ss");
     public string LevelText => Level.ToString().ToUpper();
-
-    public string LevelColor => Level switch
-    {
-        LogLevel.System  => "#60A5FA",
-        LogLevel.Warning => "#F59E0B",
-        LogLevel.Error   => "#EF4444",
-        LogLevel.Debug   => "#6B7280",
-        _                => "#94A3B8"
-    };
 }
 
 public enum LogLevel
@@ -706,6 +715,10 @@ public class ChannelState
     [JsonProperty("recentUploads")]
     public List<RecentUploadEntry> RecentUploads { get; set; } = new();
 
+    /// <summary>動画種別判定（フェーズ4＝ショート判定）の確定済み結果。動画ID → 種別</summary>
+    [JsonProperty("videoKindCache")]
+    public Dictionary<string, VideoKind> VideoKindCache { get; set; } = new();
+
     [JsonProperty("isBanned")]
     public bool IsBanned { get; set; } = false;
 
@@ -735,11 +748,26 @@ public class AppState
     [JsonProperty("todayApiDate")]
     public string TodayApiDate { get; set; } = string.Empty;
 
+    [JsonProperty("todayApiUnitsPendingTrack")]
+    public int TodayApiUnitsPendingTrack { get; set; } = 0;
+
+    [JsonProperty("todayApiUnitsLiveStatus")]
+    public int TodayApiUnitsLiveStatus { get; set; } = 0;
+
     [JsonProperty("channels")]
     public Dictionary<string, ChannelState> Channels { get; set; } = new();
+
+    [JsonProperty("quotaSuspendedUntil")]
+    public DateTime? QuotaSuspendedUntil { get; set; } = null;
 }
 
 public enum VideoKind { Video, Short, Live, Premiere }
+
+/// <summary>API使用ユニットの計上カテゴリ（実使用量バーの色分け用）。既定値 Normal を 0 に置く。</summary>
+public enum ApiUnitCategory { Normal, PendingTrack, LiveStatus }
+
+/// <summary>ウィンドウ色（テーマ）。Themes/ の6テーマに対応する</summary>
+public enum AppTheme { Light, Dark, Blue, Gray, Pink, MatteBlack }
 
 /// <summary>APIキー有効性テストの結果</summary>
 public enum ApiKeyTestResult { Valid, Invalid, NetworkError }

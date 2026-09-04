@@ -39,11 +39,17 @@ public partial class MainWindow : System.Windows.Window
     // ===== 定数 =====
     private const int    SidebarExpandedWidth    = 130;
     private const int    SidebarCollapsedWidth   = 44;
-    private const int    ContentWidthNormal      = 400;
+    private const int    ContentWidthNormal      = 385;
     private const int    ContentWidthCompact     = 286;
-    private const int    CollapsedTotalWidth     = SidebarCollapsedWidth + ContentWidthNormal;  // 424
+    private const int    CollapsedTotalWidth     = SidebarCollapsedWidth + ContentWidthNormal;  // 429
     private const int    CompactTotalWidth       = SidebarCollapsedWidth + ContentWidthCompact; // 330
     private const string GitHubReleasesPageUrl   = "https://github.com/whois-coco/YTNotifier/releases/latest";
+
+    /// <summary>ネットワーク状態のポーリング間隔（秒）</summary>
+    private const int NetworkCheckIntervalSeconds = 5;
+
+    /// <summary>最大化時にウィンドウコンテンツへ付与する余白（画面端の切れ防止）</summary>
+    private static readonly Thickness WindowContentPadding = new(6);
 
     // ===== フィールド =====
     private Border?    _navWatchUnreadBadge   = null;
@@ -151,7 +157,7 @@ public partial class MainWindow : System.Windows.Window
         // ネットワーク状態監視（ポーリング方式・5秒ごと）
         _networkCheckTimer = new System.Windows.Threading.DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(5)
+            Interval = TimeSpan.FromSeconds(NetworkCheckIntervalSeconds)
         };
         _networkCheckTimer.Tick += (_, _) => CheckNetworkState();
         _networkCheckTimer.Start();
@@ -275,7 +281,7 @@ public partial class MainWindow : System.Windows.Window
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
         ((Border)Content).Margin = WindowState == System.Windows.WindowState.Maximized
-            ? new Thickness(6) : new Thickness(0);
+            ? WindowContentPadding : new Thickness(0);
     }
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -341,7 +347,10 @@ public partial class MainWindow : System.Windows.Window
         ApiKeyBox.Text                    = _actualApiKey;
         UpdateApiKeyState(!string.IsNullOrEmpty(_actualApiKey));
         _loadingSettings = true;
-        DarkModeToggle.IsChecked               = s.IsDarkMode;
+        foreach (ComboBoxItem item in WindowColorComboBox.Items)
+            if (item.Tag?.ToString() == s.Theme.ToString())
+            { WindowColorComboBox.SelectedItem = item; break; }
+        BuildAccentColorSwatches();
         NoCategoryModeToggle.IsChecked         = s.NoCategoryMode;
         NotificationToggle.IsChecked           = s.ShowDesktopNotification;
         TrayToggle.IsChecked                   = s.MinimizeToTray;

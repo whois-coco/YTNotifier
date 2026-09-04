@@ -25,6 +25,19 @@ public static class ApiQuotaHelper
     public const int    QuotaWarnLowThresholdPct    = 85;     // この%以上で低警告色
     public const int    MinutesPerDay               = 1_440;
 
+    /// <summary>1週間の日数。曜日ビットマスクの集計と、週あたり回数から1日あたりへの平均化に使う</summary>
+    private const int DaysPerWeek = 7;
+
+    /// <summary>新着1件を検知したときに追加で消費するユニット数
+    /// （videos.list + UUSH プレイリスト照会の2回分）</summary>
+    private const int UnitsPerDetectedUpload = 2;
+
+    /// <summary>推奨間隔候補が尽きたときの最終フォールバック値（分）</summary>
+    private const int FallbackIntervalMinutes = 60;
+
+    /// <summary>時間指定スロットの IntervalMinutes = 0 が意味する実間隔（30秒＝0.5分）</summary>
+    private const double FocusSlotFastIntervalMinutes = 0.5;
+
     /// <summary>チェック間隔の推奨候補（分）</summary>
     private static readonly int[] CheckIntervalCandidates = { 1, 5, 10, 30, 60 };
 
@@ -50,7 +63,7 @@ public static class ApiQuotaHelper
             if (EstimateDailyUnitsForChannels(candidate, channelList) <= DailyLimit)
                 return (false, candidate);
         }
-        return (false, 60);
+        return (false, FallbackIntervalMinutes);
     }
 
     /// <summary>
@@ -89,7 +102,7 @@ public static class ApiQuotaHelper
             }
         }
         // videos.list（新着検知）+ UUSH判定playlistItems.list（新着すべてがShort候補と仮定した最大値見積もり）
-        return checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
+        return checks + UnitsPerDetectedUpload * Math.Min(checks, DailyUploadLimitPerChannel);
     }
 
     /// <summary>
@@ -132,8 +145,8 @@ public static class ApiQuotaHelper
             foreach (var slot in enabledSlots.Where(s => s.SlotMode == YTNotifier.Models.MonitorMode.Focus))
             {
                 var interval   = ToIntervalMinutes(slot.IntervalMinutes);
-                int activeDays = slot.Days == 0 ? 7 : CountBits(slot.Days);
-                totalChecks += (slot.WindowMinutes / interval) * activeDays / 7.0;
+                int activeDays = slot.Days == 0 ? DaysPerWeek : CountBits(slot.Days);
+                totalChecks += (slot.WindowMinutes / interval) * activeDays / (double)DaysPerWeek;
             }
         }
         else
@@ -147,25 +160,25 @@ public static class ApiQuotaHelper
                 var focusInterval = ToIntervalMinutes(slot.IntervalMinutes);
                 if (focusInterval >= baseInterval) continue;
 
-                int activeDays        = slot.Days == 0 ? 7 : CountBits(slot.Days);
+                int activeDays        = slot.Days == 0 ? DaysPerWeek : CountBits(slot.Days);
                 var additionalChecks  = slot.WindowMinutes / (double)focusInterval
                                        - slot.WindowMinutes / (double)baseInterval;
-                totalChecks += additionalChecks * activeDays / 7.0;
+                totalChecks += additionalChecks * activeDays / (double)DaysPerWeek;
             }
         }
 
         var checks = (int)Math.Round(totalChecks);
-        return checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
+        return checks + UnitsPerDetectedUpload * Math.Min(checks, DailyUploadLimitPerChannel);
     }
 
     /// <summary>IntervalMinutes == 0 は30秒（0.5分）を意味する</summary>
     private static double ToIntervalMinutes(int intervalMinutes)
-        => intervalMinutes == 0 ? 0.5 : Math.Max(1, intervalMinutes);
+        => intervalMinutes == 0 ? FocusSlotFastIntervalMinutes : Math.Max(1, intervalMinutes);
 
     private static int CountBits(int v)
     {
         int c = 0;
-        for (int i = 0; i < 7; i++) if ((v & (1 << i)) != 0) c++;
+        for (int i = 0; i < DaysPerWeek; i++) if ((v & (1 << i)) != 0) c++;
         return c;
     }
 
@@ -213,20 +226,20 @@ public static class ApiQuotaHelper
                         ? slot.SlotNormalIntervalMinutes
                         : globalInterval;
                     checks  = MinutesPerDay / Math.Max(1, ni);
-                    normal += checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
+                    normal += checks + UnitsPerDetectedUpload * Math.Min(checks, DailyUploadLimitPerChannel);
                     break;
 
                 case YTNotifier.Models.MonitorMode.LowFreq:
                     var li = Math.Max(1, slot.SlotLowFreqIntervalMinutes);
                     checks   = MinutesPerDay / li;
-                    lowFreq += checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
+                    lowFreq += checks + UnitsPerDetectedUpload * Math.Min(checks, DailyUploadLimitPerChannel);
                     break;
 
                 case YTNotifier.Models.MonitorMode.Focus:
                     var fi         = ToIntervalMinutes(slot.IntervalMinutes);
-                    int activeDays = slot.Days == 0 ? 7 : CountBits(slot.Days);
-                    checks  = (int)Math.Round((slot.WindowMinutes / (double)fi) * activeDays / 7.0);
-                    focus  += checks + 2 * Math.Min(checks, DailyUploadLimitPerChannel);
+                    int activeDays = slot.Days == 0 ? DaysPerWeek : CountBits(slot.Days);
+                    checks  = (int)Math.Round((slot.WindowMinutes / (double)fi) * activeDays / (double)DaysPerWeek);
+                    focus  += checks + UnitsPerDetectedUpload * Math.Min(checks, DailyUploadLimitPerChannel);
                     break;
             }
         }

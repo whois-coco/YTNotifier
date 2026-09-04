@@ -1,39 +1,39 @@
-﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- フラットライトテーマ: シャドウなし・グラデーションなし -->
-    <Color x:Key="BackgroundColor">#F5F5F5</Color>
+    <!-- フラットピンクテーマ（明色・ローズ基調）: シャドウなし・グラデーションなし -->
+    <Color x:Key="BackgroundColor">#FCF0F5</Color>
     <Color x:Key="SurfaceColor">#FFFFFF</Color>
-    <Color x:Key="SurfaceAltColor">#FAFAFA</Color>
+    <Color x:Key="SurfaceAltColor">#FDF5F8</Color>
     <Color x:Key="SurfaceElevatedColor">#FFFFFF</Color>
-    <Color x:Key="PrimaryColor">#2563EB</Color>
-    <Color x:Key="PrimaryLightColor">#EFF6FF</Color>
-    <Color x:Key="PrimaryDarkColor">#1D4ED8</Color>
+    <Color x:Key="PrimaryColor">#DB2777</Color>
+    <Color x:Key="PrimaryLightColor">#FCE7F0</Color>
+    <Color x:Key="PrimaryDarkColor">#BE1D64</Color>
     <Color x:Key="AccentColor">#EF4444</Color>
     <Color x:Key="AccentLightColor">#FEF2F2</Color>
-    <Color x:Key="TextPrimaryColor">#111827</Color>
-    <Color x:Key="TextSecondaryColor">#374151</Color>
-    <Color x:Key="TextMutedColor">#9CA3AF</Color>
-    <Color x:Key="BorderColor">#E5E7EB</Color>
-    <Color x:Key="BorderLightColor">#F3F4F6</Color>
-    <Color x:Key="HoverColor">#EFF6FF</Color>
+    <Color x:Key="TextPrimaryColor">#4A0B27</Color>
+    <Color x:Key="TextSecondaryColor">#6E2447</Color>
+    <Color x:Key="TextMutedColor">#A76B87</Color>
+    <Color x:Key="BorderColor">#F2D5E1</Color>
+    <Color x:Key="BorderLightColor">#F9E7EE</Color>
+    <Color x:Key="HoverColor">#FCE7F0</Color>
     <Color x:Key="SuccessColor">#16A34A</Color>
     <Color x:Key="WarningColor">#D97706</Color>
     <Color x:Key="ErrorColor">#EF4444</Color>
     <Color x:Key="TabActiveColor">#FFFFFF</Color>
-    <Color x:Key="TabInactiveColor">#F5F5F5</Color>
-    <Color x:Key="LogBackgroundColor">#FAFAFA</Color>
-    <Color x:Key="LogTextColor">#374151</Color>
-    <Color x:Key="SidebarColor">#ECEEF2</Color>
-    <Color x:Key="SidebarTextColor">#374151</Color>
-    <Color x:Key="SidebarActiveColor">#2563EB</Color>
-    <Color x:Key="SidebarHoverColor">#E5E7EB</Color>
-    <Color x:Key="SidebarBorderColor">#E5E7EB</Color>
-    <Color x:Key="SidebarSectionColor">#9CA3AF</Color>
-    <Color x:Key="SidebarVersionColor">#9CA3AF</Color>
-    <Color x:Key="SidebarStatusBgColor">#F3F4F6</Color>
-    <Color x:Key="SidebarActiveTextColor">#111827</Color>
-    <Color x:Key="SidebarTitleColor">#111827</Color>
+    <Color x:Key="TabInactiveColor">#FCF0F5</Color>
+    <Color x:Key="LogBackgroundColor">#FDF5F8</Color>
+    <Color x:Key="LogTextColor">#6E2447</Color>
+    <Color x:Key="SidebarColor">#F8E1EC</Color>
+    <Color x:Key="SidebarTextColor">#A63A6D</Color>
+    <Color x:Key="SidebarActiveColor">#DB2777</Color>
+    <Color x:Key="SidebarHoverColor">#F1CFDF</Color>
+    <Color x:Key="SidebarBorderColor">#EFCADC</Color>
+    <Color x:Key="SidebarSectionColor">#B57D99</Color>
+    <Color x:Key="SidebarVersionColor">#B57D99</Color>
+    <Color x:Key="SidebarStatusBgColor">#F3D3E1</Color>
+    <Color x:Key="SidebarActiveTextColor">#4A0B27</Color>
+    <Color x:Key="SidebarTitleColor">#4A0B27</Color>
     <Color x:Key="TextOnColorColor">#FFFFFF</Color>
 
     <SolidColorBrush x:Key="BackgroundBrush"      Color="{StaticResource BackgroundColor}"/>

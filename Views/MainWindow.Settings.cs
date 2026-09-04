@@ -119,15 +119,134 @@ public partial class MainWindow : System.Windows.Window
         else       SetDynamicBrush(SaveApiKeyButton, Button.ForegroundProperty, "TextOnColorBrush");
     }
 
-    private void DarkModeToggle_Changed(object sender, RoutedEventArgs e)
+    private void WindowColorComboBox_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (_loadingSettings) return;
-        var isDark = DarkModeToggle.IsChecked == true;
-        SettingsService.Instance.Settings.IsDarkMode = isDark;
+        if (WindowColorComboBox.SelectedItem is not ComboBoxItem item) return;
+        if (!Enum.TryParse<YTNotifier.Models.AppTheme>(item.Tag?.ToString(), out var theme)) return;
+
+        SettingsService.Instance.Settings.Theme = theme;
         SettingsService.Instance.MarkDirty();
-        AppLogger.Log(LogMsg.SettingDarkMode, null, isDark ? "ON" : "OFF");
-        App.ApplyTheme(isDark);
+        AppLogger.Log(LogMsg.SettingWindowColor, null, item.Content?.ToString() ?? theme.ToString());
+        App.ApplyTheme(theme);
         RefreshChannelList(); InvalidateVisual(); UpdateLayout();
+    }
+
+    // ===== 差し色（アクセント色）=====
+
+    // 差し色の色見本。追加する場合はこの配列に "#RRGGBB" を1行足すだけ
+    private static readonly string[] AccentColorPalette =
+    {
+        "#EF4444", "#F97316", "#F0A83C", "#22C55E", "#14B8A6",
+        "#3B82F6", "#6366F1", "#A855F7", "#EC4899",
+    };
+
+    private const double AccentSwatchSize            = 20;    // ドロップダウン内スウォッチ1辺(px)
+    private const double AccentSwatchCornerRadius    = 3;     // スウォッチの角丸
+    private const double AccentSwatchSpacing         = 4;     // スウォッチ余白(マージン)
+    private const double AccentSwatchBorderThickness = 2;     // 選択枠の太さ
+    private const double AccentCurrentSwatchWidth    = 32;    // 現在色スウォッチの幅(px)
+    private const string AccentColorDefaultLogValue  = "既定";
+
+    private void BuildAccentColorSwatches()
+    {
+        AccentColorCurrentSwatch.Width = AccentCurrentSwatchWidth;
+        AccentColorGrid.Children.Clear();
+        foreach (var paletteHex in AccentColorPalette)
+        {
+            var swatch = new Border
+            {
+                Width           = AccentSwatchSize,
+                Height          = AccentSwatchSize,
+                CornerRadius    = new CornerRadius(AccentSwatchCornerRadius),
+                Margin          = new Thickness(AccentSwatchSpacing),
+                Cursor          = Cursors.Hand,
+                ToolTip         = paletteHex,
+                Tag             = paletteHex,
+                BorderThickness = new Thickness(0),
+                Background      = new SolidColorBrush(
+                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(paletteHex)!),
+            };
+            swatch.MouseLeftButtonUp += AccentColorSwatch_Selected;
+            AccentColorGrid.Children.Add(swatch);
+        }
+        UpdateAccentColorSelection();
+    }
+
+    private void UpdateAccentColorSelection()
+    {
+        var currentHex = SettingsService.Instance.Settings.AccentColorOverride;
+        foreach (var child in AccentColorGrid.Children)
+        {
+            if (child is not Border swatch) continue;
+            var isSelected = !string.IsNullOrEmpty(currentHex) && (swatch.Tag as string) == currentHex;
+            if (isSelected)
+            {
+                swatch.BorderThickness = new Thickness(AccentSwatchBorderThickness);
+                SetDynamicBrush(swatch, Border.BorderBrushProperty, "TextPrimaryBrush");
+            }
+            else
+            {
+                swatch.BorderThickness = new Thickness(0);
+                swatch.ClearValue(Border.BorderBrushProperty);
+            }
+        }
+
+        var hasOverride = !string.IsNullOrEmpty(currentHex);
+        if (hasOverride)
+        {
+            AccentColorCurrentSwatch.Background = new SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(currentHex)!);
+        }
+        else
+        {
+            SetDynamicBrush(AccentColorCurrentSwatch, Border.BackgroundProperty, "PrimaryBrush");
+        }
+
+        AccentColorResetRow.IsHitTestVisible = hasOverride;
+        AccentColorResetRow.Opacity          = hasOverride ? 1.0 : AppConstants.DisabledControlOpacity;
+    }
+
+    private void AccentColorSplitButton_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (_loadingSettings) return;
+        AccentColorPopup.IsOpen = !AccentColorPopup.IsOpen;
+    }
+
+    private void AccentColorSwatch_Selected(object sender, MouseButtonEventArgs e)
+    {
+        if (_loadingSettings) return;
+        var selectedHex = (sender as FrameworkElement)?.Tag as string;
+        if (string.IsNullOrEmpty(selectedHex)) return;
+        if (selectedHex == SettingsService.Instance.Settings.AccentColorOverride)
+        {
+            AccentColorPopup.IsOpen = false;
+            return;
+        }
+
+        SettingsService.Instance.Settings.AccentColorOverride = selectedHex;
+        SettingsService.Instance.MarkDirty();
+        App.ApplyAccentOverride(selectedHex);
+        AppLogger.Log(LogMsg.SettingAccentColor, null, selectedHex);
+        AccentColorPopup.IsOpen = false;
+        UpdateAccentColorSelection(); RefreshChannelList(); InvalidateVisual(); UpdateLayout();
+    }
+
+    private void AccentColorResetRow_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (_loadingSettings) return;
+        if (string.IsNullOrEmpty(SettingsService.Instance.Settings.AccentColorOverride))
+        {
+            AccentColorPopup.IsOpen = false;
+            return;
+        }
+
+        SettingsService.Instance.Settings.AccentColorOverride = null;
+        SettingsService.Instance.MarkDirty();
+        App.ApplyAccentOverride(null);
+        AppLogger.Log(LogMsg.SettingAccentColor, null, AccentColorDefaultLogValue);
+        AccentColorPopup.IsOpen = false;
+        UpdateAccentColorSelection(); RefreshChannelList(); InvalidateVisual(); UpdateLayout();
     }
 
     private void NoCategoryModeToggle_Changed(object sender, RoutedEventArgs e)
@@ -408,7 +527,7 @@ public partial class MainWindow : System.Windows.Window
             SettingsService.Instance.SaveSettings();
             AppLogger.Log(LogMsg.SettingBackupImported, null, System.IO.Path.GetFileName(dlg.FileName));
             LoadSettings(); RefreshChannelList();
-            App.ApplyTheme(SettingsService.Instance.Settings.IsDarkMode);
+            App.ApplyTheme(SettingsService.Instance.Settings.Theme);
         }
     }
 
@@ -493,7 +612,6 @@ public partial class MainWindow : System.Windows.Window
     private const string BackupFilePrefix = "YTNotifier_";
     private const string StartupRegistryKey     = "YTNotifier";
 
-#if DEBUG
     private const string DebugDllName           = "YTNotifier.Debug.dll";
     private static readonly string DebugDllPath = System.IO.Path.Combine(
         System.IO.Path.GetDirectoryName(Environment.ProcessPath
@@ -517,11 +635,6 @@ public partial class MainWindow : System.Windows.Window
             AppLogger.Log(LogMsg.DevToolError, null, ex.Message);
         }
     }
-#else
-    internal static bool IsDebugDllAvailable() => false;
-
-    private void OpenDebugWindow_Click(object sender, RoutedEventArgs e) { }
-#endif
 
     private void RefreshLogStats()
     {

@@ -29,10 +29,7 @@ public partial class AddChannelWindow : Window
     private bool _notifyVideo = true;
     private bool _notifyShort = true;
     private bool _notifyLive  = true;
-    private readonly Border[] _kindToggleBorders = new Border[3];
-
-    private const string AddWindowShortIconPath =
-        "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z";
+    private readonly Border[] _kindToggleBorders = new Border[AppConstants.KindSlotCount];
 
     public bool ChannelAdded { get; private set; } = false;
 
@@ -40,6 +37,20 @@ public partial class AddChannelWindow : Window
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
     private const int WM_NCLBUTTONDOWN = 0xA1;
     private const int HTCAPTION        = 2;
+
+    /// <summary>プレビューサムネイルのデコード幅（px）</summary>
+    private const int PreviewIconDecodeWidth = 76;
+
+    private const double KindToggleCornerRadius   = 4;   // 種別トグルの角丸
+    private const double KindToggleBorderThickness = 1;  // 種別トグルの枠線
+    private const double KindToggleLabelFontSize  = 11;  // 種別トグルのラベル
+    private const double DetailTabLabelFontSize   = 12;  // 詳細設定タブのラベル
+    private const double DimmedOpacity            = 0.4; // 休眠・カテゴリ無しのときの薄さ
+
+    private static readonly Thickness KindTogglePadding    = new(4);
+    private static readonly Thickness KindToggleLabelMargin = new(4, 0, 12, 0);
+    private static readonly Thickness DetailTabPadding      = new(14, 0, 14, 0);
+    private static readonly Thickness DetailTabUnderline    = new(0, 0, 0, 2);
 
     public AddChannelWindow(Action? onChannelAdded = null, bool isDormant = false)
     {
@@ -82,7 +93,7 @@ public partial class AddChannelWindow : Window
 
         // カテゴリなし表示モードでは選択を無効化
         CategoryComboBox.IsEnabled = !noCategoryMode;
-        CategoryComboBox.Opacity   = noCategoryMode ? 0.4 : 1.0;
+        CategoryComboBox.Opacity   = noCategoryMode ? DimmedOpacity : 1.0;
         CategoryComboBox.ToolTip   = noCategoryMode ? "カテゴリなし表示モードが有効なため選択できません" : null;
     }
 
@@ -209,7 +220,7 @@ public partial class AddChannelWindow : Window
                     bmp.BeginInit();
                     bmp.UriSource        = new Uri(_previewChannel.ThumbnailUrl);
                     bmp.CacheOption      = BitmapCacheOption.OnLoad;
-                    bmp.DecodePixelWidth = 76;
+                    bmp.DecodePixelWidth = PreviewIconDecodeWidth;
                     bmp.EndInit();
                     PreviewThumbnail.Source      = bmp;
                     PreviewThumbnail.Visibility  = Visibility.Visible;
@@ -241,11 +252,11 @@ public partial class AddChannelWindow : Window
                 ExpandedArea.Visibility = Visibility.Visible;
 
                 CheckTargetPanel.IsEnabled = !_isDormant;
-                CheckTargetPanel.Opacity   = _isDormant ? 0.4 : 1.0;
+                CheckTargetPanel.Opacity   = _isDormant ? DimmedOpacity : 1.0;
                 CheckTargetPanel.ToolTip   = _isDormant ? "休眠リストでは種別ごとの監視を行わないため設定できません" : null;
 
                 DetailExpander.IsEnabled = !_isDormant;
-                DetailExpander.Opacity   = _isDormant ? 0.4 : 1.0;
+                DetailExpander.Opacity   = _isDormant ? DimmedOpacity : 1.0;
                 DetailExpander.ToolTip   = _isDormant ? "休眠リストでは種別ごとの監視を行わないため設定できません" : null;
             }
         }
@@ -280,7 +291,7 @@ public partial class AddChannelWindow : Window
         }
 
         // スロット設定を適用（Expander 開閉にかかわらず常に設定）
-        if (_detailTabPanels.Count == 3)
+        if (_detailTabPanels.Count == AppConstants.KindSlotCount)
         {
             _previewChannel.MonitorMode = MonitorMode.Focus;
             _previewChannel.FocusSlots  = _detailTabPanels.Select(p => p.GetSlot()).ToList();
@@ -317,7 +328,7 @@ public partial class AddChannelWindow : Window
                 if (ConfirmDialog.Show(this, "クォータ超過の警告", msg, "追加する") != true)
                     return;
             }
-            else if (pct >= 85)
+            else if (pct >= ApiQuotaHelper.QuotaWarnLowThresholdPct)
             {
                 var msg = $"追加後のAPI推定使用量が {pct:F0}% になります。\n追加しますか？";
                 if (ConfirmDialog.Show(this, "クォータ使用量の警告", msg, "追加する") != true)
@@ -364,21 +375,20 @@ public partial class AddChannelWindow : Window
     }
 
     // ===== 種別トグルアイコン =====
-    private static readonly string[] KindToggleLabels = { "動画", "Short", "ライブ" };
 
     private void BuildKindToggles()
     {
         KindToggleRow.Children.Clear();
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < AppConstants.KindSlotCount; i++)
         {
             int capturedIdx = i;
             var border = new Border
             {
-                CornerRadius    = new CornerRadius(4),
-                Padding         = new Thickness(4),
+                CornerRadius    = new CornerRadius(KindToggleCornerRadius),
+                Padding         = KindTogglePadding,
                 Cursor          = System.Windows.Input.Cursors.Hand,
-                BorderThickness = new Thickness(1),
-                ToolTip         = KindToggleLabels[i]
+                BorderThickness = new Thickness(KindToggleBorderThickness),
+                ToolTip         = AppConstants.KindSlotLabels[i]
             };
             border.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
             _kindToggleBorders[i] = border;
@@ -390,10 +400,10 @@ public partial class AddChannelWindow : Window
 
             var lbl = new TextBlock
             {
-                Text              = KindToggleLabels[i],
-                FontSize          = 11,
+                Text              = AppConstants.KindSlotLabels[i],
+                FontSize          = KindToggleLabelFontSize,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin            = new Thickness(4, 0, 12, 0)
+                Margin            = KindToggleLabelMargin
             };
             lbl.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
 
@@ -418,7 +428,7 @@ public partial class AddChannelWindow : Window
             default: _notifyLive = value; break;
         }
         RefreshKindToggleIcon(idx);
-        if (_detailTabPanels.Count == 3)
+        if (_detailTabPanels.Count == AppConstants.KindSlotCount)
         {
             _detailTabPanels[idx].SetEnabled(value);
             SetDetailTabBorderStyle(_detailTabPanels[idx], idx == _selectedDetailTab);
@@ -431,74 +441,22 @@ public partial class AddChannelWindow : Window
         if (border == null) return;
         bool active = GetKindToggleValue(idx);
         border.SetResourceReference(Border.BackgroundProperty, active ? "PrimaryBrush" : "SurfaceElevatedBrush");
-        border.Child = BuildAddWindowKindIcon(KindToggleLabels[idx], active);
+        border.Child = BuildAddWindowKindIcon(AppConstants.KindSlotKinds[idx], active);
     }
 
-    private static UIElement BuildAddWindowKindIcon(string label, bool active)
+    private static UIElement BuildAddWindowKindIcon(VideoKind kind, bool active)
     {
         var color = active
             ? (Brush)System.Windows.Application.Current.Resources["TextOnColorBrush"]
             : (Brush)System.Windows.Application.Current.Resources["TextMutedBrush"];
 
-        if (label == "Short")
-            return new System.Windows.Shapes.Path
-            {
-                Data    = Geometry.Parse(AddWindowShortIconPath),
-                Width   = 18, Height = 18,
-                Stretch = Stretch.Uniform,
-                Fill    = color
-            };
-
-        if (label == "ライブ")
-        {
-            var canvas = new Canvas { Width = 24, Height = 24 };
-            foreach (var d in new[] {
-                "M4.9 16.1C1 12.2 1 5.8 4.9 1.9",
-                "M7.8 4.7a6.14 6.14 0 0 0-.8 7.5",
-                "M16.2 4.8c2 2 2.26 5.11.8 7.47",
-                "M19.1 1.9a9.96 9.96 0 0 1 0 14.1",
-                "M9.5 18h5",
-                "m8 22 4-11 4 11"
-            })
-                canvas.Children.Add(new System.Windows.Shapes.Path
-                {
-                    Data = Geometry.Parse(d), Stroke = color,
-                    StrokeThickness = 2,
-                    StrokeStartLineCap = PenLineCap.Round,
-                    StrokeEndLineCap   = PenLineCap.Round,
-                    StrokeLineJoin     = PenLineJoin.Round,
-                    Fill = Brushes.Transparent
-                });
-            var circle = new System.Windows.Shapes.Ellipse
-            {
-                Width = 4, Height = 4,
-                Stroke = color, StrokeThickness = 2,
-                Fill = Brushes.Transparent
-            };
-            Canvas.SetLeft(circle, 10);
-            Canvas.SetTop(circle, 7);
-            canvas.Children.Add(circle);
-            return new Viewbox { Width = 18, Height = 18, Child = canvas };
-        }
-
-        // 動画
-        var vc = new Canvas { Width = 22, Height = 22 };
-        vc.Children.Add(new System.Windows.Shapes.Path
-        {
-            Data = Geometry.Parse("M2 6 L16 6 C17.105 6 18 6.895 18 8 L18 18 C18 19.105 17.105 20 16 20 L2 20 C0.895 20 0 19.105 0 18 L0 8 C0 6.895 0.895 6 2 6 Z"),
-            Fill = color
-        });
-        vc.Children.Add(new System.Windows.Shapes.Path
-        {
-            Data = Geometry.Parse("M16 13 L21.223 16.482 A0.5 0.5 0 0 0 22 16.066 L22 7.87 A0.5 0.5 0 0 0 21.248 7.438 L16 10.5 Z"),
-            Fill = color
-        });
-        return new Viewbox { Width = 18, Height = 18, Child = vc };
+        double canvasSize = kind == VideoKind.Live ? 24 : 22;
+        var (icon, setColor) = KindIconFactory.Build(kind, iconSize: 18, canvasSize: canvasSize);
+        setColor(color);
+        return icon;
     }
 
     // ===== 詳細設定タブ =====
-    private static readonly string[] DetailTabKindLabels = { "動画", "Short", "ライブ" };
-    private static readonly VideoKind[] DetailTabKinds   = { VideoKind.Video, VideoKind.Short, VideoKind.Live };
 
     private void BuildDetailTabUI()
     {
@@ -509,16 +467,16 @@ public partial class AddChannelWindow : Window
 
         bool[] kindEnabled = { _notifyVideo, _notifyShort, _notifyLive };
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < AppConstants.KindSlotCount; i++)
         {
             var slot = new FocusSlot
             {
-                NotifyKind = DetailTabKinds[i],
+                NotifyKind = AppConstants.KindSlotKinds[i],
                 SlotMode   = MonitorMode.Normal,
                 IsEnabled  = kindEnabled[i]
             };
             var panel = new FocusTabPanel(slot);
-            panel.FixedKind = DetailTabKinds[i];
+            panel.FixedKind = AppConstants.KindSlotKinds[i];
             _detailTabPanels.Add(panel);
 
             // 「この設定を有効にする」→ トグルアイコンに同期
@@ -530,13 +488,13 @@ public partial class AddChannelWindow : Window
             };
 
             int idx    = i;
-            var lbl    = new TextBlock { Text = DetailTabKindLabels[i], FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+            var lbl    = new TextBlock { Text = AppConstants.KindSlotLabels[i], FontSize = DetailTabLabelFontSize, VerticalAlignment = VerticalAlignment.Center };
             var border = new Border
             {
-                Padding         = new Thickness(14, 0, 14, 0),
+                Padding         = DetailTabPadding,
                 Cursor          = System.Windows.Input.Cursors.Hand,
                 Background      = Brushes.Transparent,
-                BorderThickness = new Thickness(0, 0, 0, 2),
+                BorderThickness = DetailTabUnderline,
                 Tag             = i,
                 Child           = lbl
             };
@@ -557,7 +515,7 @@ public partial class AddChannelWindow : Window
         DetailFocusTabContent.Children.Clear();
         _detailTabPanels[idx].ResetContent();
         DetailFocusTabContent.Children.Add(_detailTabPanels[idx].BuildContent());
-        AppLogger.Log(LogMsg.AddChannelDetailTabSwitched, null, DetailTabKindLabels[idx]);
+        AppLogger.Log(LogMsg.AddChannelDetailTabSwitched, null, AppConstants.KindSlotLabels[idx]);
     }
 
     private static void SetDetailTabBorderStyle(FocusTabPanel tab, bool selected)

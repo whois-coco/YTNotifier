@@ -49,6 +49,16 @@ public class SettingsService
     // AddApiUnits の並行呼び出しを直列化するロック
     private readonly object _apiUnitsLock = new();
 
+    // AddApiUnits の計上カテゴリを非同期フロー単位で受け渡す（並列チャンネルチェックでも各フローに独立コピーされる）
+    private static readonly System.Threading.AsyncLocal<Models.ApiUnitCategory> _apiUnitCategory = new();
+
+    /// <summary>現在の非同期フローにおける API ユニット計上カテゴリ。未設定時は Normal。</summary>
+    public static Models.ApiUnitCategory CurrentApiUnitCategory
+    {
+        get => _apiUnitCategory.Value;
+        set => _apiUnitCategory.Value = value;
+    }
+
     private System.Threading.Timer _stateTimer;
 
     /// <summary>保存系エラーをクラッシュログへ直接書き込む（LoggerService に依存しない）</summary>
@@ -428,10 +438,17 @@ public class SettingsService
             var quotaKey = AppConstants.GetQuotaDayKey();
             if (AppState.TodayApiDate != quotaKey)
             {
-                AppState.TodayApiUnits = 0;
-                AppState.TodayApiDate  = quotaKey;
+                AppState.TodayApiUnits            = 0;
+                AppState.TodayApiUnitsPendingTrack = 0;
+                AppState.TodayApiUnitsLiveStatus   = 0;
+                AppState.TodayApiDate             = quotaKey;
             }
             AppState.TodayApiUnits += units;
+            switch (CurrentApiUnitCategory)
+            {
+                case Models.ApiUnitCategory.PendingTrack: AppState.TodayApiUnitsPendingTrack += units; break;
+                case Models.ApiUnitCategory.LiveStatus:   AppState.TodayApiUnitsLiveStatus   += units; break;
+            }
         }
         MonitorService.Instance.NotifyQuotaUpdated();
     }
@@ -653,6 +670,14 @@ public class SettingsService
         }
         catch { Settings = new AppSettings(); }
 
+        // 旧バージョン移行: isDarkMode → theme（一度だけ）
+        if (!Settings.ThemeMigrated)
+        {
+            Settings.Theme = Settings.IsDarkMode ? AppTheme.Dark : AppTheme.Light;
+            Settings.ThemeMigrated = true;
+            MarkDirty();
+        }
+
         // APIキーは別ファイルから復号して読み込む
         Settings.ApiKey = ApiKeyService.Load(_confDir);
 
@@ -799,7 +824,7 @@ public class SettingsService
 
             bool[] kindEnabled = { ch.NotifyVideo, ch.NotifyShort, ch.NotifyLive };
             var slots = new List<FocusSlot>();
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < AppConstants.KindSlotCount; i++)
             {
                 var slot = ch.CreateDefaultFocusSlot(defaultKinds[i]);
                 slot.IsEnabled = kindEnabled[i];
@@ -958,6 +983,7 @@ public class SettingsService
                 IsBanned               = ch.IsBanned,
                 LatestVideoDeleted     = ch.LatestVideoDeleted,
                 NoVideosFound          = ch.NoVideosFound,
+                VideoKindCache         = new Dictionary<string, VideoKind>(ch.VideoKindCache),
             };
         }
     }
@@ -995,6 +1021,8 @@ public class SettingsService
         ch.LatestDuration         = state.LatestDuration;
         ch.LatestThumbnailUrl     = state.LatestThumbnailUrl;
         ch.RecentUploads          = state.RecentUploads ?? new();
+        ch.VideoKindCache = new System.Collections.Concurrent.ConcurrentDictionary<string, VideoKind>(
+            state.VideoKindCache ?? new());
         ch.IsBanned               = state.IsBanned;
         ch.LatestVideoDeleted     = state.LatestVideoDeleted;
         ch.NoVideosFound          = state.NoVideosFound;
@@ -1185,6 +1213,14 @@ public class SettingsService
             WriteAtomic(_statePath, json);
         }
         catch (Exception ex) { WriteSaveError("SaveState", ex.Message); }
+    }
+
+    /// <summary>クォータ超過による監視停止の再開予定時刻を state.json へ即時保存する
+    /// （再起動をまたいで保持するため）。解除時は null を渡す。</summary>
+    public void PersistQuotaSuspension(DateTime? suspendedUntil)
+    {
+        AppState.QuotaSuspendedUntil = suspendedUntil;
+        SaveStateInternal();
     }
 
     /// <summary>

@@ -36,17 +36,9 @@ namespace YTNotifier.Views;
 
 public partial class MainWindow : System.Windows.Window
 {
-    private const string FallbackPingTarget              = "8.8.8.8";
-    private const int    PingTimeoutMilliseconds         = 1000;
-    private const string ConnectTestUrl                  = "http://www.msftconnecttest.com/connecttest.txt";
-    private const int    ConnectTestTimeoutMilliseconds  = 3000;
-
-    private const int    ExpandedTotalWidth      = SidebarExpandedWidth  + ContentWidthNormal;  // 500
+    private const int    ExpandedTotalWidth      = SidebarExpandedWidth  + ContentWidthNormal;  // 515
     private const int    WindowMinHeight         = 500;
     private bool _isOffline             = false;
-
-    // HttpClient はソケット枯渇を避けるため使い回す（ネットワーク疎通確認用。アイコン取得は ImageCacheService 側で使用）
-    private static readonly System.Net.Http.HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     // Win32
     [DllImport("user32.dll")]
@@ -99,28 +91,7 @@ public partial class MainWindow : System.Windows.Window
     /// <summary>NIC状態・HTTP疎通・pingの順でネットワーク接続を確認する</summary>
     internal async void CheckNetworkState()
     {
-        var isAvailable = false;
-        try
-        {
-            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
-            {
-                if (!_isOffline)
-                    UpdateNetworkState(false);
-                return;
-            }
-
-            using var cts = new System.Threading.CancellationTokenSource(ConnectTestTimeoutMilliseconds);
-            var response = await _httpClient.GetAsync(ConnectTestUrl, cts.Token);
-            isAvailable = response.StatusCode == System.Net.HttpStatusCode.OK;
-
-            if (!isAvailable)
-            {
-                using var ping = new System.Net.NetworkInformation.Ping();
-                var reply = await ping.SendPingAsync(FallbackPingTarget, PingTimeoutMilliseconds);
-                isAvailable = reply.Status == System.Net.NetworkInformation.IPStatus.Success;
-            }
-        }
-        catch { isAvailable = false; }
+        var isAvailable = await NetworkStatusService.IsOnlineAsync();
 
         if (isAvailable == _isOffline)
             UpdateNetworkState(isAvailable);
@@ -207,6 +178,7 @@ public partial class MainWindow : System.Windows.Window
             [SettingsNavApp]     = SettingsPageApp,
             [SettingsNavDisplay] = SettingsPageDisplay,
             [SettingsNavMonitor] = SettingsPageMonitor,
+            [SettingsNavPlugins] = SettingsPagePlugins,
             [SettingsNavAbout]   = SettingsPageAbout,
         };
 
@@ -215,6 +187,7 @@ public partial class MainWindow : System.Windows.Window
             [SettingsNavApp]     = "動作",
             [SettingsNavDisplay] = "表示",
             [SettingsNavMonitor] = "通知",
+            [SettingsNavPlugins] = "プラグイン",
             [SettingsNavAbout]   = "ABOUT",
         };
         if (pageNames.TryGetValue(sender, out var pageName))
@@ -239,6 +212,8 @@ public partial class MainWindow : System.Windows.Window
 
             if (active == SettingsNavMonitor)
                 UpdateQuotaInfo();
+            else if (active == SettingsNavPlugins)
+                RefreshPluginSettings();
         }
     }
 

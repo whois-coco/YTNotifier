@@ -31,6 +31,9 @@ public static class NotificationService
     /// <summary>トースト通知用一時画像ファイルの削除待機時間（ミリ秒）。通知プラットフォームの画像読込猶予</summary>
     private const int ToastTempImageCleanupDelayMs = 10000;
 
+    /// <summary>トースト通知用画像ダウンロードのタイムアウト（秒）</summary>
+    private const int ToastImageDownloadTimeoutSeconds = 5;
+
     private static string ToFileUri(string path) => "file:///" + path.Replace("\\", "/");
 
     private static readonly string ExeDir =
@@ -38,10 +41,10 @@ public static class NotificationService
             ?? System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "";
 
     // ===== トースト通知画像の一時ダウンロード =====
-    // ディスクへの永続保存（指示書053）を避けつつ、パッケージ化されていないアプリでは
+    // 画像はディスクに永続保存しない方針だが、パッケージ化されていないアプリでは
     // トースト通知が https:// のリモート画像を読み込めないため、表示直前だけ一時フォルダへ書き出す
     private static readonly System.Net.Http.HttpClient _toastImageHttp =
-        new() { Timeout = TimeSpan.FromSeconds(5) };
+        new() { Timeout = TimeSpan.FromSeconds(ToastImageDownloadTimeoutSeconds) };
 
     private static readonly string ToastTempImageDir =
         Path.Combine(Path.GetTempPath(), DirToastTempImages);
@@ -80,6 +83,9 @@ public static class NotificationService
     private const uint FLASHW_TRAY    = 2;
     private const uint FLASHW_TIMERNOFG = 12;
 
+    /// <summary>タスクバーの点滅回数</summary>
+    private const uint FlashTaskbarCount = 3;
+
     [DllImport("user32.dll")]
     private static extern bool FlashWindowEx(ref FLASHWINFO pfwi);
 
@@ -94,7 +100,7 @@ public static class NotificationService
             cbSize    = (uint)Marshal.SizeOf<FLASHWINFO>(),
             hwnd      = hwnd,
             dwFlags   = FLASHW_TRAY | FLASHW_TIMERNOFG,
-            uCount    = 3,
+            uCount    = FlashTaskbarCount,
             dwTimeout = 0
         };
         FlashWindowEx(ref info);

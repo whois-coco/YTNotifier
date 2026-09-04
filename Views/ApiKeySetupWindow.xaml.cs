@@ -38,6 +38,9 @@ public partial class ApiKeySetupWindow : Window
     /// <summary>APIキー有効性テスト用の固定チャンネルID（日本のYouTube公式チャンネル）</summary>
     private const string ApiKeyTestChannelId = "UCrXUsMBcfTVqwAS7DKg9C0Q";
 
+    /// <summary>手順画像ダウンロードのタイムアウト（秒）</summary>
+    private const int StepImageDownloadTimeoutSeconds = 10;
+
     private const int KeyInputStepIndex   = ApiKeySetupStepCount - 1;
 
     private static readonly string[] _stepDescriptions =
@@ -85,7 +88,7 @@ public partial class ApiKeySetupWindow : Window
     };
 
     private static readonly System.Net.Http.HttpClient _http =
-        new() { Timeout = TimeSpan.FromSeconds(10) };
+        new() { Timeout = TimeSpan.FromSeconds(StepImageDownloadTimeoutSeconds) };
 
     private int _currentStep = IntroStepIndex;
     private readonly BitmapImage?[] _stepImages = new BitmapImage?[StepByStepImageCount];

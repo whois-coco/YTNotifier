@@ -165,9 +165,25 @@
                                 <Border Grid.Column="1" CornerRadius="2"
                                         Padding="5,1" Margin="0,0,6,0"
                                         VerticalAlignment="Top">
-                                    <Border.Background>
-                                        <SolidColorBrush Color="{Binding LevelColor, Mode=OneWay}"/>
-                                    </Border.Background>
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{DynamicResource LogLevelInfoBrush}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Level, Mode=OneWay}" Value="System">
+                                                    <Setter Property="Background" Value="{DynamicResource LogLevelSystemBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Level, Mode=OneWay}" Value="Warning">
+                                                    <Setter Property="Background" Value="{DynamicResource LogLevelWarningBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Level, Mode=OneWay}" Value="Error">
+                                                    <Setter Property="Background" Value="{DynamicResource LogLevelErrorBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Level, Mode=OneWay}" Value="Debug">
+                                                    <Setter Property="Background" Value="{DynamicResource LogLevelDebugBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
                                     <TextBlock Text="{Binding LevelText, Mode=OneWay}"
                                                FontSize="9" FontWeight="Bold"
                                                Foreground="White"

@@ -27,6 +27,20 @@ public partial class VideoListPopupWindow : Window
     /// <summary>ライブ配信中（配信終了していない）の動画時間バッジに表示する文言</summary>
     private const string LiveBadgeText = "LIVE";
 
+    private const double CardCornerRadius   = 4;   // 動画カードの角丸
+    private const double CardBorderThickness = 1;
+    private const double BadgeCornerRadius  = 3;   // ライブ／種別バッジの角丸
+    private const double TitleFontSize      = 13;  // 動画タイトル
+    private const double MetaFontSize       = 11;  // 補足情報
+    private const double BadgeFontSize      = 10;  // バッジ内の文字
+
+    private static readonly Thickness CardPadding    = new(10);
+    private static readonly Thickness BadgePadding   = new(4, 1, 4, 1);
+    private static readonly Thickness DurationMargin = new(0, 0, 4, 4);
+    private static readonly Thickness BadgeMargin    = new(0, 0, 6, 0);
+    private static readonly Thickness MetaRowMargin  = new(0, 0, 0, 3);
+    private static readonly Thickness InfoPanelMargin = new(10, 0, 0, 0);
+
     private readonly ChannelInfo _channel;
     private readonly VideoKind   _kind;
     private readonly bool        _allowSummary;
@@ -47,7 +61,7 @@ public partial class VideoListPopupWindow : Window
             var titleText = new TextBlock
             {
                 Text = entry.Title,
-                FontSize = 13,
+                FontSize = TitleFontSize,
                 TextWrapping = TextWrapping.Wrap,
                 Cursor = Cursors.Hand,
                 Margin = new Thickness(0, 0, 0, RowBottomMargin),
@@ -88,7 +102,7 @@ public partial class VideoListPopupWindow : Window
         var thumbnailImage = new Image { Stretch = Stretch.UniformToFill };
         var thumbnailBorder = new Border
         {
-            CornerRadius = new CornerRadius(4),
+            CornerRadius = new CornerRadius(CardCornerRadius),
             ClipToBounds = true,
             Background   = (Brush)TryFindResource("SurfaceElevatedBrush"),
             Child         = thumbnailImage
@@ -104,15 +118,15 @@ public partial class VideoListPopupWindow : Window
             var durationBadge = new Border
             {
                 Background          = (Brush)TryFindResource("SidebarBrush"),
-                CornerRadius         = new CornerRadius(3),
-                Padding              = new Thickness(4, 1, 4, 1),
-                Margin               = new Thickness(0, 0, 4, 4),
+                CornerRadius         = new CornerRadius(BadgeCornerRadius),
+                Padding              = BadgePadding,
+                Margin               = DurationMargin,
                 HorizontalAlignment  = System.Windows.HorizontalAlignment.Right,
                 VerticalAlignment    = VerticalAlignment.Bottom,
                 Child = new TextBlock
                 {
                     Text       = durationLabel,
-                    FontSize   = 10,
+                    FontSize   = BadgeFontSize,
                     Foreground = (Brush)TryFindResource("SidebarTextBrush")
                 }
             };
@@ -129,14 +143,14 @@ public partial class VideoListPopupWindow : Window
         };
         var kindPill = new Border
         {
-            CornerRadius = new CornerRadius(3),
-            Padding      = new Thickness(4, 1, 4, 1),
-            Margin       = new Thickness(0, 0, 6, 0),
+            CornerRadius = new CornerRadius(BadgeCornerRadius),
+            Padding      = BadgePadding,
+            Margin       = BadgeMargin,
             Background   = (Brush)TryFindResource(pillBgKey),
             Child = new TextBlock
             {
                 Text       = pillLabel,
-                FontSize   = 11,
+                FontSize   = MetaFontSize,
                 Foreground = (Brush)TryFindResource(pillFgKey)
             }
         };
@@ -144,24 +158,24 @@ public partial class VideoListPopupWindow : Window
         var elapsedText = new TextBlock
         {
             Text                = FormatElapsed(entry.PublishedAt),
-            FontSize            = 11,
+            FontSize            = MetaFontSize,
             VerticalAlignment   = VerticalAlignment.Center,
             Foreground          = (Brush)TryFindResource("TextSecondaryBrush")
         };
 
-        var metaRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 3) };
+        var metaRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = MetaRowMargin };
         metaRow.Children.Add(kindPill);
         metaRow.Children.Add(elapsedText);
 
         var titleText = new TextBlock
         {
             Text         = entry.Title,
-            FontSize     = 13,
+            FontSize     = TitleFontSize,
             TextWrapping = TextWrapping.Wrap,
             Foreground   = (Brush)TryFindResource("TextPrimaryBrush")
         };
 
-        var infoPanel = new StackPanel { Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var infoPanel = new StackPanel { Margin = InfoPanelMargin, VerticalAlignment = VerticalAlignment.Center };
         infoPanel.Children.Add(metaRow);
         infoPanel.Children.Add(titleText);
 
@@ -189,9 +203,9 @@ public partial class VideoListPopupWindow : Window
 
         var card = new Border
         {
-            CornerRadius    = new CornerRadius(4),
-            BorderThickness = new Thickness(1),
-            Padding         = new Thickness(10),
+            CornerRadius    = new CornerRadius(CardCornerRadius),
+            BorderThickness = new Thickness(CardBorderThickness),
+            Padding         = CardPadding,
             Margin          = new Thickness(0, 0, 0, RowBottomMargin),
             Background      = (Brush)TryFindResource("SurfaceElevatedBrush"),
             BorderBrush     = (Brush)TryFindResource("BorderBrush"),

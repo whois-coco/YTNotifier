@@ -1,8 +1,11 @@
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using YTNotifier.Constants;
 using YTNotifier.Models;
+using YTNotifier.Plugin;
 using YTNotifier.Services;
 
 namespace YTNotifier.Views;
@@ -139,33 +142,28 @@ public partial class VideoSummaryPopupWindow : Window
         SummaryStatusText.Text       = "要約中...";
         SummaryStatusText.Visibility = Visibility.Visible;
 
-        if (SummaryScriptService.IsAvailable)
+        if (PluginBridge.Instance.IsJobAvailable(PluginProtocol.Jobs.Summary))
         {
-            AppLogger.Log(LogMsg.SummaryScriptRequested, null, _videoId);
-            var scriptVideoUrl = $"{YouTubeConstants.WatchUrlBase}{_videoId}";
-            var scripted       = await SummaryScriptService.TrySummarizeAsync(scriptVideoUrl, apiKey);
-            if (scripted != null && !string.IsNullOrEmpty(scripted.Headline))
+            var pluginVideoUrl = $"{YouTubeConstants.WatchUrlBase}{_videoId}";
+            var pluginInput    = new JObject
             {
-                ShowSummaryResult(scripted.Headline, scripted.Detail);
-                return;
+                [PluginProtocol.Jobs.SummaryInputVideoUrl] = pluginVideoUrl,
+            }.ToString(Formatting.None);
+
+            var pluginOutput = await PluginBridge.Instance.InvokeAsync(PluginProtocol.Jobs.Summary, pluginInput);
+            if (pluginOutput != null)
+            {
+                var pluginEntry = JsonConvert.DeserializeObject<GeminiSummaryEntry>(pluginOutput);
+                if (pluginEntry != null && !string.IsNullOrEmpty(pluginEntry.Headline))
+                {
+                    ShowSummaryResult(pluginEntry.Headline, pluginEntry.Detail);
+                    return;
+                }
             }
-            // scripted == null（スクリプト実行失敗）の場合は下の DLL 経路・既存ロジックへフォールバックする
+            // 失敗・未導入の場合は下の既存ロジックへフォールバックする
         }
 
-        if (ExternalSummaryBridge.IsAvailable)
-        {
-            AppLogger.Log(LogMsg.ExternalSummaryBridgeRequested, null, _videoId);
-            var videoUrl = $"{YouTubeConstants.WatchUrlBase}{_videoId}";
-            var bridged  = await ExternalSummaryBridge.TrySummarizeAsync(_videoId, videoUrl, apiKey);
-            if (bridged != null && !string.IsNullOrEmpty(bridged.Headline))
-            {
-                ShowSummaryResult(bridged.Headline, bridged.Detail);
-                return;
-            }
-            // bridged == null（DLL呼び出し失敗）の場合は下の既存ロジックへフォールバックする
-        }
-
-        // 既存ロジック（DLL未導入、またはバイパス失敗時のフォールバック）
+        // 既存ロジック（プラグイン未導入、またはプラグインでの要約失敗時のフォールバック）
         var result = await GeminiSummaryService.SummarizeVideoAsync(apiKey, _videoId,
             onChunk: partialText => SummaryStatusText.Text = "要約中...\n" + partialText);
 

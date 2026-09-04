@@ -52,6 +52,31 @@ public partial class MainWindow : System.Windows.Window
     /// <summary>カテゴリ開閉アニメーションの実行中フラグ（多重クリック抑止）</summary>
     private bool _categoryToggleAnimating = false;
 
+    private const double CategoryHeaderCornerRadius = 4;   // カテゴリ見出しの角丸
+    private const double CategoryArrowFontSize      = 9;   // 開閉の▶▼
+    private const double CategoryNameFontSize       = 11;  // カテゴリ名
+    private const double CategoryBadgeFontSize      = 13;  // 未読バッジの件数
+    private const double CategoryDimmedOpacity      = 0.4; // 対象が無いメニュー項目の薄さ
+
+    // カテゴリ名入力ダイアログ
+    private const double CategoryDialogWidth        = 360;
+    private const double CategoryDialogHeight       = 160;
+    private const double CategoryDialogCornerRadius = 6;
+    private const double CategoryDialogBorderThickness = 1;
+    private const double CategoryDialogTitleBarHeight  = 38;
+    private const double CategoryDialogTitleFontSize   = 13;
+
+    private static readonly Thickness CategoryHeaderMargin     = new(0, 3, 0, 1);
+    private static readonly Thickness CategoryArrowMargin      = new(0, 0, 6, 0);
+    private static readonly Thickness CategoryBadgePadding     = new(5, 0, 5, 0);
+    private static readonly Thickness CategoryBadgeMargin      = new(6, 0, 0, 0);
+    private static readonly Thickness CategoryHeaderPadding    = new(8, 0, 8, 0);
+    private static readonly Thickness CategoryDialogTitleMargin = new(16, 0, 0, 0);
+    private static readonly Thickness CategoryDialogInputMargin = new(0, 0, 0, 12);
+    private static readonly Thickness CategoryDialogButtonPadding = new(14, 7, 14, 7);
+    private static readonly Thickness CategoryDialogCancelMargin  = new(0, 0, 8, 0);
+    private static readonly Thickness CategoryDialogContentMargin = new(16, 12, 16, 16);
+
     // ===== カテゴリ行の共通ヘッダー生成 =====
     private Border CreateGroupHeaderRow(string label, int unreadCount, bool isCollapsed, object tag)
     {
@@ -60,9 +85,9 @@ public partial class MainWindow : System.Windows.Window
         var row = new Border
         {
             Height              = rowHeight,
-            Margin              = new Thickness(0, 3, 0, 1),
+            Margin              = CategoryHeaderMargin,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            CornerRadius        = new CornerRadius(4),
+            CornerRadius        = new CornerRadius(CategoryHeaderCornerRadius),
             Cursor              = Cursors.Hand,
             Tag                 = tag
         };
@@ -71,16 +96,16 @@ public partial class MainWindow : System.Windows.Window
         var arrow = new TextBlock
         {
             Text              = isCollapsed ? "▶" : "▼",
-            FontSize          = 9,
+            FontSize          = CategoryArrowFontSize,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin            = new Thickness(0, 0, 6, 0)
+            Margin            = CategoryArrowMargin
         };
         SetDynamicBrush(arrow, TextBlock.ForegroundProperty, "TextMutedBrush");
 
         var nameText = new TextBlock
         {
             Text              = label,
-            FontSize          = 11,
+            FontSize          = CategoryNameFontSize,
             FontWeight        = FontWeights.Bold,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -89,7 +114,7 @@ public partial class MainWindow : System.Windows.Window
         var badgeText = new TextBlock
         {
             Text                = unreadCount.ToString(),
-            FontSize            = 13,
+            FontSize            = CategoryBadgeFontSize,
             FontWeight          = FontWeights.Bold,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment   = VerticalAlignment.Center,
@@ -102,8 +127,8 @@ public partial class MainWindow : System.Windows.Window
             CornerRadius        = new CornerRadius(CategoryBadgeSize / 2),
             Height              = CategoryBadgeSize,
             MinWidth            = CategoryBadgeSize,
-            Padding             = new Thickness(5, 0, 5, 0),
-            Margin              = new Thickness(6, 0, 0, 0),
+            Padding             = CategoryBadgePadding,
+            Margin              = CategoryBadgeMargin,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment   = VerticalAlignment.Center,
             Visibility          = unreadCount > 0 ? Visibility.Visible : Visibility.Collapsed,
@@ -115,7 +140,7 @@ public partial class MainWindow : System.Windows.Window
         {
             Orientation       = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin            = new Thickness(8, 0, 8, 0),
+            Margin            = CategoryHeaderPadding,
             Children          = { arrow, nameText, badge }
         };
         return row;
@@ -162,7 +187,7 @@ public partial class MainWindow : System.Windows.Window
             var hasUnread = SettingsService.Instance.Channels
                 .Any(c => string.IsNullOrEmpty(c.CategoryId) && c.HasUnread);
             clearNewItem.IsEnabled = hasUnread;
-            clearNewItem.Opacity   = hasUnread ? 1.0 : 0.4;
+            clearNewItem.Opacity   = hasUnread ? 1.0 : CategoryDimmedOpacity;
         };
 
         return menu;
@@ -210,24 +235,24 @@ public partial class MainWindow : System.Windows.Window
     {
         var dialog = new Window
         {
-            Width = 360, Height = 160, MinWidth = 360, MaxWidth = 360, MinHeight = 160, MaxHeight = 160,
+            Width = CategoryDialogWidth, Height = CategoryDialogHeight, MinWidth = CategoryDialogWidth, MaxWidth = CategoryDialogWidth, MinHeight = CategoryDialogHeight, MaxHeight = CategoryDialogHeight,
             WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize,
             Background = System.Windows.Media.Brushes.Transparent, AllowsTransparency = true,
             WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = this, ShowInTaskbar = false,
         };
 
-        var root = new Border { CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1) };
+        var root = new Border { CornerRadius = new CornerRadius(CategoryDialogCornerRadius), BorderThickness = new Thickness(CategoryDialogBorderThickness) };
         SetDynamicBrush(root, Border.BackgroundProperty,  "SurfaceBrush");
         SetDynamicBrush(root, Border.BorderBrushProperty, "BorderBrush");
 
-        var titleBar = new Border { Height = 38, Cursor = Cursors.SizeAll };
+        var titleBar = new Border { Height = CategoryDialogTitleBarHeight, Cursor = Cursors.SizeAll };
         SetDynamicBrush(titleBar, Border.BackgroundProperty, "SidebarBrush");
         titleBar.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) dialog.DragMove(); };
-        var titleText = new TextBlock { Text = title, FontSize = 13, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
+        var titleText = new TextBlock { Text = title, FontSize = CategoryDialogTitleFontSize, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = CategoryDialogTitleMargin };
         SetDynamicBrush(titleText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
         titleBar.Child = titleText;
 
-        var inputBox = new TextBox { Text = defaultValue, Margin = new Thickness(0, 0, 0, 12) };
+        var inputBox = new TextBox { Text = defaultValue, Margin = CategoryDialogInputMargin };
         inputBox.Style = (Style)Application.Current.Resources["ModernTextBox"];
 
         var btnRow = new Grid();
@@ -235,12 +260,12 @@ public partial class MainWindow : System.Windows.Window
         btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var cancelBtn = new Button { Content = "キャンセル", Padding = new Thickness(14, 7, 14, 7), Margin = new Thickness(0, 0, 8, 0) };
+        var cancelBtn = new Button { Content = "キャンセル", Padding = CategoryDialogButtonPadding, Margin = CategoryDialogCancelMargin };
         cancelBtn.Style = (Style)Application.Current.Resources["SecondaryButton"];
         cancelBtn.Click += (_, _) => { dialog.DialogResult = false; dialog.Close(); };
         Grid.SetColumn(cancelBtn, 1);
 
-        var okBtn = new Button { Content = "OK", Padding = new Thickness(14, 7, 14, 7) };
+        var okBtn = new Button { Content = "OK", Padding = CategoryDialogButtonPadding };
         okBtn.Style = (Style)Application.Current.Resources["PrimaryButton"];
         okBtn.Click += (_, _) => { dialog.DialogResult = true; dialog.Close(); };
         Grid.SetColumn(okBtn, 2);
@@ -252,7 +277,7 @@ public partial class MainWindow : System.Windows.Window
         };
 
         btnRow.Children.Add(cancelBtn); btnRow.Children.Add(okBtn);
-        var content = new StackPanel { Margin = new Thickness(16, 12, 16, 16), Children = { inputBox, btnRow } };
+        var content = new StackPanel { Margin = CategoryDialogContentMargin, Children = { inputBox, btnRow } };
         root.Child = new StackPanel { Children = { titleBar, content } };
         dialog.Content = root;
 
@@ -330,7 +355,7 @@ public partial class MainWindow : System.Windows.Window
         {
             var hasUnread = SettingsService.Instance.Channels
                 .Any(c => c.CategoryId == cat.CategoryId && c.HasUnread);
-            clearNewItem.IsEnabled = hasUnread; clearNewItem.Opacity = hasUnread ? 1.0 : 0.4;
+            clearNewItem.IsEnabled = hasUnread; clearNewItem.Opacity = hasUnread ? 1.0 : CategoryDimmedOpacity;
             expandAllItem.IsEnabled   = true; expandAllItem.Opacity   = 1.0;
             collapseAllItem.IsEnabled = true; collapseAllItem.Opacity = 1.0;
             renameItem.Visibility  = _editMode ? Visibility.Visible : Visibility.Collapsed;

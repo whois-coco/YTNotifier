@@ -47,6 +47,7 @@ public enum LogMsg
     QuotaRiskAdjusted         = 3005,  // {0}=minutes
     QuotaExceeded             = 3007,  // {0}=resumeTime
     QuotaResumed              = 3008,
+    QuotaStillSuspended       = 3009,  // {0}=resumeTime
     // その他
     AutoRestored              = 3001,  // {0}=reason
     InvalidChannelId          = 3006,  // {0}=channelId
@@ -66,10 +67,13 @@ public enum LogMsg
     SchedulerError            = 4023,  // {0}=message
     // Gemini要約
     GeminiSummaryFailed       = 4021,  // {0}=videoId {1}=message
-    // 外部要約DLL（YTS.dll）バイパス
-    ExternalSummaryBridgeFailed = 4024,  // {0}=videoId {1}=message
-    // 要約スクリプト（Plugins）
-    SummaryScriptFailed        = 4025,  // {0}=videoId {1}=message
+    // プラグイン
+    PluginJobFailed            = 4025,  // {0}=仕事の名前 {1}=message
+    PluginHostStartFailed      = 4026,  // {0}=message
+    PluginHostExited           = 4027,  // {0}=再起動回数 {1}=上限回数
+    PluginHostVersionMismatch  = 4028,  // {0}=本体バージョン {1}=ホストバージョン
+    PluginManifestInvalid      = 4029,  // {0}=フォルダ名 {1}=理由
+    PluginJobTimeout           = 4030,  // {0}=フォルダ名 {1}=全体／無音
     // 通知
     NotifyFailed              = 4013,  // {0}=message
     TestNotifyFailed          = 4009,  // {0}=message  (MainWindow.Settings)
@@ -122,7 +126,7 @@ public enum LogMsg
     // 通知テスト
     TestNotifySent            = 5011,
     // 設定変更
-    SettingDarkMode            = 5026,  // {0}=ON/OFF
+    SettingWindowColor         = 5026,  // {0}=色名
     SettingNoCategoryMode      = 5027,  // {0}=ON/OFF
     SettingDesktopNotification = 5028,  // {0}=ON/OFF
     SettingToastStyle          = 5029,  // {0}=style
@@ -136,6 +140,7 @@ public enum LogMsg
     SettingAlwaysOnTop         = 5036,  // {0}=ON/OFF
     SettingStartWithWindows    = 5037,  // {0}=ON/OFF
     SettingCheckInterval       = 5038,  // {0}=minutes
+    SettingAccentColor         = 5039,  // {0}=色(Hex)/"既定"
     QuotaAutoIntervalAdjusted  = 5079,  // {0}=minutes
     SettingTraceLogEnabled     = 5129,  // {0}=ON/OFF
     SettingAutoCleanLogs       = 5040,  // {0}=ON/OFF
@@ -217,12 +222,14 @@ public enum LogMsg
     RecentUploadThumbnailOpened       = 5134,  // {0}=channelName
     GeminiSummaryRequested            = 5110,  // {0}=videoId
     GeminiSummarySucceeded            = 5112,  // {0}=videoId
-    ExternalSummaryBridgeRequested     = 5133,  // {0}=videoId
-    // 要約スクリプト（Plugins）
-    SummaryScriptRequested             = 5135,  // {0}=videoId
-    SummaryScriptLog                   = 5136,  // {0}=スクリプトから渡されたメッセージ
     // プラグイン
-    PluginDetected                     = 5137,  // {0}=プラグインのパス {1}=最終更新日時
+    PluginJobRequested                 = 5135,  // {0}=仕事の名前 {1}=フォルダ名
+    PluginLog                          = 5136,  // {0}=フォルダ名 {1}=メッセージ
+    PluginDetected                     = 5137,  // {0}=表示名 {1}=フォルダ名
+    PluginHostStarted                  = 5139,  // {0}=プラグイン件数
+    PluginEnabledChanged               = 5140,  // {0}=表示名 {1}=有効／無効
+    PluginJobOrderChanged              = 5141,  // {0}=仕事の名前
+    PluginInvokeError                  = 5142,  // {0}=仕事の名前 {1}=message
     // APIキーウィンドウ
     ApiKeyEditStarted          = 5067,
     ApiKeyChanged              = 5068,
@@ -259,12 +266,14 @@ public static class AppLogger
         [LogMsg.AutoLogDeleted]            = new(LogLevel.System,  LogCategory.Log,          "起動時ログ自動削除: {0}件"),
         // クォータ
         [LogMsg.QuotaResumed]              = new(LogLevel.System,  LogCategory.Quota,        "APIクォータをリセットしました。監視を再開します。"),
+        [LogMsg.QuotaStillSuspended]       = new(LogLevel.System,  LogCategory.Quota,        "APIクォータ超過のため監視は停止中です（{0} に再開予定）。"),
         // 設定
         [LogMsg.SettingTraceLogEnabled]    = new(LogLevel.Debug,   LogCategory.Settings,     "トレースログの取得: {0}"),
         [LogMsg.SettingBackupExported]      = new(LogLevel.System,  LogCategory.Settings,     "バックアップをエクスポートしました: {0}"),
         [LogMsg.SettingBackupImported]      = new(LogLevel.System,  LogCategory.Settings,     "バックアップをインポートしました: {0}"),
         // プラグイン
-        [LogMsg.PluginDetected]             = new(LogLevel.System,  LogCategory.Startup,      "プラグインを検出しました: {0}（最終更新 {1}）"),
+        [LogMsg.PluginDetected]             = new(LogLevel.System,  LogCategory.Startup,      "プラグインを検出しました: {0}（{1}）"),
+        [LogMsg.PluginHostStarted]          = new(LogLevel.System,  LogCategory.Startup,      "プラグインホストを起動しました（{0}件のプラグイン）"),
 
         // INFO ────────────────────────────────────────────────────────
         // 監視・通知
@@ -321,10 +330,13 @@ public static class AppLogger
         [LogMsg.SchedulerError]            = new(LogLevel.Error,   LogCategory.VideoFilter,  "スケジューラーエラー: {0}"),
         // Gemini要約
         [LogMsg.GeminiSummaryFailed]       = new(LogLevel.Error,   LogCategory.VideoSummaryPopup, "Gemini要約失敗({0}): {1}"),
-        // 外部要約DLL（YTS.dll）バイパス
-        [LogMsg.ExternalSummaryBridgeFailed] = new(LogLevel.Error, LogCategory.VideoSummaryPopup, "YTS.dll要約失敗、既存ロジックへフォールバック({0}): {1}"),
-        // 要約スクリプト（Plugins）
-        [LogMsg.SummaryScriptFailed]         = new(LogLevel.Error, LogCategory.VideoSummaryPopup, "Pluginsスクリプト要約失敗、既存ロジックへフォールバック({0}): {1}"),
+        // プラグイン
+        [LogMsg.PluginJobFailed]            = new(LogLevel.Debug,  LogCategory.VideoSummaryPopup, "プラグイン処理に失敗しました({0}): {1}"),
+        [LogMsg.PluginHostStartFailed]      = new(LogLevel.Error,  LogCategory.Startup,           "プラグインホストの起動に失敗しました: {0}"),
+        [LogMsg.PluginHostExited]           = new(LogLevel.Error,  LogCategory.Startup,           "プラグインホストが終了しました（再起動 {0}回目/{1}回まで）"),
+        [LogMsg.PluginHostVersionMismatch]  = new(LogLevel.Error,  LogCategory.Startup,           "PluginHost.exe が本体と一致しないため使用しません（本体 {0} / ホスト {1}）"),
+        [LogMsg.PluginManifestInvalid]      = new(LogLevel.Error,  LogCategory.Startup,           "plugin.json を読み込めませんでした: {0}（{1}）"),
+        [LogMsg.PluginJobTimeout]           = new(LogLevel.Error,  LogCategory.VideoSummaryPopup, "プラグイン処理が時間切れになりました: {0}（{1}）"),
         // 通知
         [LogMsg.NotifyFailed]              = new(LogLevel.Error,   LogCategory.Notification, "通知送信失敗: {0}"),
         [LogMsg.TestNotifyFailed]          = new(LogLevel.Error,   LogCategory.Notification, "テスト通知失敗: {0}"),
@@ -381,7 +393,7 @@ public static class AppLogger
         // バックアップ
         [LogMsg.BackupSaved]               = new(LogLevel.Debug,   LogCategory.Backup,       "自動バックアップを保存しました"),
         // 設定変更
-        [LogMsg.SettingDarkMode]            = new(LogLevel.Debug,   LogCategory.Settings,     "ダークモード: {0}"),
+        [LogMsg.SettingWindowColor]         = new(LogLevel.Debug,   LogCategory.Settings,     "ウィンドウ色: {0}"),
         [LogMsg.SettingNoCategoryMode]      = new(LogLevel.Debug,   LogCategory.Settings,     "カテゴリなし表示: {0}"),
         [LogMsg.SettingDesktopNotification] = new(LogLevel.Debug,   LogCategory.Settings,     "デスクトップ通知: {0}"),
         [LogMsg.SettingToastStyle]          = new(LogLevel.Debug,   LogCategory.Settings,     "通知スタイル変更: {0}"),
@@ -395,6 +407,7 @@ public static class AppLogger
         [LogMsg.SettingAlwaysOnTop]         = new(LogLevel.Debug,   LogCategory.Settings,     "ピン留め: {0}"),
         [LogMsg.SettingStartWithWindows]    = new(LogLevel.Debug,   LogCategory.Settings,     "スタートアップ起動: {0}"),
         [LogMsg.SettingCheckInterval]       = new(LogLevel.Debug,   LogCategory.Settings,     "チェック間隔変更: {0}分"),
+        [LogMsg.SettingAccentColor]        = new(LogLevel.Debug,   LogCategory.Settings,     "差し色: {0}"),
         [LogMsg.SettingAutoCleanLogs]       = new(LogLevel.Debug,   LogCategory.Settings,     "自動ログ削除: {0}"),
         [LogMsg.SettingLogRetention]        = new(LogLevel.Debug,   LogCategory.Settings,     "ログ保持期間変更: {0}日"),
         // チャンネル一覧・編集
@@ -466,10 +479,12 @@ public static class AppLogger
         [LogMsg.VideoListPopupOpened]              = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "動画一覧ポップアップを開きました: {0}（{1}件）"),
         [LogMsg.GeminiSummaryRequested]            = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約リクエスト送信: {0}"),
         [LogMsg.GeminiSummarySucceeded]             = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約成功: {0}"),
-        [LogMsg.ExternalSummaryBridgeRequested]     = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "YTS.dll経由で要約リクエスト送信: {0}"),
-        // 要約スクリプト（Plugins）
-        [LogMsg.SummaryScriptRequested]              = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Pluginsスクリプト経由で要約リクエスト送信: {0}"),
-        [LogMsg.SummaryScriptLog]                    = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Pluginsスクリプトログ: {0}"),
+        // プラグイン
+        [LogMsg.PluginJobRequested]                  = new(LogLevel.Info,    LogCategory.VideoSummaryPopup,   "プラグインへ仕事を依頼しました: {0}（{1}）"),
+        [LogMsg.PluginLog]                           = new(LogLevel.Info,    LogCategory.VideoSummaryPopup,   "プラグインログ[{0}]: {1}"),
+        [LogMsg.PluginInvokeError]                   = new(LogLevel.Info,    LogCategory.VideoSummaryPopup,   "プラグイン処理でエラーが発生しました({0}): {1}"),
+        [LogMsg.PluginEnabledChanged]                = new(LogLevel.Debug,   LogCategory.Startup,             "プラグイン「{0}」を{1}にしました"),
+        [LogMsg.PluginJobOrderChanged]               = new(LogLevel.Debug,   LogCategory.Startup,             "プラグインの優先順位を変更しました: {0}"),
         [LogMsg.ChannelDetailTabSwitched]   = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "詳細設定タブ切替: {0}"),
         [LogMsg.ChannelDetailEnabledChanged]= new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "詳細設定 有効/無効: {1} → {2}"),
         // APIキーウィンドウ

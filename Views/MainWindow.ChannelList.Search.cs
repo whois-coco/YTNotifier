@@ -48,6 +48,9 @@ public partial class MainWindow : System.Windows.Window
 
     /// <summary>検索ボックス縮小時の幅</summary>
     private const double SearchBoxCollapsedWidth = 32;
+
+    /// <summary>検索ボックス展開時の枠線の太さ</summary>
+    private const double SearchBoxBorderThickness = 1;
     /// <summary>検索ボックス開閉アニメーションの時間（ミリ秒）</summary>
     private const int SearchAnimateDurationMs = 200;
 
@@ -163,7 +166,7 @@ public partial class MainWindow : System.Windows.Window
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         ui.Border.BeginAnimation(FrameworkElement.WidthProperty, anim);
-        ui.Border.BorderThickness = expand ? new Thickness(1) : new Thickness(0);
+        ui.Border.BorderThickness = expand ? new Thickness(SearchBoxBorderThickness) : new Thickness(0);
         if (expand)
             SetDynamicBrush(ui.Border, Border.BackgroundProperty, "SurfaceBrush");
         else

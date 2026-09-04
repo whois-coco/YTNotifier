@@ -42,6 +42,24 @@ public class MonitorService : IDisposable
     /// <summary>スケジューラーで想定外エラーが発生した際の再試行待機時間（秒）</summary>
     private const int SchedulerErrorRetryDelaySeconds = 30;
 
+    /// <summary>クォータ超過による監視停止・再開予定時刻のログ表示フォーマット</summary>
+    private const string QuotaResumeTimeFormat = "M/d HH:mm";
+
+    /// <summary>次のタイマー起動を毎分何秒に合わせるか（:01 秒）</summary>
+    private const int AlignedTickSecond = 1;
+
+    /// <summary>1分の秒数</summary>
+    private const int SecondsPerMinute = 60;
+
+    /// <summary>クォータリセットから何分後に定時全巡回を始めるか</summary>
+    private const int DailyFullScanDelayMinutes = 1;
+
+    /// <summary>時間指定スロットで間隔0＝30秒を意味する</summary>
+    private const int FocusSlotFastIntervalSeconds = 30;
+
+    /// <summary>次の時間指定枠を今日から何日先まで探すか</summary>
+    private const int NextFocusWindowSearchDays = 8;
+
     private static readonly TimeZoneInfo _pacificTz =
         TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
 
@@ -100,8 +118,8 @@ public class MonitorService : IDisposable
     /// <summary>次の :01 秒までの遅延を計算する（最大60秒・遅延最小化）</summary>
     private static TimeSpan CalcAlignedDelay()
     {
-        var sec = 61 - DateTime.Now.Second;
-        if (sec > 60) sec -= 60;
+        var sec = SecondsPerMinute + AlignedTickSecond - DateTime.Now.Second;
+        if (sec > SecondsPerMinute) sec -= SecondsPerMinute;
         return TimeSpan.FromSeconds(sec);
     }
 
@@ -125,9 +143,23 @@ public class MonitorService : IDisposable
         var isNewDay = settings.LastStartupCheckDate != today;
         _startupIsNewDay = isNewDay;
 
+        // クォータ超過による監視停止を再起動後も維持する（007）
+        var quotaResumeAt  = SettingsService.Instance.AppState.QuotaSuspendedUntil;
+        var quotaSuspended = quotaResumeAt.HasValue && now < quotaResumeAt.Value;
+        if (quotaSuspended)
+        {
+            lock (_quotaLock) _quotaSuspendedUntil = quotaResumeAt;
+        }
+        else if (quotaResumeAt.HasValue)
+        {
+            SettingsService.Instance.PersistQuotaSuspension(null); // 期限切れ → 破棄
+        }
+
         foreach (var ch in SettingsService.Instance.GetEnabledChannelsSnapshot())
         {
-            if (isNewDay)
+            if (quotaSuspended)
+                ch.NextCheckAt = quotaResumeAt!.Value;
+            else if (isNewDay)
                 ch.NextCheckAt = DateTime.MinValue;
             else if (ch.NextCheckAt == DateTime.MinValue)
                 ch.NextCheckAt = CalcNextCheckAt(ch);
@@ -155,7 +187,9 @@ public class MonitorService : IDisposable
         oldCts.Dispose();
         _schedulerTask = Task.Run(RunUpcomingSchedulerAsync);
         AppLogger.Log(LogMsg.MonitorStarted, null, AppConstants.AppVersion);
-        StatusChanged?.Invoke(true);
+        if (quotaSuspended)
+            AppLogger.Log(LogMsg.QuotaStillSuspended, null, quotaResumeAt!.Value.ToString(QuotaResumeTimeFormat));
+        StatusChanged?.Invoke(!quotaSuspended);
     }
 
     public void Stop()
@@ -360,6 +394,7 @@ public class MonitorService : IDisposable
             }
             if (resumed)
             {
+                SettingsService.Instance.PersistQuotaSuspension(null);
                 AppLogger.Log(LogMsg.QuotaResumed);
                 StatusChanged?.Invoke(true); // 再開を UI に通知
             }
@@ -367,7 +402,7 @@ public class MonitorService : IDisposable
 
             // 定時全巡回（クォータリセット＋1分以降の最初のチェックで実行、起動時チェック中を除く、太平洋時間基準で1日1回）
             var pacificDayKey   = AppConstants.GetQuotaDayKey();
-            var triggerTime     = GetTodayQuotaResetTime().AddMinutes(1);
+            var triggerTime     = GetTodayQuotaResetTime().AddMinutes(DailyFullScanDelayMinutes);
             var isDailyFullScan = false;
             if (now >= triggerTime
                 && !_isStartupCheck
@@ -473,6 +508,10 @@ public class MonitorService : IDisposable
         {
             channel.LastCheckedAt = DateTime.Now;
 
+            // このチェックで消費する API ユニットの計上カテゴリ（既定＝通常巡回）。
+            // PrepareChannelAsync 内の初回 Channels.list はこの時点の値（Normal）で計上される。
+            SettingsService.CurrentApiUnitCategory = ApiUnitCategory.Normal;
+
             List<VideoInfo> videos;
             List<VideoInfo> pendingTransitioned;
             List<VideoInfo> allScanned;
@@ -482,6 +521,8 @@ public class MonitorService : IDisposable
             var debugSvc = !string.IsNullOrEmpty(channel.TestDataPath)
                 ? DebugServiceLoader.GetService()
                 : null;
+
+            var pendingIds = new List<string>();
 
             if (debugSvc != null)
             {
@@ -496,18 +537,25 @@ public class MonitorService : IDisposable
                 await PrepareChannelAsync(channel);
                 ActivateGracePeriods(channel);
 
-                List<string> pendingIds;
                 lock (_pendingListLock)
+                {
                     pendingIds = channel.PendingLives.Select(p => p.VideoId)
                         .Concat(channel.PendingPremieres.Select(p => p.VideoId))
                         .Concat(channel.ActiveLives.Select(p => p.VideoId))
                         .Concat(channel.ActivePremieres.Select(p => p.VideoId))
                         .ToList();
 
+                    if (channel.ActiveLives.Count > 0 || channel.ActivePremieres.Count > 0)
+                        SettingsService.CurrentApiUnitCategory = ApiUnitCategory.LiveStatus;
+                    else if (channel.PendingLives.Count > 0 || channel.PendingPremieres.Count > 0)
+                        SettingsService.CurrentApiUnitCategory = ApiUnitCategory.PendingTrack;
+                }
+
                 (videos, pendingTransitioned, allScanned, allScannedBasic, playlistEmpty) = await _youtubeClient.CheckLatestVideosAsync(
                     channel.ChannelId, channel.LastCheckedVideoId,
                     channel.UploadsPlaylistId, pendingIds,
-                    lastVideoPublishedAt: channel.LastCheckedVideoPublishedAt);
+                    lastVideoPublishedAt: channel.LastCheckedVideoPublishedAt,
+                    videoKindCache: channel.VideoKindCache);
             }
 
             // チャンネルの最新投稿スナップショット（RecentUploads）を更新する。
@@ -526,7 +574,28 @@ public class MonitorService : IDisposable
                         PublishedAt  = v.PublishedAt
                     })
                     .ToList();
+
+                // 進行中に検出したライブ／プレミアは検出時点の動画時間が未確定（0秒→null）のため
+                // LatestDuration が空のまま残る。スキャン結果に確定値が現れたら追随して更新する。
+                // 動画時間は不変のため、確定値 → null への巻き戻しは行わない。
+                if (!string.IsNullOrEmpty(channel.LatestVideoId))
+                {
+                    var latestScanned = allScanned.FirstOrDefault(v => v.VideoId == channel.LatestVideoId);
+                    if (latestScanned?.Duration != null && latestScanned.Duration != channel.LatestDuration)
+                        channel.LatestDuration = latestScanned.Duration;
+                }
+
                 SettingsService.Instance.UpdateChannelSilent(channel);
+            }
+
+            // 種別キャッシュから、今回のスキャン結果にも追跡対象にも含まれない動画IDを削除する。
+            // allScannedBasic が空（デバッグチャンネル・問い合わせ結果なし）の場合はキャッシュを維持する
+            if (allScannedBasic.Count > 0)
+            {
+                var kindCacheKeepIds = new HashSet<string>(allScannedBasic.Select(v => v.VideoId));
+                kindCacheKeepIds.UnionWith(pendingIds);
+                foreach (var kindCacheStaleId in channel.VideoKindCache.Keys.Where(k => !kindCacheKeepIds.Contains(k)).ToList())
+                    channel.VideoKindCache.TryRemove(kindCacheStaleId, out _);
             }
 
             // 表示中の最新動画が削除・非公開になった/復帰したかの判定
@@ -1204,13 +1273,13 @@ public class MonitorService : IDisposable
                             {
                                 // IntervalMinutes == 0 は30秒間隔を意味する
                                 slotNext = slot.IntervalMinutes == 0
-                                    ? now.AddSeconds(30)
+                                    ? now.AddSeconds(FocusSlotFastIntervalSeconds)
                                     : now.AddMinutes(slot.IntervalMinutes);
                                 if (earliest == null || slotNext < earliest) earliest = slotNext;
                                 continue;
                             }
                             DateTime? nextWindow = null;
-                            for (int d = 0; d < 8; d++)
+                            for (int d = 0; d < NextFocusWindowSearchDays; d++)
                             {
                                 var date  = now.Date.AddDays(d);
                                 if (!IsSlotDayMatch(slot.Days, date)) continue;
@@ -1362,7 +1431,9 @@ public class MonitorService : IDisposable
             SettingsService.Instance.UpdateChannelSilent(ch);
         }
 
-        AppLogger.Log(LogMsg.QuotaExceeded, null, resumeAt.ToString("M/d HH:mm"));
+        SettingsService.Instance.PersistQuotaSuspension(resumeAt);
+
+        AppLogger.Log(LogMsg.QuotaExceeded, null, resumeAt.ToString(QuotaResumeTimeFormat));
 
         // UI に停止状態を通知（IsRunning は true のままなので明示的に false を送る）
         StatusChanged?.Invoke(false);

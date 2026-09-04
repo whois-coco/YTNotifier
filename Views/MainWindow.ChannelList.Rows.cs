@@ -45,13 +45,52 @@ public partial class MainWindow : System.Windows.Window
     private const int    ChannelRowHeight        = 60;
     private const int    ChannelRowHeightCompact    = 36;
 
-    /// <summary>チャンネルカードの動画タイトル表示最大文字数（超過分は省略）</summary>
-    private const int ChannelCardTitleMaxLength = 16;
     private const double ChannelRowMarginBottom  = 0;
 
-    // Short: Lucide zap
-    private const string ShortIconPath =
-        "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z";
+    /// <summary>ステータス行（種別ピル＋タイトル等）の上マージン</summary>
+    private static readonly Thickness TitleRowMargin = new(0, 2, 0, 0);
+
+    // 編集モード：種別トグルの固定色ブラシキー（定義は Themes/CommonStyles.xaml）
+    private const string KindToggleOnNormalBrushKey  = "KindToggleOnNormalBrush";
+    private const string KindToggleOnLowFreqBrushKey = "KindToggleOnLowFreqBrush";
+    private const string KindToggleOnFocusBrushKey   = "KindToggleOnFocusBrush";
+    private const string KindToggleOffBrushKey       = "KindToggleOffBrush";
+    private const string KindToggleBorderBrushKey    = "KindToggleBorderBrush";
+    private const string KindToggleIconOnBrushKey    = "KindToggleIconOnBrush";
+    private const string KindToggleIconOffBrushKey   = "KindToggleIconOffBrush";
+
+    private const double RowCornerRadius        = 4;   // チャンネル行の角丸
+    private const double RowBorderThickness     = 1;   // チャンネル行の枠線
+    private const double RowNewBarWidth         = 4;   // 未読を示す左端のバーの幅
+    private const double RowEditIconColWidth    = 18;  // 編集モード：ドラッグハンドル列
+    private const double RowEditNameColWidth    = 26;  // 編集モード：アイコン列
+    private const double RowNormalHandleColWidth = 20; // 通常モード：ドラッグハンドル列
+    private const double RowNormalIconColWidth  = 56;  // 通常モード：アイコン列
+    private const double RowEditNameFontSize    = 12;  // 編集モードのチャンネル名
+    private const double RowNameFontSize        = 13;  // 通常モードのチャンネル名・状態行
+    private const double RowSubTextFontSize     = 11;  // 補足テキスト（種別ピル・通知なし等）
+    private const double RowSubTextOpacity      = 0.7; // 補足テキストの薄さ
+    private const double RowIconSize            = 44;  // チャンネルアイコンの一辺
+    private const double RowIconSizeCompact     = 22;  // コンパクト時のチャンネルアイコンの一辺
+    private const double RowDeleteButtonSize    = 28;  // 削除ボタンの一辺
+    private const double RowDeleteIconSize      = 15;  // 削除ボタン内のアイコンの一辺
+    private const double RowTrashCanvasSize     = 24;  // ゴミ箱アイコンの Canvas 一辺
+    private const double RowTrashStrokeThickness = 2;  // ゴミ箱アイコンの線の太さ
+    private const double RowKindPillCornerRadius = 3;  // 種別ピルの角丸
+    private const double RowKindToggleCornerRadius = 4;// 編集モード：種別トグルの角丸
+    private const double RowFavoriteFontSize    = 14;  // お気に入りの★
+    private const double RowFavoriteBoxSize     = 24;  // お気に入りの Viewbox 一辺
+
+    private static readonly Thickness RowContentMarginEdit   = new(4, 0, 8, 0);
+    private static readonly Thickness RowContentMarginNormal = new(4, 0, 12, 0);
+    private static readonly Thickness RowNameMargin          = new(8, 0, 0, 0);
+    private static readonly Thickness RowIconMargin          = new(0, 0, 12, 0);
+    private static readonly Thickness RowInfoMargin          = new(0, 0, 8, 0);
+    private static readonly Thickness RowBulletMargin        = new(0, 0, 6, 0);
+    private static readonly Thickness RowKindPillPadding     = new(4, 1, 4, 1);
+    private static readonly Thickness RowKindPillMargin      = new(0, 0, 5, 0);
+    private static readonly Thickness RowDeleteButtonMargin  = new(4, 0, 0, 0);
+    private static readonly Thickness RowFavoriteMargin      = new(12, 0, 0, 0);
 
     // ===== チャンネル行生成（チャンネルリスト・休眠リストで共用） =====
     private UIElement CreateChannelRow(ChannelInfo ch) => CreateChannelRowCore(ch, isDormant: false);
@@ -67,8 +106,8 @@ public partial class MainWindow : System.Windows.Window
             Margin              = new Thickness(0, 0, 0, ChannelRowMarginBottom),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Cursor              = Cursors.Arrow,
-            CornerRadius        = new CornerRadius(4),
-            BorderThickness     = new Thickness(1),
+            CornerRadius        = new CornerRadius(RowCornerRadius),
+            BorderThickness     = new Thickness(RowBorderThickness),
             Tag                 = ch
         };
         SetDynamicBrush(row, Border.BackgroundProperty, "SurfaceBrush");
@@ -87,13 +126,13 @@ public partial class MainWindow : System.Windows.Window
 
         // 共通: [4px新着帯] + コンテンツ列
         var outerGrid = new Grid();
-        outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
+        outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(RowNewBarWidth) });
         outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         // 新着帯（休眠リストでは常に非表示）
         var newBar = new Border
         {
-            CornerRadius = new CornerRadius(4, 0, 0, 4),
+            CornerRadius = new CornerRadius(RowNewBarWidth, 0, 0, RowNewBarWidth),
             Visibility   = !isDormant && ch.HasUnread ? Visibility.Visible : Visibility.Hidden,
             Tag          = "NewBar"
         };
@@ -108,9 +147,9 @@ public partial class MainWindow : System.Windows.Window
                 if (!nowEditMode && s is Border b && b.Tag is ChannelInfo c) { e.Handled = true; AppLogger.Log(LogMsg.ChannelRowClicked, null, c.ChannelName); await OpenChannelLatestVideoAsync(c); }
             };
 
-            var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 0) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26) });
+            var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = RowContentMarginEdit };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(RowEditIconColWidth) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(RowEditNameColWidth) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             Grid.SetColumn(grid, 1);
@@ -119,10 +158,10 @@ public partial class MainWindow : System.Windows.Window
             var icon     = BuildIconBorderCompact(ch);
             var nameText = new TextBlock
             {
-                Text = ch.ChannelName, FontSize = 12, FontWeight = FontWeights.SemiBold,
+                Text = ch.ChannelName, FontSize = RowEditNameFontSize, FontWeight = FontWeights.SemiBold,
                 TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Margin = new Thickness(8, 0, 0, 0)
+                Margin = RowNameMargin
             };
             SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
             nameText.Cursor = Cursors.Hand;
@@ -146,9 +185,9 @@ public partial class MainWindow : System.Windows.Window
         }
         else
         {
-            var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 12, 0) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(56) });
+            var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = RowContentMarginNormal };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(RowNormalHandleColWidth) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(RowNormalIconColWidth) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             Grid.SetColumn(grid, 1);
@@ -174,12 +213,12 @@ public partial class MainWindow : System.Windows.Window
 
     private static Canvas BuildTrashIconCanvas()
     {
-        var trashCanvas = new Canvas { Width = 24, Height = 24 };
+        var trashCanvas = new Canvas { Width = RowTrashCanvasSize, Height = RowTrashCanvasSize };
         foreach (var d in TrashIconPathData)
         {
             var p = new System.Windows.Shapes.Path
             {
-                Data = Geometry.Parse(d), StrokeThickness = 2,
+                Data = Geometry.Parse(d), StrokeThickness = RowTrashStrokeThickness,
                 StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
                 StrokeLineJoin = PenLineJoin.Round, Fill = Brushes.Transparent
             };
@@ -193,10 +232,10 @@ public partial class MainWindow : System.Windows.Window
     {
         var btn = new Button
         {
-            Width = 28, Height = 28,
-            Content = new Viewbox { Width = 15, Height = 15, Child = BuildTrashIconCanvas() },
+            Width = RowDeleteButtonSize, Height = RowDeleteButtonSize,
+            Content = new Viewbox { Width = RowDeleteIconSize, Height = RowDeleteIconSize, Child = BuildTrashIconCanvas() },
             Background = Brushes.Transparent, BorderThickness = new Thickness(0),
-            Cursor = Cursors.Hand, Margin = new Thickness(4, 0, 0, 0),
+            Cursor = Cursors.Hand, Margin = RowDeleteButtonMargin,
             ToolTip = $"{ch.ChannelName} を削除"
         };
         btn.Click += (_, e) => { e.Handled = true; ConfirmAndDeleteChannel(ch); };
@@ -205,12 +244,11 @@ public partial class MainWindow : System.Windows.Window
 
     private static Border BuildIconBorderCompact(ChannelInfo ch)
     {
-        const int size = 22;
         var b = new Border
         {
-            Width = size, Height = size, CornerRadius = new CornerRadius(size / 2),
+            Width = RowIconSizeCompact, Height = RowIconSizeCompact, CornerRadius = new CornerRadius(RowIconSizeCompact / 2),
             VerticalAlignment = VerticalAlignment.Center,
-            Clip = new EllipseGeometry(new System.Windows.Point(size / 2.0, size / 2.0), size / 2.0, size / 2.0),
+            Clip = new EllipseGeometry(new System.Windows.Point(RowIconSizeCompact / 2.0, RowIconSizeCompact / 2.0), RowIconSizeCompact / 2.0, RowIconSizeCompact / 2.0),
             Tag  = "IconBorder"
         };
         var img = GetCachedIcon(ch.ThumbnailUrl, ch.ChannelId);
@@ -222,9 +260,9 @@ public partial class MainWindow : System.Windows.Window
     {
         var b = new Border
         {
-            Width = 44, Height = 44, CornerRadius = new CornerRadius(22),
-            Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center,
-            Clip   = new EllipseGeometry(new System.Windows.Point(22, 22), 22, 22),
+            Width = RowIconSize, Height = RowIconSize, CornerRadius = new CornerRadius(RowIconSize / 2),
+            Margin = RowIconMargin, VerticalAlignment = VerticalAlignment.Center,
+            Clip   = new EllipseGeometry(new System.Windows.Point(RowIconSize / 2, RowIconSize / 2), RowIconSize / 2, RowIconSize / 2),
             Tag = "IconBorder"
         };
 
@@ -248,13 +286,13 @@ public partial class MainWindow : System.Windows.Window
 
     private StackPanel BuildInfoPanelCore(ChannelInfo ch, bool editMode, bool isDormant)
     {
-        var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = RowInfoMargin };
 
         if (ch.IsBanned)
         {
             var bannedText = new TextBlock
             {
-                Text = "チャンネルは利用できません", FontSize = 13, FontWeight = FontWeights.SemiBold,
+                Text = "チャンネルは利用できません", FontSize = RowNameFontSize, FontWeight = FontWeights.SemiBold,
                 TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap,
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -265,7 +303,7 @@ public partial class MainWindow : System.Windows.Window
 
         var nameText = new TextBlock
         {
-            Text = ch.ChannelName, FontSize = 13, FontWeight = FontWeights.SemiBold,
+            Text = ch.ChannelName, FontSize = RowNameFontSize, FontWeight = FontWeights.SemiBold,
             TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -308,14 +346,14 @@ public partial class MainWindow : System.Windows.Window
 
     private static UIElement BuildStatusRow(ChannelInfo ch)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = TitleRowMargin };
 
         var cardStatus = MonitorService.ResolveCardStatus(ch);
         var anyStatusShown = false;
 
         if (cardStatus.ActiveLiveEntries.Count > 0)
         {
-            var bullet = new TextBlock { Margin = new Thickness(0, 0, 6, 0), FontSize = 13, Cursor = Cursors.Hand };
+            var bullet = new TextBlock { Margin = RowBulletMargin, FontSize = RowNameFontSize, Cursor = Cursors.Hand };
             bullet.Text = cardStatus.ActiveLiveEntries.Count == 1 ? "● ライブ配信中" : $"● ライブ配信中 ×{cardStatus.ActiveLiveEntries.Count}";
             SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "ErrorBrush");
 
@@ -347,7 +385,7 @@ public partial class MainWindow : System.Windows.Window
 
         if (cardStatus.ActivePremiereEntries.Count > 0)
         {
-            var bullet = new TextBlock { Margin = new Thickness(0, 0, 6, 0), FontSize = 13, Cursor = Cursors.Hand };
+            var bullet = new TextBlock { Margin = RowBulletMargin, FontSize = RowNameFontSize, Cursor = Cursors.Hand };
             bullet.Text = cardStatus.ActivePremiereEntries.Count == 1 ? "● プレミア公開中" : $"● プレミア公開中 ×{cardStatus.ActivePremiereEntries.Count}";
             SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "WarningBrush");
 
@@ -383,8 +421,8 @@ public partial class MainWindow : System.Windows.Window
             var bullet = new TextBlock
             {
                 Text = $"⏲ {pendingLive.ScheduledAt!.Value:HH:mm} から配信予定",
-                Margin = new Thickness(0, 0, 6, 0),
-                FontSize = 13, Opacity = 0.7,
+                Margin = RowBulletMargin,
+                FontSize = RowNameFontSize, Opacity = RowSubTextOpacity,
                 Cursor = Cursors.Hand,
                 ToolTip = pendingLive.Title
             };
@@ -405,8 +443,8 @@ public partial class MainWindow : System.Windows.Window
             var bullet = new TextBlock
             {
                 Text = $"⏲ {pendingPremiere.ScheduledAt!.Value:HH:mm} からプレミア公開予定",
-                Margin = new Thickness(0, 0, 6, 0),
-                FontSize = 13, Opacity = 0.7,
+                Margin = RowBulletMargin,
+                FontSize = RowNameFontSize, Opacity = RowSubTextOpacity,
                 Cursor = Cursors.Hand,
                 ToolTip = pendingPremiere.Title
             };
@@ -426,7 +464,7 @@ public partial class MainWindow : System.Windows.Window
 
         if (ch.NoVideosFound)
         {
-            var noVideosText = new TextBlock { Text = "投稿された動画が見つかりません", FontSize = 11 };
+            var noVideosText = new TextBlock { Text = "投稿された動画が見つかりません", FontSize = RowSubTextFontSize };
             SetDynamicBrush(noVideosText, TextBlock.ForegroundProperty, "TextMutedBrush");
             row.Children.Add(noVideosText);
             return row;
@@ -434,7 +472,7 @@ public partial class MainWindow : System.Windows.Window
 
         if (ch.LatestVideoDeleted)
         {
-            var deletedText = new TextBlock { Text = "動画は削除されました", FontSize = 11 };
+            var deletedText = new TextBlock { Text = "動画は削除されました", FontSize = RowSubTextFontSize };
             SetDynamicBrush(deletedText, TextBlock.ForegroundProperty, "TextMutedBrush");
             row.Children.Add(deletedText);
             return row;
@@ -462,22 +500,23 @@ public partial class MainWindow : System.Windows.Window
 
             var pill = new Border
             {
-                CornerRadius = new CornerRadius(3),
-                Padding = new Thickness(4, 1, 4, 1),
-                Margin = new Thickness(0, 0, 5, 0),
+                CornerRadius = new CornerRadius(RowKindPillCornerRadius),
+                Padding = RowKindPillPadding,
+                Margin = RowKindPillMargin,
                 VerticalAlignment = VerticalAlignment.Center
             };
             SetDynamicBrush(pill, Border.BackgroundProperty, bgKey);
-            var pillText = new TextBlock { Text = kindLabel, FontSize = 11 };
+            var pillText = new TextBlock { Text = kindLabel, FontSize = RowSubTextFontSize };
             SetDynamicBrush(pillText, TextBlock.ForegroundProperty, fgKey);
             pill.Child = pillText;
 
             var titleText = new TextBlock
             {
-                Text = ch.LatestTitle != null && ch.LatestTitle.Length > ChannelCardTitleMaxLength ? ch.LatestTitle.Substring(0, ChannelCardTitleMaxLength) + "..." : ch.LatestTitle, FontSize = 11,
+                Text = ch.LatestTitle,
+                FontSize = RowSubTextFontSize,
                 TextTrimming = TextTrimming.CharacterEllipsis,
+                TextWrapping = TextWrapping.NoWrap,
                 VerticalAlignment = VerticalAlignment.Center,
-                MaxWidth = 180,
                 Cursor = Cursors.Hand,
                 ToolTip = ch.LatestTitle
             };
@@ -496,16 +535,19 @@ public partial class MainWindow : System.Windows.Window
                 };
             }
 
-            row.Children.Add(pill);
-            row.Children.Add(titleText);
-        }
-        else
-        {
-            var noNotify = new TextBlock { Text = "通知なし", FontSize = 11 };
-            SetDynamicBrush(noNotify, TextBlock.ForegroundProperty, "TextMutedBrush");
-            row.Children.Add(noNotify);
+            // ピルを左固定、タイトルは残り幅いっぱい。
+            // 水平 StackPanel（row）だと子に無限幅が渡り TextTrimming が効かないため、
+            // 幅が確定する DockPanel に入れて自動省略（…）を機能させる。
+            var titleRow = new DockPanel { Margin = TitleRowMargin };
+            DockPanel.SetDock(pill, Dock.Left);
+            titleRow.Children.Add(pill);
+            titleRow.Children.Add(titleText); // LastChildFill=true（既定）で残り幅を占有
+            return titleRow;
         }
 
+        var noNotify = new TextBlock { Text = "通知なし", FontSize = RowSubTextFontSize };
+        SetDynamicBrush(noNotify, TextBlock.ForegroundProperty, "TextMutedBrush");
+        row.Children.Add(noNotify);
         return row;
     }
 
@@ -513,7 +555,7 @@ public partial class MainWindow : System.Windows.Window
     {
         var delBtn = new Button
         {
-            Content = new Viewbox { Width = 15, Height = 15, Child = BuildTrashIconCanvas() },
+            Content = new Viewbox { Width = RowDeleteIconSize, Height = RowDeleteIconSize, Child = BuildTrashIconCanvas() },
             Background = Brushes.Transparent, BorderThickness = new Thickness(0),
             Padding = new Thickness(6), Cursor = Cursors.Hand,
             VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed,
@@ -627,7 +669,8 @@ public partial class MainWindow : System.Windows.Window
             var quotaKey    = AppConstants.GetQuotaDayKey();
             var actualUnits = appState.TodayApiDate == quotaKey ? appState.TodayApiUnits : 0;
             var actualPct   = actualUnits * 100.0 / ApiQuotaHelper.DailyLimit;
-            manualCheckItem.IsEnabled = actualPct <= ApiQuotaHelper.QuotaDisableThresholdPct;
+            manualCheckItem.IsEnabled = actualPct <= ApiQuotaHelper.QuotaDisableThresholdPct
+                                        && !MonitorService.Instance.QuotaSuspendedUntil.HasValue;
             renameItem.Visibility    = vis; sepRename.Visibility    = vis;
             newCatItem.Visibility    = vis; moveToCatItem.Visibility = vis;
             sep.Visibility           = vis; detailItem.Visibility   = vis;
@@ -681,27 +724,27 @@ public partial class MainWindow : System.Windows.Window
         YTNotifier.Models.MonitorMode mode, VideoKind kind,
         Action<bool> onChanged)
     {
-        // アクティブ時の背景色: 通常=青、低頻度=黄、時間指定=緑（種別ごと）
+        // アクティブ時の背景色（差し色非依存の固定色）: 通常=青 / 低頻度=橙 / 時間指定=緑
         string ActiveBrushKey(bool on)
         {
-            if (!on) return "SurfaceElevatedBrush";
+            if (!on) return KindToggleOffBrushKey;
             return mode switch
             {
-                YTNotifier.Models.MonitorMode.LowFreq => "WarningBrush",
-                YTNotifier.Models.MonitorMode.Focus   => "SuccessBrush",
-                _                                     => "PrimaryBrush"
+                YTNotifier.Models.MonitorMode.LowFreq => KindToggleOnLowFreqBrushKey,
+                YTNotifier.Models.MonitorMode.Focus   => KindToggleOnFocusBrushKey,
+                _                                     => KindToggleOnNormalBrushKey
             };
         }
 
         var border = new Border
         {
-            CornerRadius = new CornerRadius(4), Padding = new Thickness(4),
-            Margin = new Thickness(0, 0, 6, 0), Cursor = Cursors.Arrow,
+            CornerRadius = new CornerRadius(RowKindToggleCornerRadius), Padding = new Thickness(4),
+            Margin = RowBulletMargin, Cursor = Cursors.Arrow,
             BorderThickness = new Thickness(1), ToolTip = label
         };
-        SetDynamicBrush(border, Border.BorderBrushProperty, "BorderBrush");
+        SetDynamicBrush(border, Border.BorderBrushProperty, KindToggleBorderBrushKey);
         SetDynamicBrush(border, Border.BackgroundProperty, ActiveBrushKey(initial));
-        border.Child = BuildKindIcon(label, initial);
+        border.Child = BuildKindIcon(kind, initial);
 
         bool current = initial;
         border.PreviewMouseLeftButtonDown += (_, e) =>
@@ -711,34 +754,21 @@ public partial class MainWindow : System.Windows.Window
             current = !current;
             onChanged(current);
             SetDynamicBrush(border, Border.BackgroundProperty, ActiveBrushKey(current));
-            border.Child = BuildKindIcon(label, current);
+            border.Child = BuildKindIcon(kind, current);
         };
         return border;
     }
 
-    private static UIElement BuildKindIcon(string label, bool active)
+    private static UIElement BuildKindIcon(VideoKind kind, bool active)
     {
-        var color = active ? (System.Windows.Media.Brush)Application.Current.Resources["TextOnColorBrush"] : (System.Windows.Media.Brush)Application.Current.Resources["TextMutedBrush"];
+        var color = active
+            ? (System.Windows.Media.Brush)Application.Current.Resources[KindToggleIconOnBrushKey]
+            : (System.Windows.Media.Brush)Application.Current.Resources[KindToggleIconOffBrushKey];
 
-        if (label == "Short")
-            return new System.Windows.Shapes.Path { Data = Geometry.Parse(ShortIconPath), Width = 18, Height = 18, Stretch = Stretch.Uniform, Fill = color };
-
-        if (label == "ライブ")
-        {
-            var canvas = new Canvas { Width = 24, Height = 24 };
-            foreach (var d in new[] { "M4.9 16.1C1 12.2 1 5.8 4.9 1.9", "M7.8 4.7a6.14 6.14 0 0 0-.8 7.5", "M16.2 4.8c2 2 2.26 5.11.8 7.47", "M19.1 1.9a9.96 9.96 0 0 1 0 14.1", "M9.5 18h5", "m8 22 4-11 4 11" })
-                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse(d), Stroke = color, StrokeThickness = 2, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, Fill = Brushes.Transparent });
-            var circle = new System.Windows.Shapes.Ellipse { Width = 4, Height = 4, Stroke = color, StrokeThickness = 2, Fill = Brushes.Transparent };
-            Canvas.SetLeft(circle, 10); Canvas.SetTop(circle, 7);
-            canvas.Children.Add(circle);
-            return new Viewbox { Width = 18, Height = 18, Child = canvas };
-        }
-
-        // 動画
-        var vc = new Canvas { Width = 22, Height = 22 };
-        vc.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M2 6 L16 6 C17.105 6 18 6.895 18 8 L18 18 C18 19.105 17.105 20 16 20 L2 20 C0.895 20 0 19.105 0 18 L0 8 C0 6.895 0.895 6 2 6 Z"), Fill = color });
-        vc.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M16 13 L21.223 16.482 A0.5 0.5 0 0 0 22 16.066 L22 7.87 A0.5 0.5 0 0 0 21.248 7.438 L16 10.5 Z"), Fill = color });
-        return new Viewbox { Width = 18, Height = 18, Child = vc };
+        double canvasSize = kind == VideoKind.Live ? 24 : 22;
+        var (icon, setColor) = KindIconFactory.Build(kind, iconSize: 18, canvasSize: canvasSize);
+        setColor(color);
+        return icon;
     }
 
     private static UIElement MakeFavoriteToggle(ChannelInfo ch)
@@ -769,9 +799,9 @@ public partial class MainWindow : System.Windows.Window
             : (System.Windows.Media.Brush)Application.Current.Resources["TextMutedBrush"];
         var text = new TextBlock
         {
-            Text = active ? "★" : "☆", FontSize = 14, Foreground = color,
+            Text = active ? "★" : "☆", FontSize = RowFavoriteFontSize, Foreground = color,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
         };
-        return new Viewbox { Width = 24, Height = 24, Margin = new Thickness(12, 0, 0, 0), Child = text };
+        return new Viewbox { Width = RowFavoriteBoxSize, Height = RowFavoriteBoxSize, Margin = RowFavoriteMargin, Child = text };
     }
 }

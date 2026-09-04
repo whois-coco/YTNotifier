@@ -109,13 +109,13 @@
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                                         <Border x:Name="DetailQuotaBarNormal"
                                                 Height="10" Width="0" MinWidth="0"
-                                                Background="{DynamicResource PrimaryBrush}"/>
+                                                Background="{DynamicResource QuotaEstimateNormalBrush}"/>
                                         <Border x:Name="DetailQuotaBarLowFreq"
                                                 Height="10" Width="0" MinWidth="0"
-                                                Background="{DynamicResource WarningBrush}"/>
+                                                Background="{DynamicResource QuotaEstimateLowFreqBrush}"/>
                                         <Border x:Name="DetailQuotaBarFocus"
                                                 Height="10" Width="0" MinWidth="0"
-                                                Background="{DynamicResource SuccessBrush}"/>
+                                                Background="{DynamicResource QuotaEstimateFocusBrush}"/>
                                     </StackPanel>
                                 </Border>
                                 <TextBlock x:Name="EstimateText" Grid.Column="1"
@@ -125,11 +125,11 @@
                             </Grid>
                             <!-- セグメントバー凡例 -->
                             <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                                <Ellipse Width="7" Height="7" Fill="{DynamicResource PrimaryBrush}" VerticalAlignment="Center"/>
+                                <Ellipse Width="7" Height="7" Fill="{DynamicResource QuotaEstimateNormalBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Text="通常" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="3,0,8,0" VerticalAlignment="Center"/>
-                                <Ellipse Width="7" Height="7" Fill="{DynamicResource WarningBrush}" VerticalAlignment="Center"/>
+                                <Ellipse Width="7" Height="7" Fill="{DynamicResource QuotaEstimateLowFreqBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Text="低頻度" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="3,0,8,0" VerticalAlignment="Center"/>
-                                <Ellipse Width="7" Height="7" Fill="{DynamicResource SuccessBrush}" VerticalAlignment="Center"/>
+                                <Ellipse Width="7" Height="7" Fill="{DynamicResource QuotaEstimateFocusBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Text="時間指定" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="3,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </StackPanel>

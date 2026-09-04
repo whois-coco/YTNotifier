@@ -22,6 +22,9 @@ public class LoggerService
     private const int MaxUiEntries      = 200;
     private const int MaxTodayEntries   = 1000;
     private const int MaxErrorEntries   = 500;
+
+    /// <summary>ログ行として成立する最短の長さ（"[HH:mm:ss] [LEVEL  ]" を含む最短の行長）</summary>
+    private const int MinLogLineLength = 20;
     private DateTime _currentLogDate = DateTime.Today;
 
     private LoggerService()
@@ -52,7 +55,7 @@ public class LoggerService
     {
         // フォーマット: [HH:mm:ss] [LEVEL  ] [channelName] message
         //          or: [HH:mm:ss] [LEVEL  ] message
-        if (line.Length < 20 || line[0] != '[') return null;
+        if (line.Length < MinLogLineLength || line[0] != '[') return null;
         var timeEnd = line.IndexOf(']');
         if (timeEnd < 0) return null;
         if (!TimeSpan.TryParse(line[1..timeEnd], out var time)) return null;

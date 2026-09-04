@@ -20,6 +20,9 @@ public static class ImageCacheService
     /// <summary>キャッシュエントリの有効期間（日）</summary>
     private const int CacheExpiryDays = 30;
 
+    /// <summary>画像ダウンロードのタイムアウト（秒）</summary>
+    private const int ImageDownloadTimeoutSeconds = 5;
+
     private sealed class CacheEntry
     {
         public required BitmapImage Bitmap    { get; init; }
@@ -27,7 +30,7 @@ public static class ImageCacheService
     }
 
     private static readonly System.Net.Http.HttpClient _http =
-        new() { Timeout = TimeSpan.FromSeconds(5) };
+        new() { Timeout = TimeSpan.FromSeconds(ImageDownloadTimeoutSeconds) };
 
     // キー: アイコン=URL、サムネイル=チャンネルID+動画種別
     private static readonly Dictionary<string, CacheEntry> _iconCache      = new();
@@ -146,7 +149,7 @@ public static class ImageCacheService
     }
 
     /// <summary>
-    /// 画像ディスクキャッシュ廃止（指示書053）に伴う一時的なクリーンアップ処理。
+    /// 現行は画像をメモリキャッシュのみで扱いディスクに保存しない。
     /// 旧バージョンで作成された icons / thumbcache ディレクトリが残っていれば削除する。
     /// </summary>
     public static void CleanupLegacyDiskCache(string appDataDir)

@@ -31,6 +31,11 @@ public partial class ChannelDetailWindow : Window
     private readonly int _origLiveUpcomingLead;
     private readonly List<FocusSlot> _origFocusSlots;
 
+    private const double TabLabelFontSize = 12; // タブのラベル
+    private static readonly Thickness TabPadding     = new(14, 0, 14, 0);
+    private static readonly Thickness TabUnderline   = new(0, 0, 0, 2);
+    private static readonly Thickness KindIconMargin = new(0, 0, 5, 0);
+
     public ChannelDetailWindow(ChannelInfo channel, Window owner)
     {
         InitializeComponent();
@@ -73,7 +78,7 @@ public partial class ChannelDetailWindow : Window
         // 3タブ分作成（デフォルト種別: 動画/Short/ライブ配信）
         VideoKind[] defaultKinds = { VideoKind.Video, VideoKind.Short, VideoKind.Live };
         bool[] kindEnabled = { channel.NotifyVideo, channel.NotifyShort, channel.NotifyLive };
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < AppConstants.KindSlotCount; i++)
         {
             var slot = i < slots.Count ? slots[i] : channel.CreateDefaultFocusSlot(defaultKinds[i]);
             slot.IsEnabled = kindEnabled[i]; // チャンネル一覧の種別ON/OFFを反映
@@ -92,22 +97,20 @@ public partial class ChannelDetailWindow : Window
     }
 
     // ===== タブUI構築 =====
-    private static readonly string[] TabKindLabels = { "動画", "Short", "ライブ" };
-    private static readonly VideoKind[] TabKinds = { VideoKind.Video, VideoKind.Short, VideoKind.Live };
 
     private void BuildTabUI()
     {
         FocusTabNav.Children.Clear();
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < AppConstants.KindSlotCount; i++)
         {
             int idx = i;
             var tab = _tabPanels[i];
-            tab.FixedKind = TabKinds[i];
+            tab.FixedKind = AppConstants.KindSlotKinds[i];
 
             var lbl = new TextBlock
             {
-                Text              = TabKindLabels[i],
-                FontSize          = 12,
+                Text              = AppConstants.KindSlotLabels[i],
+                FontSize          = TabLabelFontSize,
                 VerticalAlignment = VerticalAlignment.Center
             };
             var (iconElement, setIconColor) = BuildKindIcon(i);
@@ -120,10 +123,10 @@ public partial class ChannelDetailWindow : Window
             headerPanel.Children.Add(lbl);
             var border = new Border
             {
-                Padding         = new Thickness(14, 0, 14, 0),
+                Padding         = TabPadding,
                 Cursor          = System.Windows.Input.Cursors.Hand,
                 Background      = Brushes.Transparent,
-                BorderThickness = new Thickness(0, 0, 0, 2),
+                BorderThickness = TabUnderline,
                 Tag             = i,
                 Child           = headerPanel
             };
@@ -149,13 +152,13 @@ public partial class ChannelDetailWindow : Window
     private void SelectTab(int idx)
     {
         _selectedTab = idx;
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < AppConstants.KindSlotCount; i++)
             SetTabBorderStyle(_tabPanels[i], i == idx);
 
         FocusTabContent.Children.Clear();
         _tabPanels[idx].ResetContent();
         FocusTabContent.Children.Add(_tabPanels[idx].BuildContent());
-        AppLogger.Log(LogMsg.ChannelDetailTabSwitched, _channel.ChannelName, TabKindLabels[idx]);
+        AppLogger.Log(LogMsg.ChannelDetailTabSwitched, _channel.ChannelName, AppConstants.KindSlotLabels[idx]);
     }
 
     private void SetTabBorderStyle(FocusTabPanel tab, bool selected)
@@ -193,56 +196,10 @@ public partial class ChannelDetailWindow : Window
         const double IconSize = 14;
         const double CanvasSize = 24;
 
-        switch (tabIndex)
-        {
-            case 0: // 動画
-            {
-                var p1 = new System.Windows.Shapes.Path { Data = System.Windows.Media.Geometry.Parse("M16 13 L21.223 16.482 A0.5 0.5 0 0 0 22 16.066 L22 7.87 A0.5 0.5 0 0 0 21.248 7.438 L16 10.5 Z") };
-                var p2 = new System.Windows.Shapes.Path { Data = System.Windows.Media.Geometry.Parse("M2 6 L16 6 C17.105 6 18 6.895 18 8 L18 18 C18 19.105 17.105 20 16 20 L2 20 C0.895 20 0 19.105 0 18 L0 8 C0 6.895 0.895 6 2 6 Z") };
-                var canvas = new System.Windows.Controls.Canvas { Width = CanvasSize, Height = CanvasSize };
-                canvas.Children.Add(p1);
-                canvas.Children.Add(p2);
-                var vb = new System.Windows.Controls.Viewbox { Width = IconSize, Height = IconSize, Margin = new Thickness(0, 0, 5, 0), Child = canvas };
-                return (vb, b => { p1.Fill = b; p2.Fill = b; });
-            }
-            case 1: // Short
-            {
-                var p = new System.Windows.Shapes.Path
-                {
-                    Data    = System.Windows.Media.Geometry.Parse("M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"),
-                    Stretch = System.Windows.Media.Stretch.Uniform
-                };
-                var vb = new System.Windows.Controls.Viewbox { Width = IconSize, Height = IconSize, Margin = new Thickness(0, 0, 5, 0), Child = p };
-                return (vb, b => p.Fill = b);
-            }
-            default: // ライブ配信
-            {
-                var strokePaths = new[]
-                {
-                    new System.Windows.Shapes.Path { Data = System.Windows.Media.Geometry.Parse("M4.9 16.1C1 12.2 1 5.8 4.9 1.9"),   Fill = Brushes.Transparent, StrokeThickness = 2, StrokeStartLineCap = System.Windows.Media.PenLineCap.Round, StrokeEndLineCap = System.Windows.Media.PenLineCap.Round },
-                    new System.Windows.Shapes.Path { Data = System.Windows.Media.Geometry.Parse("M7.8 4.7a6.14 6.14 0 0 0-.8 7.5"), Fill = Brushes.Transparent, StrokeThickness = 2, StrokeStartLineCap = System.Windows.Media.PenLineCap.Round, StrokeEndLineCap = System.Windows.Media.PenLineCap.Round },
-                    new System.Windows.Shapes.Path { Data = System.Windows.Media.Geometry.Parse("M16.2 4.8c2 2 2.26 5.11.8 7.47"),   Fill = Brushes.Transparent, StrokeThickness = 2, StrokeStartLineCap = System.Windows.Media.PenLineCap.Round, StrokeEndLineCap = System.Windows.Media.PenLineCap.Round },
-                    new System.Windows.Shapes.Path { Data = System.Windows.Media.Geometry.Parse("M19.1 1.9a9.96 9.96 0 0 1 0 14.1"),Fill = Brushes.Transparent, StrokeThickness = 2, StrokeStartLineCap = System.Windows.Media.PenLineCap.Round, StrokeEndLineCap = System.Windows.Media.PenLineCap.Round },
-                    new System.Windows.Shapes.Path { Data = System.Windows.Media.Geometry.Parse("M9.5 18h5"),                        Fill = Brushes.Transparent, StrokeThickness = 2, StrokeStartLineCap = System.Windows.Media.PenLineCap.Round, StrokeEndLineCap = System.Windows.Media.PenLineCap.Round },
-                    new System.Windows.Shapes.Path { Data = System.Windows.Media.Geometry.Parse("m8 22 4-11 4 11"),                  Fill = Brushes.Transparent, StrokeThickness = 2, StrokeStartLineCap = System.Windows.Media.PenLineCap.Round, StrokeEndLineCap = System.Windows.Media.PenLineCap.Round, StrokeLineJoin = System.Windows.Media.PenLineJoin.Round },
-                };
-                var ellipse = new System.Windows.Shapes.Ellipse
-                {
-                    Width           = 4,
-                    Height          = 4,
-                    Fill            = Brushes.Transparent,
-                    StrokeThickness = 2
-                };
-                System.Windows.Controls.Canvas.SetLeft(ellipse, 10);
-                System.Windows.Controls.Canvas.SetTop(ellipse, 7);
-
-                var canvas = new System.Windows.Controls.Canvas { Width = CanvasSize, Height = CanvasSize };
-                foreach (var sp in strokePaths) canvas.Children.Add(sp);
-                canvas.Children.Add(ellipse);
-                var vb = new System.Windows.Controls.Viewbox { Width = IconSize, Height = IconSize, Margin = new Thickness(0, 0, 5, 0), Child = canvas };
-                return (vb, b => { foreach (var sp in strokePaths) sp.Stroke = b; ellipse.Stroke = b; });
-            }
-        }
+        var kind = AppConstants.KindSlotKinds[tabIndex];
+        var (icon, setColor) = KindIconFactory.Build(kind, IconSize, CanvasSize);
+        ((FrameworkElement)icon).Margin = KindIconMargin;
+        return (icon, setColor);
     }
 
     private void RevertAndClose()
@@ -333,11 +290,11 @@ public partial class ChannelDetailWindow : Window
             var nonZero = segs.Where(s => s.Item2 > 0).ToList();
             foreach (var (seg, _) in segs) seg.CornerRadius = new CornerRadius(0);
             if (nonZero.Count == 1)
-                nonZero[0].Item1.CornerRadius = new CornerRadius(4);
+                nonZero[0].Item1.CornerRadius = new CornerRadius(AppConstants.QuotaBarCornerRadius);
             else if (nonZero.Count > 1)
             {
-                nonZero[0].Item1.CornerRadius                 = new CornerRadius(4, 0, 0, 4);
-                nonZero[nonZero.Count - 1].Item1.CornerRadius = new CornerRadius(0, 4, 4, 0);
+                nonZero[0].Item1.CornerRadius                 = new CornerRadius(AppConstants.QuotaBarCornerRadius, 0, 0, AppConstants.QuotaBarCornerRadius);
+                nonZero[nonZero.Count - 1].Item1.CornerRadius = new CornerRadius(0, AppConstants.QuotaBarCornerRadius, AppConstants.QuotaBarCornerRadius, 0);
             }
         }
 
@@ -425,11 +382,11 @@ public partial class ChannelDetailWindow : Window
                     ? $"ON ({DescribeSlotInterval(slot, globalInterval)})"
                     : "OFF";
                 AppLogger.Log(LogMsg.ChannelDetailEnabledChanged, _channel.ChannelName,
-                    _channel.ChannelName, TabKindLabels[i], statusLabel);
+                    _channel.ChannelName, AppConstants.KindSlotLabels[i], statusLabel);
             }
             if (!slot.IsEnabled) continue;
             var intervalDesc = DescribeSlotInterval(slot, globalInterval);
-            AppLogger.Log(LogMsg.ChannelDetailSlotInterval, _channel.ChannelName, TabKindLabels[i], intervalDesc);
+            AppLogger.Log(LogMsg.ChannelDetailSlotInterval, _channel.ChannelName, AppConstants.KindSlotLabels[i], intervalDesc);
         }
 
         LogUpcomingChange(UpcomingKindLabelPremiere, _origPremiereUpcomingMode, _origPremiereUpcomingLead,
@@ -513,6 +470,22 @@ internal class FocusTabPanel
     private StackPanel? _settingsPanel;
     private StackPanel? _normalPanel, _lowFreqPanel, _focusPanel;
 
+    /// <summary>種別チェックを外したときの設定パネルの不透明度</summary>
+    private const double SettingsPanelDisabledOpacity = 0.4;
+
+    private const double EnabledCheckFontSize = 12; // 種別チェックボックスのラベル
+    private const double SectionLabelFontSize = 11; // 各行の見出し
+    private const double TimeSeparatorFontSize = 13;// 時刻の「:」
+    private const double TimeComboWidth     = 72;  // 時・分のコンボ
+    private const double WindowComboWidth   = 78;  // 確認時間・間隔のコンボ
+
+    private static readonly Thickness EnabledCheckMargin = new(0, 0, 0, 10);
+    private static readonly Thickness PanelTopMargin   = new(0, 4, 0, 0);
+    private static readonly Thickness SectionLabelMargin = new(0, 4, 0, 4);
+    private static readonly Thickness SectionRowMargin = new(0, 0, 0, 8);
+    private static readonly Thickness TimeSeparatorMargin = new(5, 0, 5, 0);
+    private static readonly Thickness SlashSeparatorMargin = new(6, 0, 6, 0);
+
     // ===== upcoming（プレミア／ライブ）通知方法：チャンネル個別設定（スロット非依存） =====
     private const int    DefaultLeadMinutes           = 10;
     private const double UpcomingModeComboWidth       = 160;
@@ -528,7 +501,7 @@ internal class FocusTabPanel
     private const string EnabledCheckLabelLive        = "ライブチェック";
 
     private bool _showUpcoming = false;
-    private UpcomingNotifyMode _upcomingMode = UpcomingNotifyMode.WaitingRoomOnly;
+    private UpcomingNotifyMode _upcomingMode = UpcomingNotifyMode.Both;
     private int _upcomingLead = DefaultLeadMinutes;
     private ComboBox? _upcomingModeBox;
     private ComboBox? _upcomingLeadBox;
@@ -668,10 +641,10 @@ internal class FocusTabPanel
                 _               => EnabledCheckLabelVideo
             },
             IsChecked  = _slot.IsEnabled,
-            FontSize   = 12,
+            FontSize   = EnabledCheckFontSize,
             FontWeight = System.Windows.FontWeights.SemiBold,
             Foreground = (Brush)res["TextPrimaryBrush"],
-            Margin     = new Thickness(0, 0, 0, 10)
+            Margin     = EnabledCheckMargin
         };
         _enabledCheck.Checked   += (_, _) =>
         {
@@ -691,7 +664,7 @@ internal class FocusTabPanel
             }
             OnEnabledChanged?.Invoke();
         };
-        _enabledCheck.Unchecked += (_, _) => { if (_suppressEnabledEvent) return; _settingsPanel!.IsEnabled = false; _settingsPanel!.Opacity = 0.4; OnEnabledChanged?.Invoke(); };
+        _enabledCheck.Unchecked += (_, _) => { if (_suppressEnabledEvent) return; _settingsPanel!.IsEnabled = false; _settingsPanel!.Opacity = SettingsPanelDisabledOpacity; OnEnabledChanged?.Invoke(); };
         stack.Children.Add(_enabledCheck);
 
         // 設定パネル
@@ -718,7 +691,7 @@ internal class FocusTabPanel
         _settingsPanel.Children.Add(MakeRow("監視モード", _modeBox, res));
 
         // 2. 通常モード（個別間隔、0=グローバル）
-        _normalPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        _normalPanel = new StackPanel { Margin = PanelTopMargin };
         _normalIntervalBox = new ComboBox { Style = (Style)res["ModernComboBox"] };
         _normalIntervalBox.Items.Add(new ComboBoxItem { Content = "一括で設定に従う", Tag = "0", Style = (Style)res["ModernComboBoxItem"] });
         var globalInterval = SettingsService.Instance.Settings.CheckIntervalMinutes;
@@ -744,7 +717,7 @@ internal class FocusTabPanel
         _settingsPanel.Children.Add(_normalPanel);
 
         // 3. 低頻度間隔
-        _lowFreqPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        _lowFreqPanel = new StackPanel { Margin = PanelTopMargin };
         _lowFreqBox = new ComboBox { Style = (Style)res["ModernComboBox"] };
         foreach (var (lbl, tag) in new[] { ("1時間","60"),("3時間","180"),("6時間","360"),("12時間","720"),("24時間","1440") })
             _lowFreqBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
@@ -754,17 +727,17 @@ internal class FocusTabPanel
         _settingsPanel.Children.Add(_lowFreqPanel);
 
         // 4. 時間指定設定
-        _focusPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        _focusPanel = new StackPanel { Margin = PanelTopMargin };
 
         // 曜日指定
         _focusPanel.Children.Add(new TextBlock
         {
             Text       = "曜日指定",
-            FontSize   = 11,
+            FontSize   = SectionLabelFontSize,
             Foreground = (Brush)res["TextSecondaryBrush"],
-            Margin     = new Thickness(0, 4, 0, 4)
+            Margin     = SectionLabelMargin
         });
-        var dayRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8), HorizontalAlignment = HorizontalAlignment.Center };
+        var dayRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = SectionRowMargin, HorizontalAlignment = HorizontalAlignment.Center };
         _dayBtns = new System.Windows.Controls.Primitives.ToggleButton[7];
         for (int i = 0; i < 7; i++)
         {
@@ -785,8 +758,8 @@ internal class FocusTabPanel
         _focusPanel.Children.Add(dayRow);
 
         // 投稿時刻
-        _hourBox   = new ComboBox { Style = (Style)res["ModernComboBox"], Width = 72 };
-        _minuteBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = 72 };
+        _hourBox   = new ComboBox { Style = (Style)res["ModernComboBox"], Width = TimeComboWidth };
+        _minuteBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = TimeComboWidth };
         for (int h = 0; h < 24; h++)
             _hourBox.Items.Add(new ComboBoxItem { Content = $"{h:D2}", Style = (Style)res["ModernComboBoxItem"] });
         for (int m = 0; m < 60; m += 5)
@@ -794,13 +767,13 @@ internal class FocusTabPanel
         _hourBox.SelectedIndex   = Math.Clamp(_slot.Hour, 0, 23);
         _minuteBox.SelectedIndex = Math.Clamp(_slot.Minute / 5, 0, 11);
 
-        var timeGrid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        var timeGrid = new Grid { Margin = SectionRowMargin };
         timeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         timeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var timeLbl  = new TextBlock { Text = "投稿時刻", FontSize = 11, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center };
+        var timeLbl  = new TextBlock { Text = "投稿時刻", FontSize = SectionLabelFontSize, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center };
         var timeCtrl = new StackPanel { Orientation = Orientation.Horizontal };
         timeCtrl.Children.Add(_hourBox);
-        timeCtrl.Children.Add(new TextBlock { Text = ":", FontSize = 13, FontWeight = System.Windows.FontWeights.SemiBold, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 5, 0) });
+        timeCtrl.Children.Add(new TextBlock { Text = ":", FontSize = TimeSeparatorFontSize, FontWeight = System.Windows.FontWeights.SemiBold, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center, Margin = TimeSeparatorMargin });
         timeCtrl.Children.Add(_minuteBox);
         System.Windows.Controls.Grid.SetColumn(timeCtrl, 1);
         timeGrid.Children.Add(timeLbl);
@@ -808,8 +781,8 @@ internal class FocusTabPanel
         _focusPanel.Children.Add(timeGrid);
 
         // 投稿監視時間 / 監視間隔
-        _windowBox   = new ComboBox { Style = (Style)res["ModernComboBox"], Width = 78 };
-        _intervalBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = 78 };
+        _windowBox   = new ComboBox { Style = (Style)res["ModernComboBox"], Width = WindowComboWidth };
+        _intervalBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = WindowComboWidth };
         foreach (var (lbl, tag) in new[] { ("3分","3"),("5分","5"),("10分","10"),("15分","15") })
             _windowBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
         foreach (var (lbl, tag) in new[] { ("30秒","0"),("1分","1"),("5分","5") })
@@ -826,10 +799,10 @@ internal class FocusTabPanel
         var wiGrid = new Grid { Margin = new Thickness(0, 0, 0, 0) };
         wiGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         wiGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var wiLbl  = new TextBlock { Text = "投稿確認 / 間隔", FontSize = 11, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center };
+        var wiLbl  = new TextBlock { Text = "投稿確認 / 間隔", FontSize = SectionLabelFontSize, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center };
         var wiCtrl = new StackPanel { Orientation = Orientation.Horizontal };
         wiCtrl.Children.Add(_windowBox);
-        wiCtrl.Children.Add(new TextBlock { Text = "/", FontSize = 11, Foreground = (Brush)res["TextMutedBrush"], VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 6, 0) });
+        wiCtrl.Children.Add(new TextBlock { Text = "/", FontSize = SectionLabelFontSize, Foreground = (Brush)res["TextMutedBrush"], VerticalAlignment = VerticalAlignment.Center, Margin = SlashSeparatorMargin });
         wiCtrl.Children.Add(_intervalBox);
         System.Windows.Controls.Grid.SetColumn(wiCtrl, 1);
         wiGrid.Children.Add(wiLbl);
@@ -910,10 +883,10 @@ internal class FocusTabPanel
 
     private static Grid MakeRow(string label, FrameworkElement ctrl, ResourceDictionary res)
     {
-        var g = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        var g = new Grid { Margin = SectionRowMargin };
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(CtrlColWidth) });
-        var lbl = new TextBlock { Text = label, FontSize = 11, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center };
+        var lbl = new TextBlock { Text = label, FontSize = SectionLabelFontSize, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center };
         ctrl.HorizontalAlignment = HorizontalAlignment.Stretch;
         System.Windows.Controls.Grid.SetColumn(ctrl, 1);
         g.Children.Add(lbl);

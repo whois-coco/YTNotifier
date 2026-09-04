@@ -79,58 +79,30 @@ public partial class MainWindow : System.Windows.Window
             ApplySegmentedQuotaBar(
                 QuotaBarBg, QuotaBarNormal, QuotaBarLowFreq, QuotaBarFocus,
                 QuotaInfoText, QuotaPercentText,
-                pct, normalUnits, lowFreqUnits, focusUnits);
+                pct, normalUnits, lowFreqUnits, focusUnits,
+                QuotaSegLabelEstimateNormal, QuotaSegLabelEstimateLowFreq, QuotaSegLabelEstimateFocus);
             UpdateIntervalComboBoxItems(channels, channels.Count);
 
-            // 当日実使用量バー（クォータ期間 = 太平洋時間0:00リセット）
-            var appState    = SettingsService.Instance.AppState;
-            var quotaKey    = AppConstants.GetQuotaDayKey();
-            var actualUnits = appState.TodayApiDate == quotaKey ? appState.TodayApiUnits : 0;
-            var actualPct   = Math.Min(actualUnits * 100.0 / ApiQuotaHelper.DailyLimit, 100.0);
-            ActualQuotaInfoText.Text = $"{actualUnits:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日";
+            // 当日実使用量バー（クォータ期間 = 太平洋時間0:00リセット）。カテゴリ別に3セグメント表示。
+            var appState              = SettingsService.Instance.AppState;
+            var quotaKey              = AppConstants.GetQuotaDayKey();
+            var isTodayQuota          = appState.TodayApiDate == quotaKey;
+            var actualUnits           = isTodayQuota ? appState.TodayApiUnits             : 0;
+            var actualPendingUnits    = isTodayQuota ? appState.TodayApiUnitsPendingTrack : 0;
+            var actualLiveStatusUnits = isTodayQuota ? appState.TodayApiUnitsLiveStatus   : 0;
+            var actualNormalUnits     = Math.Max(0, actualUnits - actualPendingUnits - actualLiveStatusUnits);
+            var actualPct             = Math.Min(actualUnits * 100.0 / ApiQuotaHelper.DailyLimit, 100.0);
+            ActualQuotaInfoText.Text = $"{actualUnits:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日"
+                                     + $"（通常 {actualNormalUnits:N0} / 配信予定 {actualPendingUnits:N0} / 配信中 {actualLiveStatusUnits:N0}）";
             ActualQuotaPercentText.Text = $"{(int)Math.Round(actualPct)}%";
-            ApplyQuotaBar(ActualQuotaBar, ActualQuotaBarBg, ActualQuotaInfoText, ActualQuotaPercentText, actualPct);
+            ApplySegmentedQuotaBar(
+                ActualQuotaBarBg, ActualQuotaBarNormal, ActualQuotaBarPending, ActualQuotaBarLiveStatus,
+                ActualQuotaInfoText, ActualQuotaPercentText,
+                actualPct, actualNormalUnits, actualPendingUnits, actualLiveStatusUnits,
+                QuotaSegLabelActualNormal, QuotaSegLabelActualPending, QuotaSegLabelActualLive);
 
         }
         catch (Exception ex) { AppLogger.Log(LogMsg.UiUpdateFailed, null, nameof(UpdateQuotaInfo), ex.Message); }
-    }
-
-    // プログレスバー表示の共通処理（bar/barBg をキャプチャして SizeChanged にも対応）
-    private void ApplyQuotaBar(
-        Border bar, Border barBg,
-        TextBlock? infoText, TextBlock percentText,
-        double pct)
-    {
-        // 表示と同じ四捨五入した値で色判定
-        var pctRounded = (int)Math.Round(pct);
-        var res = Application.Current.Resources;
-        bar.Background = pctRounded >= ApiQuotaHelper.QuotaWarnHighThresholdPct ? (System.Windows.Media.Brush)res["QuotaWarnHighBrush"]
-                       : pctRounded >= ApiQuotaHelper.QuotaWarnLowThresholdPct  ? (System.Windows.Media.Brush)res["QuotaWarnLowBrush"]
-                                                                                 : (System.Windows.Media.Brush)res["QuotaOkBrush"];
-        barBg.Tag = pct;
-
-        void SetBarWidth()
-        {
-            var maxW = barBg.ActualWidth;
-            if (maxW <= 0) return;
-            bar.Width = Math.Max(0, maxW * (barBg.Tag is double d ? d : pct) / 100.0);
-        }
-
-        // 既存ハンドラを除去してから再登録（多重登録防止）
-        if (barBg.Tag is double && _quotaBarHandlers.TryGetValue(barBg, out var prev))
-            barBg.SizeChanged -= prev;
-        SizeChangedEventHandler handler = (_, _) => SetBarWidth();
-        _quotaBarHandlers[barBg] = handler;
-        barBg.SizeChanged += handler;
-
-        if (barBg.ActualWidth > 0) SetBarWidth();
-        else Dispatcher.BeginInvoke(SetBarWidth, System.Windows.Threading.DispatcherPriority.Render);
-
-        var textColor = pctRounded >= ApiQuotaHelper.QuotaWarnHighThresholdPct ? "QuotaWarnHighBrush"
-                     : pctRounded >= ApiQuotaHelper.QuotaWarnLowThresholdPct  ? "QuotaWarnLowBrush"
-                                                                               : "SuccessBrush";
-        if (infoText != null) SetDynamicBrush(infoText, TextBlock.ForegroundProperty, textColor);
-        SetDynamicBrush(percentText, TextBlock.ForegroundProperty, textColor);
     }
 
     // セグメントバー（モード別色分け）表示処理
@@ -138,7 +110,8 @@ public partial class MainWindow : System.Windows.Window
         Border barBg,
         Border barNormal, Border barLowFreq, Border barFocus,
         TextBlock? infoText, TextBlock percentText,
-        double pct, int normalUnits, int lowFreqUnits, int focusUnits)
+        double pct, int normalUnits, int lowFreqUnits, int focusUnits,
+        string segLabelNormal, string segLabelLowFreq, string segLabelFocus)
     {
         var pctRounded = (int)Math.Round(pct);
         var textColor  = pctRounded >= ApiQuotaHelper.QuotaWarnHighThresholdPct ? "QuotaWarnHighBrush"
@@ -146,6 +119,13 @@ public partial class MainWindow : System.Windows.Window
                                                                                  : "SuccessBrush";
         if (infoText != null) SetDynamicBrush(infoText, TextBlock.ForegroundProperty, textColor);
         SetDynamicBrush(percentText, TextBlock.ForegroundProperty, textColor);
+
+        barNormal.ToolTip  = string.Format(QuotaSegTooltipFormat, segLabelNormal,
+                                           normalUnits,  normalUnits  * 100.0 / ApiQuotaHelper.DailyLimit);
+        barLowFreq.ToolTip = string.Format(QuotaSegTooltipFormat, segLabelLowFreq,
+                                           lowFreqUnits, lowFreqUnits * 100.0 / ApiQuotaHelper.DailyLimit);
+        barFocus.ToolTip   = string.Format(QuotaSegTooltipFormat, segLabelFocus,
+                                           focusUnits,   focusUnits   * 100.0 / ApiQuotaHelper.DailyLimit);
 
         var total = normalUnits + lowFreqUnits + focusUnits;
 
@@ -178,12 +158,12 @@ public partial class MainWindow : System.Windows.Window
                 seg.CornerRadius = new CornerRadius(0);
             if (nonZero.Count == 1)
             {
-                nonZero[0].Item1.CornerRadius = new CornerRadius(4);
+                nonZero[0].Item1.CornerRadius = new CornerRadius(AppConstants.QuotaBarCornerRadius);
             }
             else if (nonZero.Count > 1)
             {
-                nonZero[0].Item1.CornerRadius                       = new CornerRadius(4, 0, 0, 4);
-                nonZero[nonZero.Count - 1].Item1.CornerRadius       = new CornerRadius(0, 4, 4, 0);
+                nonZero[0].Item1.CornerRadius                       = new CornerRadius(AppConstants.QuotaBarCornerRadius, 0, 0, AppConstants.QuotaBarCornerRadius);
+                nonZero[nonZero.Count - 1].Item1.CornerRadius       = new CornerRadius(0, AppConstants.QuotaBarCornerRadius, AppConstants.QuotaBarCornerRadius, 0);
             }
         }
 
@@ -200,6 +180,17 @@ public partial class MainWindow : System.Windows.Window
 
     // barBg ごとの SizeChanged ハンドラを記録（多重登録防止用）
     private readonly Dictionary<Border, SizeChangedEventHandler> _quotaBarHandlers = new();
+
+    // 使用量バーのセグメント別ツールチップ用ラベル（Views/MainWindow.xaml の凡例 Text= と一致させる）
+    private const string QuotaSegLabelEstimateNormal  = "通常";
+    private const string QuotaSegLabelEstimateLowFreq = "低頻度";
+    private const string QuotaSegLabelEstimateFocus   = "時間指定";
+    private const string QuotaSegLabelActualNormal    = "通常巡回";
+    private const string QuotaSegLabelActualPending   = "配信予定の追跡";
+    private const string QuotaSegLabelActualLive      = "配信中の状態確認";
+
+    // {0}=カテゴリ名 {1}=消費ユニット数 {2}=日次上限に対する割合(%)
+    private const string QuotaSegTooltipFormat = "{0}: {1:N0} ユニット（{2:F1}%）";
 
     private void UpdateIntervalComboBoxItems(List<ChannelInfo> channels, int channelCount)
     {

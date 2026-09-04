@@ -5,11 +5,10 @@ namespace YTNotifier.Services;
 
 /// <summary>
 /// YTNotifier.Debug.dll を遅延ロードし IDebugChannelService 実装を返すシングルトン。
-/// DLL が存在しない場合は null を返す。Debug ビルドのみ有効。
+/// DLL が実行ファイルの隣に存在する場合のみ有効。存在しない場合は null を返す。
 /// </summary>
 public static class DebugServiceLoader
 {
-#if DEBUG
     private static IDebugChannelService? _service;
     private static bool _loaded;
     private static readonly string _dllPath = Path.Combine(
@@ -42,7 +41,4 @@ public static class DebugServiceLoader
 
         return _service;
     }
-#else
-    public static IDebugChannelService? GetService() => null;
-#endif
 }

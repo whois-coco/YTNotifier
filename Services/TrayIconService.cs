@@ -13,15 +13,36 @@ namespace YTNotifier.Services;
 /// </summary>
 public class TrayIconService : IDisposable
 {
-    private static readonly System.Drawing.Color ColorBackground  = System.Drawing.Color.FromArgb(0x1E, 0x21, 0x30);
-    private static readonly System.Drawing.Color ColorForeground  = System.Drawing.Color.FromArgb(0xE2, 0xE8, 0xF0);
-    private static readonly System.Drawing.Color ColorBorder      = System.Drawing.Color.FromArgb(0x2D, 0x34, 0x4F);
-    private static readonly System.Drawing.Color ColorHover       = System.Drawing.Color.FromArgb(0x2D, 0x3A, 0x5A);
+    private const string KeySurface     = "SurfaceColor";
+    private const string KeyTextPrimary = "TextPrimaryColor";
+    private const string KeyBorder      = "BorderColor";
+    private const string KeyHover       = "HoverColor";
+
+    private static System.Drawing.Color ColorBackground = System.Drawing.Color.FromArgb(0x1E, 0x29, 0x3B);
+    private static System.Drawing.Color ColorForeground = System.Drawing.Color.FromArgb(0xF1, 0xF5, 0xF9);
+    private static System.Drawing.Color ColorBorder     = System.Drawing.Color.FromArgb(0x33, 0x41, 0x55);
+    private static System.Drawing.Color ColorHover      = System.Drawing.Color.FromArgb(0x1E, 0x3A, 0x5F);
 
     private NotifyIcon?      _notifyIcon;
+    private ContextMenuStrip? _menu;
     private ToolStripItem?   _checkMenuItem;
     private readonly Action  _showMainWindow;
     private readonly Action  _exitApp;
+
+    private static void LoadThemeColors()
+    {
+        ColorBackground = ResolveThemeColor(KeySurface,     ColorBackground);
+        ColorForeground = ResolveThemeColor(KeyTextPrimary, ColorForeground);
+        ColorBorder     = ResolveThemeColor(KeyBorder,      ColorBorder);
+        ColorHover      = ResolveThemeColor(KeyHover,       ColorHover);
+    }
+
+    private static System.Drawing.Color ResolveThemeColor(string key, System.Drawing.Color fallback)
+    {
+        if (System.Windows.Application.Current?.TryFindResource(key) is System.Windows.Media.Color c)
+            return System.Drawing.Color.FromArgb(c.A, c.R, c.G, c.B);
+        return fallback;
+    }
 
     public TrayIconService(Action showMainWindow, Action exitApp)
     {
@@ -40,6 +61,8 @@ public class TrayIconService : IDisposable
                 Text    = "YTNotifier - YouTube通知",
                 Visible = true
             };
+
+            LoadThemeColors();
 
             var menu = new ContextMenuStrip();
             ApplyTrayMenuTheme(menu);
@@ -60,6 +83,7 @@ public class TrayIconService : IDisposable
                 ApplyTrayMenuItemTheme(item);
 
             _notifyIcon.ContextMenuStrip = menu;
+            _menu = menu;
             _notifyIcon.DoubleClick     += (_, _) => _showMainWindow();
 
             MonitorService.Instance.StatusChanged  += OnMonitorStatusChanged;
@@ -69,6 +93,21 @@ public class TrayIconService : IDisposable
         {
             AppLogger.Log(LogMsg.TrayIconInitFailed, null, ex.Message);
         }
+    }
+
+    /// <summary>選択テーマ変更時にトレイメニューの配色を追従させる（App.ApplyTheme から呼ばれる）</summary>
+    public void RefreshTheme()
+    {
+        LoadThemeColors();
+        if (_menu == null) return;
+        System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+        {
+            _menu.BackColor = ColorBackground;
+            _menu.ForeColor = ColorForeground;
+            foreach (ToolStripItem item in _menu.Items)
+                ApplyTrayMenuItemTheme(item);
+            _menu.Renderer = new TrayMenuRenderer();
+        });
     }
 
     private void OnQuotaUpdated()

@@ -332,6 +332,7 @@ public partial class MainWindow : System.Windows.Window
         ch.LatestDuration              = null;
         ch.LatestThumbnailUrl          = null;
         ch.RecentUploads.Clear();
+        ch.VideoKindCache.Clear();
         ch.LatestVideoDeleted          = false;
         ch.NoVideosFound               = false;
         ch.HasUnread                   = false;

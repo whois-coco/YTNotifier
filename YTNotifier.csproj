@@ -27,10 +27,13 @@
   <ItemGroup>
     <PackageReference Include="Google.Apis.YouTube.v3" Version="1.76.0.4249" />
     <PackageReference Include="Google.GenAI" Version="1.20.0" />
-    <PackageReference Include="Jint" Version="4.16.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YTNotifier.Plugin\Plugin.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -68,6 +71,18 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Update="Themes\DarkTheme.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Update="Themes\BlueTheme.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Update="Themes\GrayTheme.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Update="Themes\PinkTheme.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Update="Themes\MatteBlackTheme.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
   </ItemGroup>

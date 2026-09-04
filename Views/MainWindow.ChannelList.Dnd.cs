@@ -202,7 +202,7 @@ public partial class MainWindow : System.Windows.Window
         var srcIdx = rows.IndexOf(_dragSourceRow);
         if (srcIdx < 0) return;
 
-        var duration = new Duration(TimeSpan.FromMilliseconds(150));
+        var duration = new Duration(TimeSpan.FromMilliseconds(DndReorderAnimDurationMs));
         double rowH  = _dragSourceRow.ActualHeight + _dragSourceRow.Margin.Bottom;
 
         for (int i = 0; i < rows.Count; i++)
@@ -303,6 +303,12 @@ public partial class MainWindow : System.Windows.Window
     /// <summary>カテゴリD&Dのドラッグデータ形式（休眠リスト）</summary>
     private const string DormantCategoryDragFormat = "DormantCategoryDrag";
 
+    /// <summary>ドラッグ＆ドロップの並び替えアニメーション時間（ミリ秒）</summary>
+    private const int DndReorderAnimDurationMs = 150;
+
+    private const double DndDropIndicatorHeight = 2;  // 挿入位置を示す線の太さ
+    private static readonly Thickness DndDropIndicatorMargin = new(8, 0, 8, 0);
+
     // カテゴリD&Dを構成するパネル・状態・対象リストの組（チャンネルリスト用と休眠リスト用の2セット）
     private sealed class CategoryDndUi
     {
@@ -365,8 +371,8 @@ public partial class MainWindow : System.Windows.Window
         ui.DropIndicatorIndex = insertIndex;
         ui.DropIndicator = new Border
         {
-            Height = 2, HorizontalAlignment = HorizontalAlignment.Stretch,
-            IsHitTestVisible = false, Margin = new Thickness(8, 0, 8, 0)
+            Height = DndDropIndicatorHeight, HorizontalAlignment = HorizontalAlignment.Stretch,
+            IsHitTestVisible = false, Margin = DndDropIndicatorMargin
         };
         SetDynamicBrush(ui.DropIndicator, Border.BackgroundProperty, "PrimaryBrush");
         ui.Panel.Children.Insert(Math.Min(insertIndex, ui.Panel.Children.Count), ui.DropIndicator);

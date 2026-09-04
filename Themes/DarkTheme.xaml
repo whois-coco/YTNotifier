@@ -89,5 +89,18 @@
     <SolidColorBrush x:Key="QuotaWarnHighBrush" Color="#FF3C00"/>
     <SolidColorBrush x:Key="QuotaWarnLowBrush"  Color="#FFD700"/>
     <SolidColorBrush x:Key="QuotaOkBrush"       Color="#22C55E"/>
+    <SolidColorBrush x:Key="QuotaActualNormalBrush"     Color="#3B82F6"/>
+    <SolidColorBrush x:Key="QuotaActualPendingBrush"    Color="#F59E0B"/>
+    <SolidColorBrush x:Key="QuotaActualLiveStatusBrush" Color="#D946EF"/>
+    <SolidColorBrush x:Key="QuotaEstimateNormalBrush"  Color="#3B82F6"/>
+    <SolidColorBrush x:Key="QuotaEstimateLowFreqBrush" Color="#F59E0B"/>
+    <SolidColorBrush x:Key="QuotaEstimateFocusBrush"   Color="#22C55E"/>
+
+    <!-- 動作ログ：レベル別バッジ色（テーマ非依存の固定色） -->
+    <SolidColorBrush x:Key="LogLevelSystemBrush"  Color="#60A5FA"/>
+    <SolidColorBrush x:Key="LogLevelInfoBrush"    Color="#94A3B8"/>
+    <SolidColorBrush x:Key="LogLevelWarningBrush" Color="#F59E0B"/>
+    <SolidColorBrush x:Key="LogLevelErrorBrush"   Color="#EF4444"/>
+    <SolidColorBrush x:Key="LogLevelDebugBrush"   Color="#6B7280"/>
 
 </ResourceDictionary>
