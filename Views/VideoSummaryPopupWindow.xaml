@@ -1,0 +1,90 @@
+<Window x:Class="YTNotifier.Views.VideoSummaryPopupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" ResizeMode="NoResize"
+        AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        SizeToContent="WidthAndHeight" MinWidth="360" MaxWidth="480"
+        FontFamily="Noto Sans JP">
+
+    <Border Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1" CornerRadius="6">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.3" Direction="270"/>
+        </Border.Effect>
+        <StackPanel>
+            <!-- タイトルバー -->
+            <Border x:Name="TitleBar" Height="38" CornerRadius="6,6,0,0"
+                    Background="{DynamicResource SidebarBrush}"
+                    MouseLeftButtonDown="TitleBar_MouseDown">
+                <Grid>
+                    <TextBlock Text="動画情報" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource SidebarTextBrush}"
+                               VerticalAlignment="Center" Margin="16,0"/>
+                    <Button x:Name="CloseButton" Content="✕" HorizontalAlignment="Right"
+                            Width="38" Height="38" Background="Transparent" BorderThickness="0"
+                            Foreground="{DynamicResource SidebarTextBrush}" Cursor="Hand"
+                            Click="Close_Click"/>
+                </Grid>
+            </Border>
+
+            <StackPanel Margin="20,16,20,20">
+                <!-- サムネイル -->
+                <Border x:Name="ThumbnailBorder" CornerRadius="6" Margin="0,0,0,12"
+                        Visibility="Collapsed" ClipToBounds="True">
+                    <Image x:Name="ThumbnailImage" Stretch="Uniform" MaxHeight="200"/>
+                </Border>
+
+                <!-- チャンネル情報 -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <Border x:Name="ChannelIconBorder" Width="32" Height="32" CornerRadius="16"
+                            Margin="0,0,10,0" ClipToBounds="True"/>
+                    <TextBlock x:Name="ChannelNameText" FontSize="13" FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </StackPanel>
+
+                <!-- 種別 + タイトル -->
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border x:Name="KindPill" Grid.Column="0" CornerRadius="3" Padding="4,1,4,1" Margin="0,0,6,0"
+                            VerticalAlignment="Top">
+                        <TextBlock x:Name="KindPillText" FontSize="12"/>
+                    </Border>
+                    <TextBlock x:Name="TitleText" Grid.Column="1" FontSize="13" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </Grid>
+
+                <!-- 動画時間 -->
+                <TextBlock x:Name="DurationText" FontSize="12" Margin="0,0,0,12"
+                           Visibility="Collapsed"
+                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+
+                <!-- Gemini要約 -->
+                <StackPanel x:Name="SummaryPanel" Visibility="Collapsed">
+                    <Button x:Name="SummaryButton" Content="要約する" HorizontalAlignment="Left"
+                            Style="{StaticResource SecondaryButton}" Padding="12,6"
+                            Click="SummaryButton_Click"/>
+                    <TextBlock x:Name="SummaryStatusText" FontSize="12" Margin="0,10,0,0"
+                               TextWrapping="Wrap" Visibility="Collapsed"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock x:Name="SummaryErrorText" FontSize="12" Margin="0,10,0,0"
+                               TextWrapping="Wrap" Visibility="Collapsed"
+                               Foreground="{DynamicResource ErrorBrush}"/>
+                    <StackPanel x:Name="SummaryResultPanel" Margin="0,10,0,0" Visibility="Collapsed">
+                        <TextBlock x:Name="SummaryHeadlineText" FontSize="13" FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        <TextBlock x:Name="SummaryDetailText" FontSize="12" Margin="0,6,0,0"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>
