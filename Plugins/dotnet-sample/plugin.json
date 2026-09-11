@@ -1,7 +1,0 @@
-{
-  "name": "C#サンプル要約",
-  "version": "1.0.0",
-  "type": "dotnet",
-  "entry": "SampleDotNetPlugin.dll",
-  "jobs": ["summary"]
-}
