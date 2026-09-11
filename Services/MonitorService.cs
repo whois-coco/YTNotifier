@@ -60,27 +60,6 @@ public class MonitorService : IDisposable
     /// <summary>次の時間指定枠を今日から何日先まで探すか</summary>
     private const int NextFocusWindowSearchDays = 8;
 
-    private static readonly TimeZoneInfo _pacificTz =
-        TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
-
-    /// <summary>次回クォータリセット時刻をローカル時刻で返す（DST対応）</summary>
-    private static DateTime GetNextQuotaResetTime()
-    {
-        var nowPt          = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _pacificTz);
-        var nextMidnightPt = DateTime.SpecifyKind(nowPt.Date.AddDays(1), DateTimeKind.Unspecified);
-        var nextMidnightUtc = TimeZoneInfo.ConvertTimeToUtc(nextMidnightPt, _pacificTz);
-        return TimeZoneInfo.ConvertTimeFromUtc(nextMidnightUtc, TimeZoneInfo.Local);
-    }
-
-    /// <summary>本日の太平洋時間深夜0時（クォータリセット時刻）をローカル時刻で返す（DST対応）</summary>
-    private static DateTime GetTodayQuotaResetTime()
-    {
-        var nowPt           = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _pacificTz);
-        var todayMidnightPt = DateTime.SpecifyKind(nowPt.Date, DateTimeKind.Unspecified);
-        var todayMidnightUtc = TimeZoneInfo.ConvertTimeToUtc(todayMidnightPt, _pacificTz);
-        return TimeZoneInfo.ConvertTimeFromUtc(todayMidnightUtc, TimeZoneInfo.Local);
-    }
-
     private readonly IYouTubeApiClient _youtubeClient;
     private Timer? _timer;
     private volatile bool _isRunning      = false;
@@ -402,7 +381,7 @@ public class MonitorService : IDisposable
 
             // 定時全巡回（クォータリセット＋1分以降の最初のチェックで実行、起動時チェック中を除く、太平洋時間基準で1日1回）
             var pacificDayKey   = AppConstants.GetQuotaDayKey();
-            var triggerTime     = GetTodayQuotaResetTime().AddMinutes(DailyFullScanDelayMinutes);
+            var triggerTime     = QuotaResetTimeHelper.GetTodayQuotaResetTime().AddMinutes(DailyFullScanDelayMinutes);
             var isDailyFullScan = false;
             if (now >= triggerTime
                 && !_isStartupCheck
@@ -789,7 +768,7 @@ public class MonitorService : IDisposable
             // クォータ超過後にリセット時刻到達で _quotaSuspendedUntil が別スレッドにクリアされた場合も
             // 次回リセット時刻まで待機させる（直前のリセット時刻はすでに過ぎているので +1日分を取得）
             if (quotaExceeded && !suspended.HasValue)
-                suspended = GetNextQuotaResetTime();
+                suspended = QuotaResetTimeHelper.GetNextQuotaResetTime();
             RevertExpiredPendingEntries(channel, channel.LastCheckedAt);
             channel.NextCheckAt = suspended
                 ?? (hadGrace ? channel.LastCheckedAt.AddSeconds(GracePeriodIntervalSeconds) : CalcNextCheckAt(channel, channel.LastCheckedAt));
@@ -1420,7 +1399,7 @@ public class MonitorService : IDisposable
         {
             if (_quotaSuspendedUntil.HasValue) return; // 既に処理済み（複数並列タスクの重複呼び出し防止）
 
-            resumeAt             = GetNextQuotaResetTime();
+            resumeAt             = QuotaResetTimeHelper.GetNextQuotaResetTime();
             _quotaSuspendedUntil = resumeAt;
         }
 

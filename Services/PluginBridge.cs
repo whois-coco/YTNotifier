@@ -109,6 +109,8 @@ public sealed class PluginBridge
         {
             if (_started) return;
 
+            MigrateLegacyPluginConfigIfNeeded();
+
             var hostPath   = Path.Combine(ExeDir, HostFileName);
             var pluginsDir  = Path.Combine(ExeDir, PluginsDirName);
             if (!File.Exists(hostPath) || !HasAnyPluginFolder(pluginsDir)) return;
@@ -250,16 +252,15 @@ public sealed class PluginBridge
     }
 
     /// <summary>
-    /// 仕事の優先順（フォルダ名の配列）のコピー。記録が無ければ空リスト。
+    /// プラグイン全体の表示・優先順（フォルダ名の配列）のコピー。記録が無ければ空リスト。
+    /// 仕事の呼び出し順・画面のボタン表示順の両方にこの1つの順序を使う。
     /// </summary>
-    public IReadOnlyList<string> GetJobOrder(string job)
+    public IReadOnlyList<string> GetPluginOrder()
     {
         lock (_sync)
         {
             var config = LoadPluginConfig();
-            return config.Order.TryGetValue(job, out var order) && order != null
-                ? new List<string>(order)
-                : new List<string>();
+            return new List<string>(config.Order);
         }
     }
 
@@ -278,16 +279,14 @@ public sealed class PluginBridge
         }
     }
 
-    /// <summary>仕事の優先順を差し替えて <c>conf\plugins.json</c> へ保存する。</summary>
-    public void SetJobOrder(string job, IReadOnlyList<string> order)
+    /// <summary>プラグイン全体の表示・優先順を差し替えて <c>conf\plugins.json</c> へ保存する。ログ出力は呼び出し側で行う。</summary>
+    public void SetPluginOrder(IReadOnlyList<string> order)
     {
         lock (_sync)
         {
             var config = LoadPluginConfig();
-            config.Order[job] = new List<string>(order);
+            config.Order = new List<string>(order);
             SavePluginConfig(config);
-
-            AppLogger.Log(LogMsg.PluginJobOrderChanged, null, job);
         }
     }
 
@@ -310,9 +309,6 @@ public sealed class PluginBridge
             _cts    = new CancellationTokenSource();
             _pipe   = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1,
                 PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-
-            // 低整合性で動くホストからパイプへ入れるようにする（接続を待ち始める前に付ける）
-            PluginSandbox.ApplyLowIntegrityLabel(_pipe.SafePipeHandle);
 
             var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
             _reader = new StreamReader(_pipe, encoding);
@@ -582,12 +578,11 @@ public sealed class PluginBridge
             .Where(p => !config.Enabled.TryGetValue(p.Folder, out var isEnabled) || isEnabled)
             .ToList();
 
-        if (!config.Order.TryGetValue(job, out var order) || order == null || order.Count == 0)
-            return enabled;
+        if (config.Order.Count == 0) return enabled;
 
         var rankByFolder = new Dictionary<string, int>(StringComparer.Ordinal);
-        for (var i = 0; i < order.Count; i++)
-            if (!rankByFolder.ContainsKey(order[i])) rankByFolder[order[i]] = i;
+        for (var i = 0; i < config.Order.Count; i++)
+            if (!rankByFolder.ContainsKey(config.Order[i])) rankByFolder[config.Order[i]] = i;
 
         return enabled
             .OrderBy(p => rankByFolder.TryGetValue(p.Folder, out var rank) ? rank : int.MaxValue)
@@ -603,12 +598,60 @@ public sealed class PluginBridge
         {
             var path = PluginConfigPath;
             if (!File.Exists(path)) return new PluginConfig();
-            return JsonConvert.DeserializeObject<PluginConfig>(File.ReadAllText(path)) ?? new PluginConfig();
+            var text = File.ReadAllText(path);
+
+            try
+            {
+                return JsonConvert.DeserializeObject<PluginConfig>(text) ?? new PluginConfig();
+            }
+            catch (JsonException)
+            {
+                // 旧形式（order/regionOrder が「仕事名・リージョンID → フォルダ配列」のDictionaryだった版）。
+                // 有効・無効の記録だけ引き継ぎ、順序は検出順（空リスト）へリセットする。
+                var legacy = JsonConvert.DeserializeObject<LegacyPluginConfig>(text) ?? new LegacyPluginConfig();
+                return new PluginConfig { Enabled = legacy.Enabled };
+            }
         }
         catch
         {
             return new PluginConfig();
         }
+    }
+
+    /// <summary>
+    /// 起動時に一度だけ呼ぶ。旧形式（仕事ごと・リージョンごとの Dictionary 順序）の
+    /// <c>conf\plugins.json</c> を検出したら、有効・無効の記録だけを引き継いだ新形式で上書き保存する。
+    /// 新形式として読める場合・ファイルが無い場合は何もしない。
+    /// </summary>
+    private static void MigrateLegacyPluginConfigIfNeeded()
+    {
+        var path = PluginConfigPath;
+        if (!File.Exists(path)) return;
+
+        string text;
+        try { text = File.ReadAllText(path); }
+        catch { return; }
+
+        try
+        {
+            JsonConvert.DeserializeObject<PluginConfig>(text);
+            return; // 新形式として読めたので移行不要
+        }
+        catch (JsonException)
+        {
+            // 旧形式。下で変換して保存する。
+        }
+        catch
+        {
+            return; // 想定外の読み込み失敗。移行は行わない
+        }
+
+        try
+        {
+            var legacy = JsonConvert.DeserializeObject<LegacyPluginConfig>(text) ?? new LegacyPluginConfig();
+            SavePluginConfig(new PluginConfig { Enabled = legacy.Enabled });
+        }
+        catch { /* 移行に失敗しても起動は継続する */ }
     }
 
     private static void SavePluginConfig(PluginConfig config)
@@ -638,18 +681,10 @@ public sealed class PluginBridge
                 changed = true;
             }
 
-            foreach (var job in descriptor.Jobs)
+            if (!config.Order.Contains(descriptor.Folder))
             {
-                if (!config.Order.TryGetValue(job, out var order) || order == null)
-                {
-                    order = new List<string>();
-                    config.Order[job] = order;
-                }
-                if (!order.Contains(descriptor.Folder))
-                {
-                    order.Add(descriptor.Folder);
-                    changed = true;
-                }
+                config.Order.Add(descriptor.Folder);
+                changed = true;
             }
         }
 
@@ -664,11 +699,23 @@ public sealed class PluginBridge
 
     private sealed class PluginConfig
     {
-        /// <summary>仕事の名前 → フォルダ名の配列（優先順）</summary>
-        public Dictionary<string, List<string>> Order { get; set; } = new(StringComparer.Ordinal);
+        /// <summary>プラグイン全体の表示・優先順（フォルダ名の配列）。仕事の呼び出し順・画面のボタン表示順の両方にこの1つを使う。</summary>
+        public List<string> Order { get; set; } = new();
 
         /// <summary>フォルダ名 → 有効かどうか</summary>
         public Dictionary<string, bool> Enabled { get; set; } = new(StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// 旧形式（仕事ごと・リージョンごとに別々の優先順位を持っていた版）の <c>plugins.json</c> を読むための型。
+    /// <see cref="LoadPluginConfig"/> が新形式でのデシリアライズに失敗したときだけ使う。
+    /// </summary>
+    private sealed class LegacyPluginConfig
+    {
+        public Dictionary<string, List<string>> Order { get; set; } = new(StringComparer.Ordinal);
+        public Dictionary<string, bool> Enabled { get; set; } = new(StringComparer.Ordinal);
+        [JsonProperty("regionOrder")]
+        public Dictionary<string, List<string>> RegionOrder { get; set; } = new(StringComparer.Ordinal);
     }
 
     private sealed class InvokeContext

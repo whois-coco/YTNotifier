@@ -17,8 +17,15 @@ public partial class VideoListPopupWindow : Window
 {
     private const string HeaderTextLive             = "配信中のライブ一覧";
     private const string HeaderTextPremiere         = "公開中のプレミア一覧";
-    private const string HeaderTextRecentUploadsFormat = "{0} の最新動画";
+    private const string HeaderTextRecentUploadsFormat = "{0} の動画一覧";
     private const double RowBottomMargin            = 10;
+
+    /// <summary>動画一覧（右クリックメニュー経由）ウィンドウの最小幅。動画一覧: 既定360の+30%</summary>
+    private const double RecentUploadsWindowMinWidth = 468;
+    /// <summary>動画一覧（右クリックメニュー経由）ウィンドウの最大幅。動画一覧: 既定480の+30%</summary>
+    private const double RecentUploadsWindowMaxWidth = 624;
+    /// <summary>動画一覧（右クリックメニュー経由）のリスト部の高さ上限。動画一覧: 既定420の+30%</summary>
+    private const double RecentUploadsListMaxHeight = 546;
 
     /// <summary>最新動画一覧の行サムネイルの表示サイズ</summary>
     private const double RecentUploadThumbnailWidth  = 96;
@@ -82,6 +89,9 @@ public partial class VideoListPopupWindow : Window
     public VideoListPopupWindow(Window owner, ChannelInfo channel, List<RecentUploadEntry> entries)
     {
         InitializeComponent();
+        MinWidth                = RecentUploadsWindowMinWidth;
+        MaxWidth                = RecentUploadsWindowMaxWidth;
+        EntriesScroll.MaxHeight = RecentUploadsListMaxHeight;
         Loaded += (_, _) => WindowCornerHelper.Apply(this);
         Owner         = owner;
         _channel      = channel;
@@ -157,7 +167,9 @@ public partial class VideoListPopupWindow : Window
 
         var elapsedText = new TextBlock
         {
-            Text                = FormatElapsed(entry.PublishedAt),
+            Text = entry.Kind is VideoKind.Video or VideoKind.Short or VideoKind.Premiere
+                ? (YouTubeApiClient.FormatPublishedAt(entry.PublishedAt) ?? string.Empty)
+                : FormatElapsed(entry.PublishedAt),
             FontSize            = MetaFontSize,
             VerticalAlignment   = VerticalAlignment.Center,
             Foreground          = (Brush)TryFindResource("TextSecondaryBrush")
@@ -193,7 +205,8 @@ public partial class VideoListPopupWindow : Window
         {
             e.Handled = true;
             new VideoSummaryPopupWindow(this, channel, entry.Kind, entry.Title, entry.VideoId,
-                duration: entry.Duration, thumbnailUrl: entry.ThumbnailUrl).Show();
+                duration: entry.Duration, thumbnailUrl: entry.ThumbnailUrl,
+                publishedAt: entry.PublishedAt).Show();
         };
 
         var row = new DockPanel();

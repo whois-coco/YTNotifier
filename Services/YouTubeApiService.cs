@@ -466,6 +466,17 @@ public partial class YouTubeApiClient : IYouTubeApiClient
             : $"{d.Minutes:D2}:{d.Seconds:D2}";
     }
 
+    /// <summary>投稿日時の表示書式（ローカル時刻へ変換して "yyyy/MM/dd HH:mm:ss"）</summary>
+    private const string PublishedAtDisplayFormat = "yyyy/MM/dd HH:mm:ss";
+
+    /// <summary>投稿日時（UTC壁時計・Unspecified）をローカル時刻の "yyyy/MM/dd HH:mm:ss" に変換する。null は null。</summary>
+    public static string? FormatPublishedAt(DateTime? publishedAt)
+    {
+        if (publishedAt == null) return null;
+        var local = DateTime.SpecifyKind(publishedAt.Value, DateTimeKind.Utc).ToLocalTime();
+        return local.ToString(PublishedAtDisplayFormat);
+    }
+
     /// <summary>
     /// 新着動画を複数件返す（通知フィルタ対応のため最大件数まで走査）
     /// lastVideoId より新しい動画を新着順で返す

@@ -46,8 +46,9 @@ public partial class MainWindow : System.Windows.Window
 
     // ===== 検索UI共通処理（チャンネルリスト・休眠リストで共用） =====
 
-    /// <summary>検索ボックス縮小時の幅</summary>
-    private const double SearchBoxCollapsedWidth = 32;
+    /// <summary>検索ボックス縮小時の幅。虫眼鏡ボタン（Width=44）と一致させる。
+    /// これより小さいと ClipToBounds で角丸ホバー背景が左右に欠ける</summary>
+    private const double SearchBoxCollapsedWidth = 44;
 
     /// <summary>検索ボックス展開時の枠線の太さ</summary>
     private const double SearchBoxBorderThickness = 1;

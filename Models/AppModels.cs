@@ -729,14 +729,25 @@ public class ChannelState
     public bool NoVideosFound { get; set; } = false;
 }
 
-/// <summary>Gemini 要約結果1件分（見出し＋詳細。要約スクリプト／外部DLL／既存ロジックの共通の戻り値型）</summary>
-public class GeminiSummaryEntry
+/// <summary>プラグイン間口 segments 結果の1項目</summary>
+public class PluginSegmentItem
 {
-    [JsonProperty("headline")]
-    public string Headline { get; set; } = string.Empty;
+    [JsonProperty("start")] public int    Start { get; set; }
+    [JsonProperty("title")] public string Title { get; set; } = string.Empty;
+    [JsonProperty("body")]  public string Body  { get; set; } = string.Empty;
+}
 
-    [JsonProperty("detail")]
-    public string Detail { get; set; } = string.Empty;
+/// <summary>プラグイン間口 segments 結果</summary>
+public class PluginSegmentsResult
+{
+    [JsonProperty("items")] public List<PluginSegmentItem> Items { get; set; } = new();
+}
+
+/// <summary>プラグイン間口 text 結果</summary>
+public class PluginTextResult
+{
+    [JsonProperty("headline")] public string? Headline { get; set; }
+    [JsonProperty("detail")]   public string  Detail   { get; set; } = string.Empty;
 }
 
 /// <summary>アプリ全体の実行状態（state.json で管理）</summary>
@@ -765,6 +776,19 @@ public enum VideoKind { Video, Short, Live, Premiere }
 
 /// <summary>API使用ユニットの計上カテゴリ（実使用量バーの色分け用）。既定値 Normal を 0 に置く。</summary>
 public enum ApiUnitCategory { Normal, PendingTrack, LiveStatus }
+
+/// <summary>API使用量ドーナツ（QuotaDonut）の内訳セグメント1件分。ラベル・消費ユニット数・固定色ブラシキーを束ねる</summary>
+public class QuotaDonutSegment
+{
+    /// <summary>内訳ラベル（例「通常巡回」）</summary>
+    public string Label { get; set; } = string.Empty;
+
+    /// <summary>このセグメントの消費ユニット数</summary>
+    public int Units { get; set; }
+
+    /// <summary>セグメント色の固定ブラシキー（Themes/ のキー名。差し色非依存）</summary>
+    public string BrushKey { get; set; } = string.Empty;
+}
 
 /// <summary>ウィンドウ色（テーマ）。Themes/ の6テーマに対応する</summary>
 public enum AppTheme { Light, Dark, Blue, Gray, Pink, MatteBlack }

@@ -228,8 +228,9 @@ public enum LogMsg
     PluginDetected                     = 5137,  // {0}=表示名 {1}=フォルダ名
     PluginHostStarted                  = 5139,  // {0}=プラグイン件数
     PluginEnabledChanged               = 5140,  // {0}=表示名 {1}=有効／無効
-    PluginJobOrderChanged              = 5141,  // {0}=仕事の名前
+    PluginOrderChanged                 = 5141,  // {0}=移動したプラグイン名
     PluginInvokeError                  = 5142,  // {0}=仕事の名前 {1}=message
+    PluginContributionRejected         = 5143,  // {0}=フォルダ名 {1}=理由
     // APIキーウィンドウ
     ApiKeyEditStarted          = 5067,
     ApiKeyChanged              = 5068,
@@ -472,8 +473,8 @@ public static class AppLogger
         [LogMsg.LatestVideoTitleChanged]             = new(LogLevel.Debug,   LogCategory.Channel,           "表示中の動画のタイトルが変更されたことを検知しました: {0}（{1} → {2}）"),
         [LogMsg.ChannelListAllAlive]                 = new(LogLevel.Debug,   LogCategory.Channel,           "チャンネルリスト内の全てのチャンネルの生存を確認。"),
         [LogMsg.DormantListAllAlive]                 = new(LogLevel.Debug,   LogCategory.Channel,           "休眠リスト内の全てのチャンネルの生存を確認。"),
-        [LogMsg.RecentUploadsPopupOpened]            = new(LogLevel.Debug,   LogCategory.Channel,           "最新動画一覧を開きました: {0}（{1}件）"),
-        [LogMsg.RecentUploadThumbnailOpened]         = new(LogLevel.Debug,   LogCategory.Channel,           "最新動画一覧のサムネイルから動画を開きました: {0}"),
+        [LogMsg.RecentUploadsPopupOpened]            = new(LogLevel.Debug,   LogCategory.Channel,           "動画一覧を開きました: {0}（{1}件）"),
+        [LogMsg.RecentUploadThumbnailOpened]         = new(LogLevel.Debug,   LogCategory.Channel,           "動画一覧のサムネイルから動画を開きました: {0}"),
         // 動画要約ポップアップ
         [LogMsg.VideoSummaryPopupOpened]           = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "動画情報ポップアップを開きました: {0}"),
         [LogMsg.VideoListPopupOpened]              = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "動画一覧ポップアップを開きました: {0}（{1}件）"),
@@ -484,7 +485,8 @@ public static class AppLogger
         [LogMsg.PluginLog]                           = new(LogLevel.Info,    LogCategory.VideoSummaryPopup,   "プラグインログ[{0}]: {1}"),
         [LogMsg.PluginInvokeError]                   = new(LogLevel.Info,    LogCategory.VideoSummaryPopup,   "プラグイン処理でエラーが発生しました({0}): {1}"),
         [LogMsg.PluginEnabledChanged]                = new(LogLevel.Debug,   LogCategory.Startup,             "プラグイン「{0}」を{1}にしました"),
-        [LogMsg.PluginJobOrderChanged]               = new(LogLevel.Debug,   LogCategory.Startup,             "プラグインの優先順位を変更しました: {0}"),
+        [LogMsg.PluginOrderChanged]                  = new(LogLevel.Debug,   LogCategory.Startup,             "プラグインの優先順位を変更しました: {0}"),
+        [LogMsg.PluginContributionRejected]          = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "プラグインの画面項目を1件無視しました: {0}（{1}）"),
         [LogMsg.ChannelDetailTabSwitched]   = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "詳細設定タブ切替: {0}"),
         [LogMsg.ChannelDetailEnabledChanged]= new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "詳細設定 有効/無効: {1} → {2}"),
         // APIキーウィンドウ

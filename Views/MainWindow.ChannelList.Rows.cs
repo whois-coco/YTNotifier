@@ -527,11 +527,13 @@ public partial class MainWindow : System.Windows.Window
                 var videoId  = ch.LatestVideoId;
                 var fullTitle = ch.LatestTitle ?? string.Empty;
                 var duration = ch.LatestDuration;
+                var publishedAt = ch.RecentUploads.FirstOrDefault(r => r.VideoId == videoId)?.PublishedAt;
                 titleText.MouseLeftButtonUp += (_, e) =>
                 {
                     e.Handled = true;
                     var owner = System.Windows.Window.GetWindow(titleText) as System.Windows.Window;
-                    new VideoSummaryPopupWindow(owner!, ch, kind, fullTitle, videoId, duration).Show();
+                    new VideoSummaryPopupWindow(owner!, ch, kind, fullTitle, videoId, duration,
+                        publishedAt: publishedAt).Show();
                 };
             }
 
@@ -572,7 +574,7 @@ public partial class MainWindow : System.Windows.Window
         var clearItem = new MenuItem { Header = "🔔 NEWバッジを消す" };
         clearItem.Click += (_, _) => { AppLogger.Log(LogMsg.ChannelContextClearNew, null, ch.ChannelName); ch.HasUnread = false; SettingsService.Instance.UpdateChannelSilent(ch); RefreshChannelList(); };
 
-        var recentUploadsItem = new MenuItem { Header = "📜 最新動画一覧" };
+        var recentUploadsItem = new MenuItem { Header = "📜 動画一覧" };
         recentUploadsItem.Click += (_, _) =>
         {
             var filteredUploads = ch.RecentUploads

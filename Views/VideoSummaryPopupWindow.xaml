@@ -4,7 +4,7 @@
         WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        SizeToContent="WidthAndHeight" MinWidth="360" MaxWidth="480"
+        SizeToContent="WidthAndHeight" MinWidth="360"
         FontFamily="Noto Sans JP">
 
     <Border Background="{DynamicResource SurfaceBrush}"
@@ -29,62 +29,118 @@
                 </Grid>
             </Border>
 
-            <StackPanel Margin="20,16,20,20">
-                <!-- サムネイル -->
-                <Border x:Name="ThumbnailBorder" CornerRadius="6" Margin="0,0,0,12"
-                        Visibility="Collapsed" ClipToBounds="True">
-                    <Image x:Name="ThumbnailImage" Stretch="Uniform" MaxHeight="200"/>
-                </Border>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-                <!-- チャンネル情報 -->
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                    <Border x:Name="ChannelIconBorder" Width="32" Height="32" CornerRadius="16"
-                            Margin="0,0,10,0" ClipToBounds="True"/>
-                    <TextBlock x:Name="ChannelNameText" FontSize="13" FontWeight="SemiBold"
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource TextPrimaryBrush}"/>
-                </StackPanel>
-
-                <!-- 種別 + タイトル -->
-                <Grid Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Border x:Name="KindPill" Grid.Column="0" CornerRadius="3" Padding="4,1,4,1" Margin="0,0,6,0"
-                            VerticalAlignment="Top">
-                        <TextBlock x:Name="KindPillText" FontSize="12"/>
+                <!-- 左カラム：本文 -->
+                <StackPanel x:Name="LeftColumnPanel" Grid.Column="0" Margin="20,16,20,20">
+                    <!-- サムネイル -->
+                    <Border x:Name="ThumbnailBorder" CornerRadius="6" Margin="0,0,0,12"
+                            Visibility="Collapsed" ClipToBounds="True">
+                        <Image x:Name="ThumbnailImage" Stretch="Uniform" MaxHeight="200"/>
                     </Border>
-                    <TextBlock x:Name="TitleText" Grid.Column="1" FontSize="13" TextWrapping="Wrap"
-                               Foreground="{DynamicResource TextPrimaryBrush}"/>
-                </Grid>
 
-                <!-- 動画時間 -->
-                <TextBlock x:Name="DurationText" FontSize="12" Margin="0,0,0,12"
-                           Visibility="Collapsed"
-                           Foreground="{DynamicResource TextSecondaryBrush}"/>
-
-                <!-- Gemini要約 -->
-                <StackPanel x:Name="SummaryPanel" Visibility="Collapsed">
-                    <Button x:Name="SummaryButton" Content="要約する" HorizontalAlignment="Left"
-                            Style="{StaticResource SecondaryButton}" Padding="12,6"
-                            Click="SummaryButton_Click"/>
-                    <TextBlock x:Name="SummaryStatusText" FontSize="12" Margin="0,10,0,0"
-                               TextWrapping="Wrap" Visibility="Collapsed"
-                               Foreground="{DynamicResource TextSecondaryBrush}"/>
-                    <TextBlock x:Name="SummaryErrorText" FontSize="12" Margin="0,10,0,0"
-                               TextWrapping="Wrap" Visibility="Collapsed"
-                               Foreground="{DynamicResource ErrorBrush}"/>
-                    <StackPanel x:Name="SummaryResultPanel" Margin="0,10,0,0" Visibility="Collapsed">
-                        <TextBlock x:Name="SummaryHeadlineText" FontSize="13" FontWeight="SemiBold"
-                                   TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        <TextBlock x:Name="SummaryDetailText" FontSize="12" Margin="0,6,0,0"
-                                   TextWrapping="Wrap"
+                    <!-- チャンネル情報 -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <Border x:Name="ChannelIconBorder" Width="32" Height="32" CornerRadius="16"
+                                Margin="0,0,10,0" ClipToBounds="True"/>
+                        <TextBlock x:Name="ChannelNameText" FontSize="13" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextPrimaryBrush}"/>
                     </StackPanel>
+
+                    <!-- 種別 + タイトル -->
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="KindPill" Grid.Column="0" CornerRadius="3" Padding="4,1,4,1" Margin="0,0,6,0"
+                                VerticalAlignment="Top">
+                            <TextBlock x:Name="KindPillText" FontSize="12"/>
+                        </Border>
+                        <TextBlock x:Name="TitleText" Grid.Column="1" FontSize="13" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </Grid>
+
+                    <!-- 投稿日時 -->
+                    <TextBlock x:Name="PublishedAtText" FontSize="12" Margin="0,0,0,12"
+                               Visibility="Collapsed"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+
+                    <!-- 動画時間 -->
+                    <TextBlock x:Name="DurationText" FontSize="12" Margin="0,0,0,12"
+                               Visibility="Collapsed"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+
+                    <!-- 要約ボタン + プラグインボタン（同じ行） -->
+                    <StackPanel x:Name="ActionButtonsRow" Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button x:Name="SummaryButton" Content="要約" VerticalAlignment="Top"
+                                Style="{StaticResource SecondaryButton}" Padding="12,6" Margin="0,0,8,0"
+                                Visibility="Collapsed"
+                                Click="SummaryButton_Click"/>
+                        <WrapPanel x:Name="PluginActionsButtons"/>
+                    </StackPanel>
+
+                    <!-- Gemini要約（状態・結果） -->
+                    <StackPanel x:Name="SummaryPanel" Visibility="Collapsed">
+                        <TextBlock x:Name="SummaryStatusText" FontSize="12" Margin="0,10,0,0"
+                                   TextWrapping="Wrap" Visibility="Collapsed"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <TextBlock x:Name="SummaryErrorText" FontSize="12" Margin="0,10,0,0"
+                                   TextWrapping="Wrap" Visibility="Collapsed"
+                                   Foreground="{DynamicResource ErrorBrush}"/>
+                        <StackPanel x:Name="SummaryResultPanel" Margin="0,10,0,0" Visibility="Collapsed">
+                            <TextBlock x:Name="SummaryHeadlineText" FontSize="13" FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock x:Name="SummaryDetailText" FontSize="12" Margin="0,6,0,0"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- プラグインアクション領域（plugin.json の contributes 由来。汎用描画・インライン結果） -->
+                    <StackPanel x:Name="PluginActionsPanel" Visibility="Collapsed" Margin="0,10,0,0">
+                        <TextBlock x:Name="PluginActionsStatusText" FontSize="12"
+                                   TextWrapping="Wrap" Visibility="Collapsed"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <StackPanel x:Name="PluginActionsResultPanel" Margin="0,10,0,0" Visibility="Collapsed"/>
+                    </StackPanel>
                 </StackPanel>
-            </StackPanel>
+
+                <!-- 右カラム：プラグイン結果のサイドパネル -->
+                <Border x:Name="SidePanelBorder" Grid.Column="1" Visibility="Collapsed"
+                        Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="6" Margin="0,16,16,20">
+                    <DockPanel>
+                        <Grid DockPanel.Dock="Top" Margin="12,8,4,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SidePanelHeaderText" Grid.Column="0" FontSize="13" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <Button x:Name="SidePanelCloseButton" Grid.Column="1" Content="✕"
+                                    Width="28" Height="28" Background="Transparent" BorderThickness="0"
+                                    Foreground="{DynamicResource TextSecondaryBrush}" Cursor="Hand"
+                                    Click="SidePanelClose_Click"/>
+                        </Grid>
+                        <TextBlock x:Name="SidePanelStatusText" DockPanel.Dock="Top"
+                                   Margin="12,0,12,8" FontSize="12" TextWrapping="Wrap"
+                                   Visibility="Collapsed"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <ScrollViewer x:Name="SidePanelScroll" Style="{StaticResource SlimScrollViewer}">
+                            <StackPanel x:Name="SidePanelResultPanel" Margin="12,0,12,12"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+            </Grid>
         </StackPanel>
     </Border>
 </Window>

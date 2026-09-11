@@ -171,6 +171,44 @@ public partial class MainWindow : System.Windows.Window
     }
 
     // ===== 設定サブナビゲーション =====
+
+    // 設定サブナビ：幅不足時に続きへスクロールするオーバーフローボタン
+    private const string SettingsNavOverflowForwardGlyph  = "»";
+    private const string SettingsNavOverflowBackwardGlyph = "«";
+    /// <summary>スクロール位置を先頭／末尾とみなす許容誤差（px）</summary>
+    private const double SettingsNavScrollEpsilon = 1.0;
+
+    private void SettingsNavScroller_SizeChanged(object sender, System.Windows.SizeChangedEventArgs e)
+        => UpdateSettingsNavOverflow();
+
+    private void UpdateSettingsNavOverflow()
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            var scrollable = SettingsNavScroller.ScrollableWidth;
+            if (scrollable <= SettingsNavScrollEpsilon)
+            {
+                SettingsNavOverflowButton.Visibility = Visibility.Collapsed;
+                SettingsNavScroller.ScrollToHorizontalOffset(0);
+                return;
+            }
+
+            SettingsNavOverflowButton.Visibility = Visibility.Visible;
+            var atStart = SettingsNavScroller.HorizontalOffset <= SettingsNavScrollEpsilon;
+            SettingsNavOverflowGlyph.Text = atStart
+                ? SettingsNavOverflowForwardGlyph
+                : SettingsNavOverflowBackwardGlyph;
+        }));
+    }
+
+    private void SettingsNavOverflowButton_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var atStart = SettingsNavScroller.HorizontalOffset <= SettingsNavScrollEpsilon;
+        SettingsNavScroller.ScrollToHorizontalOffset(
+            atStart ? SettingsNavScroller.ScrollableWidth : 0);
+        UpdateSettingsNavOverflow();
+    }
+
     private void SettingsNavBorder_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         var pages = new Dictionary<object, UIElement>
@@ -215,6 +253,8 @@ public partial class MainWindow : System.Windows.Window
             else if (active == SettingsNavPlugins)
                 RefreshPluginSettings();
         }
+
+        UpdateSettingsNavOverflow();
     }
 
     // ===== ナビゲーション =====

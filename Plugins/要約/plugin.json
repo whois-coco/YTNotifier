@@ -1,0 +1,7 @@
+{
+  "name": "動画要約",
+  "version": "1.0.0",
+  "type": "javascript",
+  "entry": "summary.js",
+  "jobs": ["summary"]
+}

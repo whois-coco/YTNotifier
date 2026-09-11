@@ -3,12 +3,12 @@ namespace YTNotifier.Constants;
 internal static class AppConstants
 {
     public const string AppName          = "YTNotifier";
-    public const string AppVersion       = "0.9.1";
+    public const string AppVersion       = "0.9.2";
     public const string DirLogs          = "logs";
     public const string DirSounds        = "Sounds";
     public const string FileApiKey              = "api_key.dat";
     public const string FileGeminiApiKey        = "gemini_api_key.dat";
-    public const string BackupFileFilter     = "YTNotifierバックアップ (*.ytbk)|*.ytbk|ZIPファイル (*.zip)|*.zip";
+    public const string BackupFileFilter     = "YTNotifierバックアップ (*.ytbk)|*.ytbk";
 
     /// <summary>全曜日ビットマスク（bit0=日〜bit6=土）</summary>
     public const int AllDaysMask = 0b1111111;
@@ -29,6 +29,17 @@ internal static class AppConstants
 
     /// <summary>API使用量バーの端のセグメントに付ける角丸</summary>
     public const double QuotaBarCornerRadius = 4;
+
+    /// <summary>
+    /// プラグイン拡張リージョンID → 設定画面・ログで見せる日本語名。
+    /// リージョンIDは Plugin.dll（<c>PluginProtocol.Regions</c>）が正。ここに無いIDは表示対象外。
+    /// 動画詳細ポップアップ側とプラグイン設定ページの双方から参照するため共有定数として置く。
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> PluginRegionDisplayNames =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [YTNotifier.Plugin.PluginProtocol.Regions.VideoDetailActions] = "動画詳細ポップアップ",
+        };
 
     private static readonly TimeZoneInfo _pacificTz =
         TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");

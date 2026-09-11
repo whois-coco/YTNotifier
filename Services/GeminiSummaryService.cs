@@ -5,11 +5,11 @@ using YTNotifier.Constants;
 
 namespace YTNotifier.Services;
 
-/// <summary>Gemini API（gemini-3.1-flash-lite）を使った動画要約サービス</summary>
+/// <summary>Gemini API（gemini-3.5-flash-lite）を使った動画要約サービス</summary>
 public static class GeminiSummaryService
 {
     /// <summary>Gemini 要約に使用するモデル名</summary>
-    private const string GeminiModelName = "gemini-3.1-flash-lite";
+    private const string GeminiModelName = "gemini-3.5-flash-lite";
 
     /// <summary>Gemini へ動画を渡す際の固定 mime_type</summary>
     private const string GeminiVideoMimeType = "video/mp4";
@@ -23,14 +23,17 @@ public static class GeminiSummaryService
         "2行目以降に箇条書き（「・」始まり）で3〜5行程度の要約を記載してください。" +
         "1行目は「要約しますと」「この動画の内容は以下の通りです」のような前置きを含めず、内容そのものを直接書いてください。";
 
-    /// <summary>Gemini 要約リクエストの thinking トークン予算（0=思考無効化で高速化）</summary>
-    private const int GeminiThinkingBudget = 0;
+    /// <summary>Gemini 要約リクエストの思考レベル（Minimal=最小限の思考で高速化。gemini-3.x は thinkingBudget 非対応のため thinkingLevel を使う）</summary>
+    private static readonly ThinkingLevel GeminiThinkingLevel = ThinkingLevel.Minimal;
 
     /// <summary>音声中心の要約実験用：動画フレームのサンプリング頻度（fps）を極小化</summary>
     private const double GeminiAudioOnlyFps = 0.1;
 
     /// <summary>旧バージョンが作成した要約結果キャッシュファイルの名前（現行は要約結果を永続化しない）</summary>
     private const string LegacySummaryCacheFileName = "gemini_summary_cache.json";
+
+    /// <summary>クォータ超過メッセージに表示するリセット目安時刻のフォーマット（例："9月12日0時"）</summary>
+    private const string GeminiQuotaResetTimeDisplayFormat = "M月d日H時";
 
     /// <summary>旧バージョンが残した要約結果キャッシュファイル（本体・.tmp）を削除する。現行は毎回要約し直すため残存ファイルは不要。起動時に一度だけ呼ぶ</summary>
     public static void CleanupLegacySummaryCache(string appDataDir)
@@ -53,7 +56,11 @@ public static class GeminiSummaryService
     private static string ClassifyClientError(ClientError ex)
     {
         if (ex.StatusCode == HttpStatusForbidden) return $"Gemini APIキーが無効または権限がありません（HTTP {ex.StatusCode}）";
-        if (ex.StatusCode == HttpStatusTooManyRequests) return "Gemini APIクォータの上限に達しました";
+        if (ex.StatusCode == HttpStatusTooManyRequests)
+        {
+            var resetAt = QuotaResetTimeHelper.GetNextQuotaResetTime();
+            return $"Gemini APIの利用上限に達しました。{resetAt.ToString(GeminiQuotaResetTimeDisplayFormat)}頃にリセットされる見込みです。しばらく時間をおくか、翌日以降に再試行してください";
+        }
         return $"Gemini API エラー（HTTP {ex.StatusCode}: {ex.Message}）";
     }
 
@@ -94,7 +101,7 @@ public static class GeminiSummaryService
 
             var config = new GenerateContentConfig
             {
-                ThinkingConfig  = new ThinkingConfig { ThinkingBudget = GeminiThinkingBudget },
+                ThinkingConfig  = new ThinkingConfig { ThinkingLevel = GeminiThinkingLevel },
                 MediaResolution = MediaResolution.MediaResolutionLow
             };
 

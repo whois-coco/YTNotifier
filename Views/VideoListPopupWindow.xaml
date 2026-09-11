@@ -29,7 +29,7 @@
                 </Grid>
             </Border>
 
-            <ScrollViewer Style="{StaticResource SlimScrollViewer}" MaxHeight="420">
+            <ScrollViewer x:Name="EntriesScroll" Style="{StaticResource SlimScrollViewer}" MaxHeight="420">
                 <StackPanel x:Name="EntriesPanel" Margin="20,16,20,20"/>
             </ScrollViewer>
         </StackPanel>

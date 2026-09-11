@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:controls="clr-namespace:YTNotifier.Controls"
         mc:Ignorable="d"
         Title="YTNotifier" Height="740" Width="1020"
         MinHeight="500" MinWidth="385"
@@ -1239,11 +1240,21 @@
                     </StackPanel>
                 </Border>
 
-                <!-- サブナビゲーション（横向き） -->
+                <!-- サブナビゲーション（横向き・幅不足時は » で続きへスクロール） -->
                 <Border Grid.Row="1"
                         Background="{DynamicResource SurfaceAltBrush}"
                         BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="0,0,0,1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <ScrollViewer x:Name="SettingsNavScroller" Grid.Column="0"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      SizeChanged="SettingsNavScroller_SizeChanged">
                     <StackPanel Orientation="Horizontal" Height="36">
                         <Border x:Name="SettingsNavDisplay"
                                 Padding="16,0" Cursor="Hand"
@@ -1296,6 +1307,22 @@
                                        VerticalAlignment="Center"/>
                         </Border>
                     </StackPanel>
+                        </ScrollViewer>
+
+                        <Border x:Name="SettingsNavOverflowButton" Grid.Column="1"
+                                Visibility="Collapsed"
+                                Cursor="Hand" Padding="8,0"
+                                Background="{DynamicResource SurfaceAltBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1,0,0,0"
+                                ToolTip="続きを表示"
+                                MouseLeftButtonUp="SettingsNavOverflowButton_Click">
+                            <TextBlock x:Name="SettingsNavOverflowGlyph" Text="»"
+                                       FontSize="13" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
                 </Border>
 
                 <!-- コンテンツエリア -->
@@ -1546,93 +1573,24 @@
                                     BorderThickness="1" CornerRadius="4"
                                     Padding="10,8" Margin="0,0,0,0">
                                 <StackPanel>
-                                    <TextBlock Text="API使用量(%)" FontSize="11"
+                                    <TextBlock Text="API使用量" FontSize="11"
                                                Foreground="{DynamicResource TextMutedBrush}"
                                                Margin="0,0,0,6"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Border x:Name="QuotaBarBg" Grid.Column="0"
-                                                Background="{DynamicResource SurfaceElevatedBrush}"
-                                                CornerRadius="4" Height="10"
-                                                VerticalAlignment="Center">
-                                            <StackPanel x:Name="QuotaBarStack"
-                                                        Orientation="Horizontal"
-                                                        HorizontalAlignment="Left">
-                                                <Border x:Name="QuotaBarNormal"
-                                                        Height="10" Width="0" MinWidth="0"
-                                                        Background="{DynamicResource QuotaEstimateNormalBrush}"/>
-                                                <Border x:Name="QuotaBarLowFreq"
-                                                        Height="10" Width="0" MinWidth="0"
-                                                        Background="{DynamicResource QuotaEstimateLowFreqBrush}"/>
-                                                <Border x:Name="QuotaBarFocus"
-                                                        Height="10" Width="0" MinWidth="0"
-                                                        Background="{DynamicResource QuotaEstimateFocusBrush}"/>
-                                            </StackPanel>
-                                        </Border>
-                                        <TextBlock x:Name="QuotaPercentText" Grid.Column="1"
-                                                   FontSize="11" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center"
-                                                   Margin="8,0,0,0"
-                                                   Foreground="{DynamicResource TextMutedBrush}"/>
-                                    </Grid>
-                                    <!-- セグメントバー凡例 -->
-                                    <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                                        <Ellipse Width="7" Height="7" Fill="{DynamicResource QuotaEstimateNormalBrush}" VerticalAlignment="Center"/>
-                                        <TextBlock Text="通常" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="3,0,8,0" VerticalAlignment="Center"/>
-                                        <Ellipse Width="7" Height="7" Fill="{DynamicResource QuotaEstimateLowFreqBrush}" VerticalAlignment="Center"/>
-                                        <TextBlock Text="低頻度" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="3,0,8,0" VerticalAlignment="Center"/>
-                                        <Ellipse Width="7" Height="7" Fill="{DynamicResource QuotaEstimateFocusBrush}" VerticalAlignment="Center"/>
-                                        <TextBlock Text="時間指定" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="3,0,0,0" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                    <TextBlock x:Name="QuotaInfoText" FontSize="10"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,4,0,0"/>
-                                    <TextBlock Text="本日の実使用量(%)" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,10,0,6"/>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border x:Name="ActualQuotaBarBg" Grid.Column="0"
-                                                Background="{DynamicResource SurfaceElevatedBrush}"
-                                                CornerRadius="4" Height="10"
-                                                VerticalAlignment="Center">
-                                            <StackPanel x:Name="ActualQuotaBarStack"
-                                                        Orientation="Horizontal"
-                                                        HorizontalAlignment="Left">
-                                                <Border x:Name="ActualQuotaBarNormal"
-                                                        Height="10" Width="0" MinWidth="0"
-                                                        Background="{DynamicResource QuotaActualNormalBrush}"/>
-                                                <Border x:Name="ActualQuotaBarPending"
-                                                        Height="10" Width="0" MinWidth="0"
-                                                        Background="{DynamicResource QuotaActualPendingBrush}"/>
-                                                <Border x:Name="ActualQuotaBarLiveStatus"
-                                                        Height="10" Width="0" MinWidth="0"
-                                                        Background="{DynamicResource QuotaActualLiveStatusBrush}"/>
-                                            </StackPanel>
-                                        </Border>
-                                        <TextBlock x:Name="ActualQuotaPercentText" Grid.Column="1"
-                                                   FontSize="11" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center"
-                                                   Margin="8,0,0,0"
-                                                   Foreground="{DynamicResource TextMutedBrush}"/>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <controls:QuotaDonut x:Name="QuotaDonutEstimate"
+                                                             Grid.Row="0" Grid.Column="0"
+                                                             Margin="0,0,4,0"/>
+                                        <controls:QuotaDonut x:Name="QuotaDonutActual"
+                                                             Grid.Row="0" Grid.Column="1"
+                                                             Margin="4,0,0,0"/>
                                     </Grid>
-                                    <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                                        <Ellipse Width="7" Height="7" Fill="{DynamicResource QuotaActualNormalBrush}" VerticalAlignment="Center"/>
-                                        <TextBlock Text="通常巡回" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="3,0,8,0" VerticalAlignment="Center"/>
-                                        <Ellipse Width="7" Height="7" Fill="{DynamicResource QuotaActualPendingBrush}" VerticalAlignment="Center"/>
-                                        <TextBlock Text="配信予定の追跡" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="3,0,8,0" VerticalAlignment="Center"/>
-                                        <Ellipse Width="7" Height="7" Fill="{DynamicResource QuotaActualLiveStatusBrush}" VerticalAlignment="Center"/>
-                                        <TextBlock Text="配信中の状態確認" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="3,0,0,0" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                    <TextBlock x:Name="ActualQuotaInfoText" FontSize="10"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               Margin="0,4,0,0"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -1808,12 +1766,12 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
-                                        Content="🗑 削除実行" Padding="14,7"
+                                        Content="🗑 ログ削除" Padding="14,7"
                                         Margin="0,0,8,0"
                                         VerticalAlignment="Center"
                                         Click="CleanLogsNow_Click"/>
                                 <Button Grid.Column="2" Style="{StaticResource SecondaryButton}"
-                                        Content="📋 ログを表示" Padding="14,7"
+                                        Content="📋 ログ表示" Padding="14,7"
                                         VerticalAlignment="Center"
                                         Click="ShowActivityLog_Click"/>
                             </Grid>
@@ -1848,7 +1806,6 @@
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        Margin="2,4,0,0"/>
                             <StackPanel x:Name="PluginListPanel"/>
-                            <StackPanel x:Name="PluginJobOrderPanel" Margin="0,16,0,0"/>
                         </StackPanel>
                     </ScrollViewer>
 

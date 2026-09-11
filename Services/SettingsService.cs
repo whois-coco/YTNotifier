@@ -158,6 +158,8 @@ public class SettingsService
                 if (File.Exists(file)) zip.CreateEntryFromFile(file, Path.GetFileName(file));
             if (includeState && File.Exists(_statePath))
                 zip.CreateEntryFromFile(_statePath, Path.GetFileName(_statePath));
+            if (includeState && File.Exists(_recentUploadsPath))
+                zip.CreateEntryFromFile(_recentUploadsPath, Path.GetFileName(_recentUploadsPath));
 
             // Sounds フォルダ（フォルダごと再帰。.wav のみを対象とする）
             var soundsDir = SoundsDir;
@@ -192,14 +194,9 @@ public class SettingsService
                 if (zipBytes == null)
                     return (false, "バックアップファイルの復号に失敗しました。ファイルが破損しているか、対応していない形式です。");
             }
-            else if (path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            {
-                // 旧形式 .zip をそのまま読み込み（後方互換）
-                zipBytes = File.ReadAllBytes(path);
-            }
             else
             {
-                return (false, "対応していないファイル形式です（.ytbk または .zip）。");
+                return (false, "対応していないファイル形式です（.ytbk）。");
             }
 
             // ZIPバイナリを展開
@@ -207,7 +204,7 @@ public class SettingsService
             using var zip   = new System.IO.Compression.ZipArchive(zipMs,
                 System.IO.Compression.ZipArchiveMode.Read);
 
-            var allowedFiles = new[] { FileConfig, FileChannels, FileCategories, FileDormantCategories, AppConstants.FileApiKey, AppConstants.FileGeminiApiKey, FileState };
+            var allowedFiles = new[] { FileConfig, FileChannels, FileCategories, FileDormantCategories, AppConstants.FileApiKey, AppConstants.FileGeminiApiKey, FileState, FileRecentUploads };
 
             foreach (var entry in zip.Entries)
             {

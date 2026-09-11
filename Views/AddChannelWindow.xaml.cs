@@ -68,6 +68,13 @@ public partial class AddChannelWindow : Window
         // 種別トグルアイコンを構築
         BuildKindToggles();
 
+        // チャンネルアイコンプレビューを円形にクリップ（チャンネル一覧の BuildIconBorder と同方式）
+        var previewIconSize = (double)FindResource("PreviewIconSize");
+        PreviewIconBorder.CornerRadius = new CornerRadius(previewIconSize / 2);
+        PreviewIconBorder.Clip = new EllipseGeometry(
+            new System.Windows.Point(previewIconSize / 2, previewIconSize / 2),
+            previewIconSize / 2, previewIconSize / 2);
+
         ChannelInputBox.Focus();
     }
 

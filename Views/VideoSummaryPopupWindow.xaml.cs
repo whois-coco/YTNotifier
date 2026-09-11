@@ -1,31 +1,40 @@
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using YTNotifier.Constants;
 using YTNotifier.Models;
-using YTNotifier.Plugin;
 using YTNotifier.Services;
 
 namespace YTNotifier.Views;
 
 public partial class VideoSummaryPopupWindow : Window
 {
+    private const string PublishedAtLabelPrefix = "投稿日時：";
+
     private readonly ChannelInfo _channel;
-    private readonly VideoKind   _kind;
     private readonly string      _videoId;
+    private readonly string      _title;
+    private readonly TimeSpan?   _duration;
+    private readonly DateTime?   _publishedAt;
+
+    /// <summary>プラグインへ渡す種別文字列。終了済みのライブアーカイブ・公開済みプレミアは <c>video</c> に正規化。</summary>
+    private readonly string      _contributionKind;
 
     public VideoSummaryPopupWindow(Window owner, ChannelInfo channel, VideoKind kind, string title,
         string videoId, TimeSpan? duration = null, bool allowSummary = true, bool isPending = false,
-        string? thumbnailUrl = null)
+        string? thumbnailUrl = null, DateTime? publishedAt = null)
     {
         InitializeComponent();
         Loaded += (_, _) => WindowCornerHelper.Apply(this);
+        MaxWidth               = WindowMaxWidthExpanded;
+        LeftColumnPanel.MaxWidth = LeftColumnMaxWidth;
+        SidePanelBorder.Width    = SidePanelWidth;
         Owner    = owner;
-        _channel = channel;
-        _kind    = kind;
-        _videoId = videoId;
+        _channel  = channel;
+        _videoId  = videoId;
+        _title       = title;
+        _duration    = duration;
+        _publishedAt = publishedAt;
+        _contributionKind = NormalizeContributionKind(kind, isPending);
 
         ChannelNameText.Text = channel.ChannelName;
         TitleText.Text       = title;
@@ -33,10 +42,23 @@ public partial class VideoSummaryPopupWindow : Window
         LoadChannelIcon(channel);
         LoadThumbnailIfAvailable(channel, kind, thumbnailUrl);
         SetKindPill(kind, isPending);
+        SetPublishedAtText(kind, publishedAt);
         SetDurationText(duration);
         if (allowSummary) SetupSummarySection(kind, videoId);
+        SetupPluginActions();
 
         AppLogger.Log(LogMsg.VideoSummaryPopupOpened, null, channel.ChannelName);
+    }
+
+    private void SetPublishedAtText(VideoKind kind, DateTime? publishedAt)
+    {
+        if (kind is not (VideoKind.Video or VideoKind.Short or VideoKind.Premiere)) return;
+
+        var text = YouTubeApiClient.FormatPublishedAt(publishedAt);
+        if (text == null) return;
+
+        PublishedAtText.Text       = PublishedAtLabelPrefix + text;
+        PublishedAtText.Visibility = Visibility.Visible;
     }
 
     private void SetDurationText(TimeSpan? duration)
@@ -119,7 +141,8 @@ public partial class VideoSummaryPopupWindow : Window
         var apiKey = GeminiApiKeyService.Load(SettingsService.Instance.ConfDir);
         if (string.IsNullOrEmpty(apiKey)) return;
 
-        SummaryPanel.Visibility = Visibility.Visible;
+        SummaryPanel.Visibility  = Visibility.Visible;
+        SummaryButton.Visibility = Visibility.Visible;
     }
 
     private void ShowSummaryResult(string headline, string detail)
@@ -142,28 +165,7 @@ public partial class VideoSummaryPopupWindow : Window
         SummaryStatusText.Text       = "要約中...";
         SummaryStatusText.Visibility = Visibility.Visible;
 
-        if (PluginBridge.Instance.IsJobAvailable(PluginProtocol.Jobs.Summary))
-        {
-            var pluginVideoUrl = $"{YouTubeConstants.WatchUrlBase}{_videoId}";
-            var pluginInput    = new JObject
-            {
-                [PluginProtocol.Jobs.SummaryInputVideoUrl] = pluginVideoUrl,
-            }.ToString(Formatting.None);
-
-            var pluginOutput = await PluginBridge.Instance.InvokeAsync(PluginProtocol.Jobs.Summary, pluginInput);
-            if (pluginOutput != null)
-            {
-                var pluginEntry = JsonConvert.DeserializeObject<GeminiSummaryEntry>(pluginOutput);
-                if (pluginEntry != null && !string.IsNullOrEmpty(pluginEntry.Headline))
-                {
-                    ShowSummaryResult(pluginEntry.Headline, pluginEntry.Detail);
-                    return;
-                }
-            }
-            // 失敗・未導入の場合は下の既存ロジックへフォールバックする
-        }
-
-        // 既存ロジック（プラグイン未導入、またはプラグインでの要約失敗時のフォールバック）
+        // 要約は Gemini 直渡しのみ。プラグインの要約は video.detail.actions のプラグインボタン経由で提供する。
         var result = await GeminiSummaryService.SummarizeVideoAsync(apiKey, _videoId,
             onChunk: partialText => SummaryStatusText.Text = "要約中...\n" + partialText);
 
