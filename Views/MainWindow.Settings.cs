@@ -134,13 +134,15 @@ public partial class MainWindow : System.Windows.Window
 
     // ===== 差し色（アクセント色）=====
 
-    // 差し色の色見本。追加する場合はこの配列に "#RRGGBB" を1行足すだけ
+    // 差し色の色見本（明るい→暗い順）。追加する場合は明るさの近い位置に "#RRGGBB" を足すだけ
     private static readonly string[] AccentColorPalette =
     {
-        "#EF4444", "#F97316", "#F0A83C", "#22C55E", "#14B8A6",
-        "#3B82F6", "#6366F1", "#A855F7", "#EC4899",
+        "#FFFFFF", "#84CC16", "#F0A83C", "#22C55E", "#14B8A6", "#0EA5E9",
+        "#F97316", "#3B82F6", "#A855F7", "#64748B", "#EC4899", "#6366F1",
+        "#EF4444",
     };
 
+    private const int    SidebarIconSizeNormal       = 20;    // 通常モードのサイドバーアイコン1辺(px)
     private const double AccentSwatchSize            = 20;    // ドロップダウン内スウォッチ1辺(px)
     private const double AccentSwatchCornerRadius    = 3;     // スウォッチの角丸
     private const double AccentSwatchSpacing         = 4;     // スウォッチ余白(マージン)
@@ -350,8 +352,8 @@ public partial class MainWindow : System.Windows.Window
             }
             else
             {
-                // アイコン24pxに戻す
-                SetSidebarIconSize(24);
+                // アイコンを通常サイズに戻す
+                SetSidebarIconSize(SidebarIconSizeNormal);
                 // 折り畳みボタンを有効化
                 SidebarToggleButton.IsEnabled = true;
                 SidebarToggleButton.Opacity   = 1.0;

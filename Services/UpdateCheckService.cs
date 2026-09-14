@@ -46,4 +46,33 @@ internal static class UpdateCheckService
     {
         return Version.TryParse(s, out var v) ? v : new Version(0, 0);
     }
+
+    internal sealed record UpdateAssetInfo(string Tag, string DownloadUrl, string? Sha256Digest);
+
+    /// <summary>
+    /// 最新リリースの情報を取得し、拡張子が .exe の最初のアセットのダウンロードURLと
+    /// ハッシュ値（digest フィールド、"sha256:xxxx" 形式）を返す。取得失敗時は null。
+    /// </summary>
+    public static async Task<UpdateAssetInfo?> GetLatestAssetAsync()
+    {
+        try
+        {
+            var json = await _http.GetStringAsync(GitHubReleasesApiUrl);
+            var release = JObject.Parse(json);
+            var tag = release["tag_name"]?.ToString();
+            if (string.IsNullOrEmpty(tag)) return null;
+
+            var asset = release["assets"]?
+                .FirstOrDefault(a => (a["name"]?.ToString() ?? "").EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+            var downloadUrl = asset?["browser_download_url"]?.ToString();
+            if (string.IsNullOrEmpty(downloadUrl)) return null;
+
+            var digest = asset?["digest"]?.ToString();
+            return new UpdateAssetInfo(tag, downloadUrl, digest);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

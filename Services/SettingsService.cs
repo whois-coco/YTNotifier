@@ -16,7 +16,7 @@ public class SettingsService
     private const string FileState      = "state.json";
     private const string FileAutoBackup = "auto_backup.ytbk";
     private const string FileDormantCategories = "dormant_categories.json";
-    private const string FileRecentUploads = "recent_uploads.json";
+    private const string FileRecentUploads = "recent_uploads.json.gz";
     private const string SoundsZipPrefix = "Sounds/";
     /// <summary>バックアップ対象とする通知音ファイルの拡張子</summary>
     private const string SoundFileExtension = ".wav";
@@ -48,6 +48,8 @@ public class SettingsService
     private readonly object _persistLock = new();
     // AddApiUnits の並行呼び出しを直列化するロック
     private readonly object _apiUnitsLock = new();
+    // AddGeminiRequest の並行呼び出しを直列化するロック（YouTube側のユニット計上とは別変数）
+    private readonly object _geminiRequestLock = new();
 
     // AddApiUnits の計上カテゴリを非同期フロー単位で受け渡す（並列チャンネルチェックでも各フローに独立コピーされる）
     private static readonly System.Threading.AsyncLocal<Models.ApiUnitCategory> _apiUnitCategory = new();
@@ -82,6 +84,13 @@ public class SettingsService
     {
         var tmp = path + ".tmp";
         File.WriteAllText(tmp, content, System.Text.Encoding.UTF8);
+        File.Move(tmp, path, overwrite: true);
+    }
+
+    private static void WriteAtomic(string path, byte[] content)
+    {
+        var tmp = path + ".tmp";
+        File.WriteAllBytes(tmp, content);
         File.Move(tmp, path, overwrite: true);
     }
 
@@ -450,6 +459,22 @@ public class SettingsService
         MonitorService.Instance.NotifyQuotaUpdated();
     }
 
+    /// <summary>Geminiリクエスト数を加算（日付をまたいだらリセット）</summary>
+    public void AddGeminiRequest()
+    {
+        lock (_geminiRequestLock)
+        {
+            var quotaKey = AppConstants.GetQuotaDayKey();
+            if (AppState.TodayGeminiRequestDate != quotaKey)
+            {
+                AppState.TodayGeminiRequests    = 0;
+                AppState.TodayGeminiRequestDate = quotaKey;
+            }
+            AppState.TodayGeminiRequests += 1;
+        }
+        MonitorService.Instance.NotifyQuotaUpdated();
+    }
+
     public void SaveCategories() => SaveCategoriesInternal();
 
     private void SaveCategoriesInternal()
@@ -799,6 +824,7 @@ public class SettingsService
     /// 旧来の単一 MonitorMode（Normal/LowFreq/Focus 単一スロット）を
     /// 動画/Short/ライブ別の3スロット形式（FocusSlots）に一括移行する（初回のみ）。
     /// ChannelDetailWindow コンストラクタの変換ロジックと同じ規則を使用。
+    /// また、並び順（0=動画/1=Short/2=ライブ）で種別を決めていた旧データは NotifyKind を並び順どおりに補正する。
     /// </summary>
     private bool MigrateChannelsToFocusSlots()
     {
@@ -813,6 +839,19 @@ public class SettingsService
                 slot.Days = AppConstants.AllDaysMask;
                 migrated = true;
             }
+        }
+
+        // 並び順で種別を決めていた旧データ（3件で、いずれかの種別が NotifyKind に含まれない）の NotifyKind を補正
+        // 新方式では各種別が必ず1件以上あるため、新方式で保存したデータはこの条件に当たらない
+        foreach (var ch in Channels)
+        {
+            if (ch.FocusSlots.Count != AppConstants.KindSlotCount) continue;
+            var hasMissingKind = AppConstants.KindSlotKinds.Any(k => ch.FocusSlots.All(s => s.NotifyKind != k));
+            if (!hasMissingKind) continue;
+
+            for (int i = 0; i < AppConstants.KindSlotCount; i++)
+                ch.FocusSlots[i].NotifyKind = AppConstants.KindSlotKinds[i];
+            migrated = true;
         }
 
         foreach (var ch in Channels)
@@ -1221,8 +1260,35 @@ public class SettingsService
     }
 
     /// <summary>
-    /// 最新動画スナップショット（表示用キャッシュ）を recent_uploads.json へ保存する。
+    /// RecentUploadEntry 1件を、項目名を持たない配列
+    /// [videoId, title, thumbnailUrl, kindの数値, duration, publishedAt] に変換する。
+    /// 各値の書式は既定の Newtonsoft シリアライズと同じにする。
+    /// </summary>
+    private static Newtonsoft.Json.Linq.JArray RecentUploadEntryToArray(RecentUploadEntry entry) => new()
+    {
+        entry.VideoId,
+        entry.Title,
+        entry.ThumbnailUrl,
+        (int)entry.Kind,
+        entry.Duration?.ToString(),
+        entry.PublishedAt,
+    };
+
+    /// <summary>RecentUploadEntryToArray の逆変換。</summary>
+    private static RecentUploadEntry RecentUploadEntryFromArray(Newtonsoft.Json.Linq.JArray array) => new()
+    {
+        VideoId      = (string?)array[0] ?? string.Empty,
+        Title        = (string?)array[1] ?? string.Empty,
+        ThumbnailUrl = (string?)array[2],
+        Kind         = (VideoKind)((int?)array[3] ?? 0),
+        Duration     = (string?)array[4] is string durationText ? TimeSpan.Parse(durationText) : null,
+        PublishedAt  = (DateTime?)array[5],
+    };
+
+    /// <summary>
+    /// 最新動画スナップショット（表示用キャッシュ）を recent_uploads.json.gz へ保存する。
     /// state.json とは切り離し、バックアップ対象外の再生成可能ファイルとして扱う。
+    /// 項目名を持たない配列形式にした上で gzip 圧縮して書き出す。
     /// </summary>
     private void SaveRecentUploadsInternal()
     {
@@ -1231,21 +1297,25 @@ public class SettingsService
             string json;
             lock (_persistLock)
             {
-                var snapshot = new Dictionary<string, List<RecentUploadEntry>>();
+                var snapshot = new Dictionary<string, List<Newtonsoft.Json.Linq.JArray>>();
                 foreach (var ch in Channels)
                 {
                     if (ch.RecentUploads.Count > 0)
-                        snapshot[ch.ChannelId] = ch.RecentUploads.ToList();
+                        snapshot[ch.ChannelId] = ch.RecentUploads.Select(RecentUploadEntryToArray).ToList();
                 }
                 json = JsonConvert.SerializeObject(snapshot, _recentUploadsSerializerSettings);
             }
-            WriteAtomic(_recentUploadsPath, json);
+            var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+            using var compressedStream = new MemoryStream();
+            using (var gzip = new GZipStream(compressedStream, CompressionLevel.Optimal, leaveOpen: true))
+                gzip.Write(bytes, 0, bytes.Length);
+            WriteAtomic(_recentUploadsPath, compressedStream.ToArray());
         }
         catch (Exception ex) { WriteSaveError("SaveRecentUploads", ex.Message); }
     }
 
     /// <summary>
-    /// recent_uploads.json を読み込み、各チャンネルの表示用スナップショットへ反映する。
+    /// recent_uploads.json.gz を読み込み、各チャンネルの表示用スナップショットへ反映する。
     /// 破損・空・null の場合はバックアップからの復元は行わず、そのまま戻る（次回チェックで自己修復するため）。
     /// </summary>
     private void LoadRecentUploads()
@@ -1255,11 +1325,16 @@ public class SettingsService
             if (!File.Exists(_recentUploadsPath))
                 return;
 
-            var json = File.ReadAllText(_recentUploadsPath);
+            string json;
+            using (var fileStream = File.OpenRead(_recentUploadsPath))
+            using (var gzip = new GZipStream(fileStream, CompressionMode.Decompress))
+            using (var reader = new StreamReader(gzip, System.Text.Encoding.UTF8))
+                json = reader.ReadToEnd();
+
             if (string.IsNullOrWhiteSpace(json))
                 return;
 
-            var snapshot = JsonConvert.DeserializeObject<Dictionary<string, List<RecentUploadEntry>>>(json);
+            var snapshot = JsonConvert.DeserializeObject<Dictionary<string, List<Newtonsoft.Json.Linq.JArray>>>(json);
             if (snapshot == null || snapshot.Count == 0)
                 return;
 
@@ -1268,7 +1343,7 @@ public class SettingsService
                 foreach (var ch in Channels)
                 {
                     ch.RecentUploads = snapshot.TryGetValue(ch.ChannelId, out var uploads) && uploads != null
-                        ? uploads
+                        ? uploads.Select(RecentUploadEntryFromArray).ToList()
                         : new();
                 }
             }

@@ -54,9 +54,13 @@ public class QuotaDonut : UserControl
     private const string PercentFormat        = "{0}%";
     private const string CenterSubFormat      = "{0:N0} / {1:N0}";
     private const string BreakdownValueFormat = "{0:N0}";
-    private const string TotalRowFormat       = "{0:N0} / {1:N0} ユニット/日";
+    // {0}=消費量 {1}=上限 {2}=単位文言
+    private const string TotalRowFormat       = "{0:N0} / {1:N0} {2}";
     // {0}=ラベル {1}=消費ユニット数 {2}=日次上限に対する割合(%)
     private const string SegTooltipFormat     = "{0}: {1:N0} ユニット（{2:F1}%）";
+
+    /// <summary>単位文言のデフォルト値（既存呼び出し元向け）</summary>
+    private const string DefaultUnitLabel     = "ユニット/日";
 
     // 固定ブラシキー（差し色非依存）
     private const string TrackBrushKey          = "SurfaceElevatedBrush";
@@ -76,16 +80,22 @@ public class QuotaDonut : UserControl
     /// <param name="limitUnits">日次上限（1周＝360°に対応）</param>
     /// <param name="arcTotalUnits">使用弧の総量（中央パーセントの分子）。セグメント値の合計と一致しない場合がある</param>
     /// <param name="segments">使用弧を比率分割する内訳セグメント（ラベル・値・固定ブラシキー）</param>
-    public void SetData(string title, int limitUnits, int arcTotalUnits, IReadOnlyList<QuotaDonutSegment> segments)
+    /// <param name="unitLabel">合計行に表示する単位文言</param>
+    /// <param name="showBreakdown">内訳行を表示するか（false の場合は単一の使用量のみ表示）</param>
+    public void SetData(string title, int limitUnits, int arcTotalUnits, IReadOnlyList<QuotaDonutSegment> segments,
+        string unitLabel = DefaultUnitLabel, bool showBreakdown = true)
     {
         var root = new StackPanel();
         root.Children.Add(BuildTitle(title));
         root.Children.Add(BuildDonut(limitUnits, arcTotalUnits, segments));
-        foreach (var segment in segments)
+        if (showBreakdown)
         {
-            root.Children.Add(BuildBreakdownRow(segment));
+            foreach (var segment in segments)
+            {
+                root.Children.Add(BuildBreakdownRow(segment));
+            }
         }
-        root.Children.Add(BuildTotalRow(limitUnits, segments));
+        root.Children.Add(BuildTotalRow(limitUnits, segments, unitLabel));
         Content = root;
     }
 
@@ -284,14 +294,14 @@ public class QuotaDonut : UserControl
         return row;
     }
 
-    private static TextBlock BuildTotalRow(int limitUnits, IReadOnlyList<QuotaDonutSegment> segments)
+    private static TextBlock BuildTotalRow(int limitUnits, IReadOnlyList<QuotaDonutSegment> segments, string unitLabel)
     {
         var segmentTotal = 0;
         foreach (var segment in segments) segmentTotal += segment.Units;
 
         var totalText = new TextBlock
         {
-            Text                = string.Format(CultureInfo.CurrentCulture, TotalRowFormat, segmentTotal, limitUnits),
+            Text                = string.Format(CultureInfo.CurrentCulture, TotalRowFormat, segmentTotal, limitUnits, unitLabel),
             FontSize            = TotalRowFontSize,
             TextAlignment       = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,

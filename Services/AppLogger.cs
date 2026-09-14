@@ -231,6 +231,12 @@ public enum LogMsg
     PluginOrderChanged                 = 5141,  // {0}=移動したプラグイン名
     PluginInvokeError                  = 5142,  // {0}=仕事の名前 {1}=message
     PluginContributionRejected         = 5143,  // {0}=フォルダ名 {1}=理由
+    // NGワード
+    NgWordFilterSkipped                = 5144,  // {0}=title
+    NgWordAddedCommon                  = 5145,  // {0}=word
+    NgWordRemovedCommon                = 5146,  // {0}=word
+    NgWordAddedChannel                 = 5147,  // {0}=word
+    NgWordRemovedChannel               = 5148,  // {0}=word
     // APIキーウィンドウ
     ApiKeyEditStarted          = 5067,
     ApiKeyChanged              = 5068,
@@ -383,6 +389,7 @@ public static class AppLogger
         [LogMsg.SchedulerGracePeriodStarted] = new(LogLevel.Debug,   LogCategory.VideoFilter,  "スケジューラー集中監視起動: {0}"),
         [LogMsg.SchedulerWakeUp]             = new(LogLevel.Debug,   LogCategory.VideoFilter,  "スケジューラー再計算"),
         [LogMsg.PendingWindowExpired]        = new(LogLevel.Debug,   LogCategory.VideoFilter,  "監視ウィンドウ終了により予約状態解除: {0}"),
+        [LogMsg.NgWordFilterSkipped]         = new(LogLevel.Debug,   LogCategory.VideoFilter,  "NGワードフィルタースキップ: {0}"),
         // 動画検索・表示
         [LogMsg.SearchingVideo]            = new(LogLevel.Debug,   LogCategory.Monitor,      "最新動画を検索中..."),
         [LogMsg.OpenChannelPage]           = new(LogLevel.Debug,   LogCategory.Monitor,      "チャンネルページを開きます（全種別オフ）"),
@@ -411,6 +418,8 @@ public static class AppLogger
         [LogMsg.SettingAccentColor]        = new(LogLevel.Debug,   LogCategory.Settings,     "差し色: {0}"),
         [LogMsg.SettingAutoCleanLogs]       = new(LogLevel.Debug,   LogCategory.Settings,     "自動ログ削除: {0}"),
         [LogMsg.SettingLogRetention]        = new(LogLevel.Debug,   LogCategory.Settings,     "ログ保持期間変更: {0}日"),
+        [LogMsg.NgWordAddedCommon]          = new(LogLevel.Debug,   LogCategory.Settings,     "共通NGワード追加: {0}"),
+        [LogMsg.NgWordRemovedCommon]        = new(LogLevel.Debug,   LogCategory.Settings,     "共通NGワード削除: {0}"),
         // チャンネル一覧・編集
         [LogMsg.EditModeOn]                = new(LogLevel.Debug,   LogCategory.ChannelListUi, "編集モード開始"),
         [LogMsg.EditModeOff]               = new(LogLevel.Debug,   LogCategory.ChannelListUi, "編集モード終了"),
@@ -424,6 +433,8 @@ public static class AppLogger
         [LogMsg.ChannelContextOpenDetail]   = new(LogLevel.Debug,   LogCategory.ChannelListUi, "詳細設定を開く: {0}"),
         [LogMsg.ChannelContextManualCheck]  = new(LogLevel.Debug,   LogCategory.ChannelListUi, "最新情報を取得: {0}"),
         [LogMsg.ChannelMovedToCategory]     = new(LogLevel.Debug,   LogCategory.ChannelListUi, "カテゴリ移動: {0} → {1}"),
+        [LogMsg.NgWordAddedChannel]         = new(LogLevel.Debug,   LogCategory.ChannelListUi, "NGワード追加: {0}"),
+        [LogMsg.NgWordRemovedChannel]       = new(LogLevel.Debug,   LogCategory.ChannelListUi, "NGワード削除: {0}"),
         // カテゴリ操作
         [LogMsg.CategoryCollapsed]          = new(LogLevel.Debug,   LogCategory.CategoryUi,    "カテゴリ{1}: {0}"),
         [LogMsg.CategoryContextClearNew]    = new(LogLevel.Debug,   LogCategory.CategoryUi,    "カテゴリ内NEWバッジ一括消去: {0}"),

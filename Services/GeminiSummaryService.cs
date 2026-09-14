@@ -80,6 +80,7 @@ public static class GeminiSummaryService
         try
         {
             AppLogger.Log(LogMsg.GeminiSummaryRequested, null, videoId);
+            SettingsService.Instance.AddGeminiRequest();
 
             using var client = new Client(apiKey: apiKey, httpOptions: new HttpOptions
             {

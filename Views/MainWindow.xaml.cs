@@ -43,7 +43,6 @@ public partial class MainWindow : System.Windows.Window
     private const int    ContentWidthCompact     = 286;
     private const int    CollapsedTotalWidth     = SidebarCollapsedWidth + ContentWidthNormal;  // 429
     private const int    CompactTotalWidth       = SidebarCollapsedWidth + ContentWidthCompact; // 330
-    private const string GitHubReleasesPageUrl   = "https://github.com/whois-coco/YTNotifier/releases/latest";
 
     /// <summary>ネットワーク状態のポーリング間隔（秒）</summary>
     private const int NetworkCheckIntervalSeconds = 5;
@@ -74,6 +73,9 @@ public partial class MainWindow : System.Windows.Window
 
     // ナビゲーション状態
     private string     _currentNav = "Watch";
+
+    // 自己アップデート
+    private string? _pendingUpdateTag = null;
 
     // MonitorService イベントハンドラ（解除用に保持）
     private Action<bool>? _onStatusChanged;
@@ -209,6 +211,7 @@ public partial class MainWindow : System.Windows.Window
         // 初期ナビセレクターバー（チャンネルがデフォルト選択）
         SetNavSelectorBar(NavWatch,    true);
         SetNavSelectorBar(NavSettings, false);
+        UpdateTitleBar(NavWatch, logSwitch: false);
         InitMonitor();
 
         // ABOUTページのバージョン表示を設定し、起動時アップデート確認を実行
@@ -222,27 +225,54 @@ public partial class MainWindow : System.Windows.Window
         var latestTag = await UpdateCheckService.CheckAsync();
         if (latestTag == null) return;
 
+        _pendingUpdateTag = latestTag;
         await Dispatcher.InvokeAsync(() =>
         {
-            if (FindName("UpdateBannerText") is TextBlock bannerText)
-                bannerText.Text = $"新しいバージョン {latestTag} が公開されています";
-            if (FindName("UpdateBanner") is Border banner)
-                banner.Visibility = Visibility.Visible;
-
-            if (ConfirmDialog.Show(
-                    this,
-                    "アップデートがあります",
-                    $"新しいバージョン {latestTag} が公開されています。\nリリースページを開きますか？",
-                    "開く", "閉じる") == true)
-            {
-                Process.Start(new ProcessStartInfo(GitHubReleasesPageUrl) { UseShellExecute = true });
-            }
+            if (FindName("UpdateAvailableBtn") is Button btn)
+                btn.Visibility = Visibility.Visible;
         });
     }
 
-    private void UpdateOpenBtn_Click(object sender, RoutedEventArgs e)
+    private async void UpdateAvailableBtn_Click(object sender, RoutedEventArgs e)
     {
-        Process.Start(new ProcessStartInfo(GitHubReleasesPageUrl) { UseShellExecute = true });
+        if (sender is not Button btn) return;
+        btn.IsEnabled = false;
+        try
+        {
+            var assetInfo = await UpdateCheckService.GetLatestAssetAsync();
+            if (assetInfo == null)
+            {
+                System.Windows.MessageBox.Show(this, "更新情報の取得に失敗しました。しばらくしてから再度お試しください。",
+                    "アップデート", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var verifiedPath = await SelfUpdateService.DownloadAndVerifyAsync(assetInfo);
+            if (verifiedPath == null)
+            {
+                System.Windows.MessageBox.Show(this, "ダウンロードまたは検証に失敗しました。しばらくしてから再度お試しください。",
+                    "アップデート", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (ConfirmDialog.Show(this, "アップデートの適用",
+                    $"新しいバージョン {assetInfo.Tag} を適用して再起動します。よろしいですか？", "適用する") != true)
+            {
+                try { File.Delete(verifiedPath); } catch { }
+                return;
+            }
+
+            SelfUpdateService.ApplyAndRestart(verifiedPath); // 成功時はここでプロセスが終了する
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(this, $"アップデートの適用に失敗しました。\n{ex.Message}",
+                "アップデート", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            btn.IsEnabled = true;
+        }
     }
 
     private void InitChannelListDragDrop()
@@ -319,16 +349,12 @@ public partial class MainWindow : System.Windows.Window
             Left = s.WindowLeft;
             Top  = s.WindowTop;
         }
-
-        if (s.WindowMaximized)
-            WindowState = System.Windows.WindowState.Maximized;
     }
 
     private void SaveWindowBounds()
     {
         var s = SettingsService.Instance.Settings;
-        s.WindowMaximized = WindowState == System.Windows.WindowState.Maximized;
-        var b = s.WindowMaximized ? RestoreBounds : new Rect(Left, Top, Width, Height);
+        var b = new Rect(Left, Top, Width, Height);
         if (b.Width > 0 && b.Height > 0)
         {
             s.WindowWidth = b.Width; s.WindowHeight = b.Height;

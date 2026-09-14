@@ -39,9 +39,7 @@
   <ItemGroup>
     <Resource Include="Resources\app.ico" />
     <Resource Include="Resources\app_warn.ico" />
-    <Content Include="Resources\app.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <Resource Include="Resources\app.png" />
   </ItemGroup>
 
   <!-- notification.wav が存在する場合のみ出力フォルダにコピー -->

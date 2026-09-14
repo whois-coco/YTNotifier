@@ -144,7 +144,7 @@ public partial class MainWindow : System.Windows.Window
             row.MouseLeftButtonUp += async (s, e) =>
             {
                 var nowEditMode = isDormant ? _dormantEditMode : _editMode;
-                if (!nowEditMode && s is Border b && b.Tag is ChannelInfo c) { e.Handled = true; AppLogger.Log(LogMsg.ChannelRowClicked, null, c.ChannelName); await OpenChannelLatestVideoAsync(c); }
+                if (!nowEditMode && s is Border b && b.Tag is ChannelInfo c && !c.IsBanned && !c.LatestVideoDeleted) { e.Handled = true; AppLogger.Log(LogMsg.ChannelRowClicked, null, c.ChannelName); await OpenChannelLatestVideoAsync(c); }
             };
 
             var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = RowContentMarginEdit };
@@ -164,15 +164,18 @@ public partial class MainWindow : System.Windows.Window
                 Margin = RowNameMargin
             };
             SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-            nameText.Cursor = Cursors.Hand;
-            nameText.ToolTip = "クリックしてチャンネルページを開く";
-            nameText.PreviewMouseLeftButtonDown += (_, e) => e.Handled = true;
-            nameText.MouseLeftButtonUp += (_, e) =>
+            if (!ch.IsBanned)
             {
-                e.Handled = true;
-                AppLogger.Log(LogMsg.ChannelNameClicked, null, ch.ChannelName);
-                OpenUrl(ch.ChannelUrl);
-            };
+                nameText.Cursor = Cursors.Hand;
+                nameText.ToolTip = "クリックしてチャンネルページを開く";
+                nameText.PreviewMouseLeftButtonDown += (_, e) => e.Handled = true;
+                nameText.MouseLeftButtonUp += (_, e) =>
+                {
+                    e.Handled = true;
+                    AppLogger.Log(LogMsg.ChannelNameClicked, null, ch.ChannelName);
+                    OpenUrl(ch.ChannelUrl);
+                };
+            }
 
             // 削除ボタン（コンパクト + 編集モードONの時のみ表示）
             var deleteBtn = BuildCompactDeleteButton(ch);

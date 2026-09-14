@@ -74,11 +74,17 @@ public partial class MainWindow : System.Windows.Window
     private const string QuotaDonutBrushActualPending    = "QuotaActualPendingBrush";
     private const string QuotaDonutBrushActualLiveStatus = "QuotaActualLiveStatusBrush";
 
+    // Gemini API使用量ドーナツのタイトル・ラベル・色・単位文言
+    private const string QuotaDonutTitleGemini         = "Gemini API使用量（本日）";
+    private const string QuotaDonutLabelGeminiRequests = "要約リクエスト";
+    private const string QuotaDonutBrushGeminiRequests = "QuotaActualNormalBrush";
+    private const string QuotaDonutUnitLabelGemini     = "回/日";
+
     private void UpdateQuotaInfo()
     {
         try
         {
-            if (QuotaDonutEstimate == null || QuotaDonutActual == null) return;
+            if (QuotaDonutEstimate == null || QuotaDonutActual == null || QuotaDonutGemini == null) return;
             var svc      = SettingsService.Instance;
             var settings = svc.Settings;
             var channels = svc.GetChannelsSnapshot();
@@ -116,6 +122,19 @@ public partial class MainWindow : System.Windows.Window
                     new() { Label = QuotaDonutLabelActualPending, Units = actualPendingUnits,    BrushKey = QuotaDonutBrushActualPending    },
                     new() { Label = QuotaDonutLabelActualLive,    Units = actualLiveStatusUnits, BrushKey = QuotaDonutBrushActualLiveStatus },
                 });
+
+            // Gemini API使用量ドーナツ（クォータ期間 = 太平洋時間0:00リセット）。内訳なしの単一ドーナツ。
+            var geminiKey     = AppConstants.GetQuotaDayKey();
+            var isTodayGemini = appState.TodayGeminiRequestDate == geminiKey;
+            var geminiUnits   = isTodayGemini ? appState.TodayGeminiRequests : 0;
+            QuotaDonutGemini.SetData(
+                QuotaDonutTitleGemini, GeminiConstants.DailyRequestLimit, geminiUnits,
+                new List<QuotaDonutSegment>
+                {
+                    new() { Label = QuotaDonutLabelGeminiRequests, Units = geminiUnits, BrushKey = QuotaDonutBrushGeminiRequests },
+                },
+                unitLabel: QuotaDonutUnitLabelGemini,
+                showBreakdown: false);
         }
         catch (Exception ex) { AppLogger.Log(LogMsg.UiUpdateFailed, null, nameof(UpdateQuotaInfo), ex.Message); }
     }

@@ -60,6 +60,11 @@ public partial class MainWindow : System.Windows.Window
         RefreshDormantChannelList();
     }
 
+    private void NgWordButton_Click(object sender, RoutedEventArgs e)
+    {
+        new NgWordSettingsWindow(this).ShowDialog();
+    }
+
     private static void SetDeleteButtonVisibility(Border row, bool visible)
     {
         if (row.Child is not Grid outerGrid) return;
@@ -249,7 +254,8 @@ public partial class MainWindow : System.Windows.Window
 
         ChannelList.Children.Clear();
         var activeCount  = channels.Count(c => !c.IsDormant);
-        ChannelCountText.Text = $"{activeCount} チャンネル";
+        if (_currentNav == "Watch")
+            TitleCountText.Text = $"{activeCount}{AppConstants.ChannelCountUnitSuffix}";
         EmptyState.Visibility = activeCount == 0 ? Visibility.Visible : Visibility.Collapsed;
 
         // 検索モード: カテゴリなしで部分一致チャンネルのみ表示

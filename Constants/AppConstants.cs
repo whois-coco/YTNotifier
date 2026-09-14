@@ -3,7 +3,7 @@ namespace YTNotifier.Constants;
 internal static class AppConstants
 {
     public const string AppName          = "YTNotifier";
-    public const string AppVersion       = "0.9.2";
+    public const string AppVersion       = "0.9.3";
     public const string DirLogs          = "logs";
     public const string DirSounds        = "Sounds";
     public const string FileApiKey              = "api_key.dat";
@@ -16,11 +16,11 @@ internal static class AppConstants
     /// <summary>無効化されたコントロールの不透明度</summary>
     public const double DisabledControlOpacity = 0.3;
 
-    /// <summary>種別スロット（動画・Short・ライブ）の数。FocusSlots の要素数と一致する</summary>
+    /// <summary>種別タブ（動画・Short・ライブ）の数。FocusSlots の要素数とは一致しない（1種別に複数スロットを持てる）</summary>
     public const int KindSlotCount = 3;
 
     /// <summary>種別スロットの表示ラベル（動画・Short・ライブ）。
-    /// 順序は FocusSlots のインデックスと一致する</summary>
+    /// 種別タブの並び順</summary>
     public static readonly string[] KindSlotLabels = { "動画", "Short", "ライブ" };
 
     /// <summary>種別スロットの種別。順序は KindSlotLabels と一致する</summary>
@@ -29,6 +29,9 @@ internal static class AppConstants
 
     /// <summary>API使用量バーの端のセグメントに付ける角丸</summary>
     public const double QuotaBarCornerRadius = 4;
+
+    /// <summary>チャンネル数表記の単位文字列（タイトルバー表示用）</summary>
+    public const string ChannelCountUnitSuffix = "ch";
 
     /// <summary>
     /// プラグイン拡張リージョンID → 設定画面・ログで見せる日本語名。

@@ -51,13 +51,15 @@ public partial class MainWindow : System.Windows.Window
             dormantChannels = dormantChannels
                 .Where(c => c.ChannelName.Contains(keyword, StringComparison.OrdinalIgnoreCase))
                 .ToList();
-            DormantChannelCountText.Text = $"{dormantChannels.Count} チャンネル";
+            if (_currentNav == "Dormant")
+                TitleCountText.Text = $"{dormantChannels.Count}{AppConstants.ChannelCountUnitSuffix}";
             foreach (var ch in dormantChannels)
                 DormantChannelList.Children.Add(CreateDormantChannelRow(ch));
             return;
         }
 
-        DormantChannelCountText.Text = $"{dormantChannels.Count} チャンネル";
+        if (_currentNav == "Dormant")
+            TitleCountText.Text = $"{dormantChannels.Count}{AppConstants.ChannelCountUnitSuffix}";
         var categories = SettingsService.Instance.DormantCategories.OrderBy(c => c.SortOrder);
         var settings = SettingsService.Instance.Settings;
 

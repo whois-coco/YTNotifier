@@ -97,7 +97,10 @@ public sealed class PluginHttpGateway
 
             // 要約用APIキーは Gemini 宛のときだけ付与する（YouTube へは渡さない）
             if (string.Equals(uri.Host, GeminiHost, StringComparison.OrdinalIgnoreCase))
+            {
+                SettingsService.Instance.AddGeminiRequest();
                 request.Headers.TryAddWithoutValidation(ApiKeyHeaderName, _apiKey);
+            }
 
             using var response = HttpClient.Send(request);
             using var stream    = response.Content.ReadAsStream();

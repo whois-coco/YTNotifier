@@ -69,20 +69,18 @@ public partial class ChannelDetailWindow : Window
             SlotLowFreqIntervalMinutes = s.SlotLowFreqIntervalMinutes,
         }).ToList();
 
-        // 監視設定タブ初期化：既存モードをスロット形式に変換
-        // 未設定タブ（Short/ライブ配信）もチャンネル本来のモードを引き継ぐための既定値生成
-        List<FocusSlot> slots = channel.FocusSlots.Count > 0
-            ? channel.FocusSlots
-            : new List<FocusSlot> { channel.CreateDefaultFocusSlot(VideoKind.Video) };
-
-        // 3タブ分作成（デフォルト種別: 動画/Short/ライブ配信）
-        VideoKind[] defaultKinds = { VideoKind.Video, VideoKind.Short, VideoKind.Live };
+        // 監視設定タブ初期化：種別（NotifyKind）ごとにスロットを集める
+        // 種別のスロットが1件もない場合はチャンネル本来のモードを引き継ぐ既定値を生成
         bool[] kindEnabled = { channel.NotifyVideo, channel.NotifyShort, channel.NotifyLive };
         for (int i = 0; i < AppConstants.KindSlotCount; i++)
         {
-            var slot = i < slots.Count ? slots[i] : channel.CreateDefaultFocusSlot(defaultKinds[i]);
-            slot.IsEnabled = kindEnabled[i]; // チャンネル一覧の種別ON/OFFを反映
-            _tabPanels.Add(new FocusTabPanel(slot));
+            var tabKind   = AppConstants.KindSlotKinds[i];
+            var kindSlots = channel.FocusSlots.Where(s => s.NotifyKind == tabKind).ToList();
+            if (kindSlots.Count == 0)
+                kindSlots.Add(channel.CreateDefaultFocusSlot(tabKind));
+            foreach (var kindSlot in kindSlots)
+                kindSlot.IsEnabled = kindEnabled[i]; // チャンネル一覧の種別ON/OFFを反映
+            _tabPanels.Add(new FocusTabPanel(kindSlots));
         }
 
         // upcoming（プレミア／ライブ）通知方法をタブ内へ配置：プレミアは動画タブ(0)、ライブはライブ配信タブ(2)
@@ -235,7 +233,7 @@ public partial class ChannelDetailWindow : Window
         var otherChannels  = channels.Where(c => c.IsEnabled && c.ChannelId != _channel.ChannelId);
 
         // % 表示用の合計（設定ページと同じ計算式）
-        var currentSlots = _tabPanels.Select(p => p.GetSlot()).ToList();
+        var currentSlots = _tabPanels.SelectMany(p => p.GetSlots()).ToList();
         var otherTotal   = ApiQuotaHelper.EstimateDailyUnitsForChannels(globalInterval, otherChannels);
         var thisTotal    = ApiQuotaHelper.EstimateDailyUnitsForFocusSlots(currentSlots, globalInterval);
         var banCheckUnits = ApiQuotaHelper.EstimateDailyUnitsForBanCheck(
@@ -316,7 +314,7 @@ public partial class ChannelDetailWindow : Window
         var settings   = SettingsService.Instance.Settings;
         var channels   = SettingsService.Instance.Channels;
         var thisUnits  = ApiQuotaHelper.EstimateDailyUnitsForFocusSlots(
-            _tabPanels.Select(p => p.GetSlot()), settings.CheckIntervalMinutes);
+            _tabPanels.SelectMany(p => p.GetSlots()), settings.CheckIntervalMinutes);
         var otherUnits = ApiQuotaHelper.EstimateDailyUnitsForChannels(
             settings.CheckIntervalMinutes,
             channels.Where(c => c.IsEnabled && c.ChannelId != _channel.ChannelId));
@@ -340,9 +338,9 @@ public partial class ChannelDetailWindow : Window
             AppLogger.Log(LogMsg.QuotaWarningOnSave, _channel.ChannelName, _channel.ChannelName, (int)Math.Round(pct));
         }
 
-        _channel.NotifyVideo               = _tabPanels[0].GetSlot().IsEnabled;
-        _channel.NotifyShort               = _tabPanels[1].GetSlot().IsEnabled;
-        _channel.NotifyLive                = _tabPanels[2].GetSlot().IsEnabled;
+        _channel.NotifyVideo               = _tabPanels[0].GetSlots()[0].IsEnabled;
+        _channel.NotifyShort               = _tabPanels[1].GetSlots()[0].IsEnabled;
+        _channel.NotifyLive                = _tabPanels[2].GetSlots()[0].IsEnabled;
         _channel.PremiereUpcomingNotifyMode        = _tabPanels[0].GetUpcomingMode();
         _channel.PremiereUpcomingNotifyLeadMinutes = _tabPanels[0].GetUpcomingLead();
         _channel.LiveUpcomingNotifyMode            = _tabPanels[2].GetUpcomingMode();
@@ -350,7 +348,7 @@ public partial class ChannelDetailWindow : Window
 
         // 常にスロットベースで保存
         _channel.MonitorMode = MonitorMode.Focus;
-        _channel.FocusSlots  = _tabPanels.Select(p => p.GetSlot()).ToList();
+        _channel.FocusSlots  = _tabPanels.SelectMany(p => p.GetSlots()).ToList();
 
         // 後方互換: 先頭有効スロットのうちFocusモードのものを旧フィールドに反映
         var first = _channel.FocusSlots
@@ -375,18 +373,22 @@ public partial class ChannelDetailWindow : Window
         bool[] origEnabled = { _origNotifyVideo, _origNotifyShort, _origNotifyLive };
         for (int i = 0; i < _tabPanels.Count; i++)
         {
-            var slot = _tabPanels[i].GetSlot();
-            if (slot.IsEnabled != origEnabled[i])
+            var kindSlots         = _tabPanels[i].GetSlots();
+            var representativeSlot = kindSlots[0];
+            if (representativeSlot.IsEnabled != origEnabled[i])
             {
-                var statusLabel = slot.IsEnabled
-                    ? $"ON ({DescribeSlotInterval(slot, globalInterval)})"
+                var statusLabel = representativeSlot.IsEnabled
+                    ? $"ON ({DescribeSlotInterval(representativeSlot, globalInterval)})"
                     : "OFF";
                 AppLogger.Log(LogMsg.ChannelDetailEnabledChanged, _channel.ChannelName,
                     _channel.ChannelName, AppConstants.KindSlotLabels[i], statusLabel);
             }
-            if (!slot.IsEnabled) continue;
-            var intervalDesc = DescribeSlotInterval(slot, globalInterval);
-            AppLogger.Log(LogMsg.ChannelDetailSlotInterval, _channel.ChannelName, AppConstants.KindSlotLabels[i], intervalDesc);
+            if (!representativeSlot.IsEnabled) continue;
+            foreach (var kindSlot in kindSlots)
+            {
+                var intervalDesc = DescribeSlotInterval(kindSlot, globalInterval);
+                AppLogger.Log(LogMsg.ChannelDetailSlotInterval, _channel.ChannelName, AppConstants.KindSlotLabels[i], intervalDesc);
+            }
         }
 
         LogUpcomingChange(UpcomingKindLabelPremiere, _origPremiereUpcomingMode, _origPremiereUpcomingLead,
@@ -455,20 +457,32 @@ internal class FocusTabPanel
     public Action? OnEnabledChanged { get; set; }
     public Action? OnModeChanged { get; set; }
     public VideoKind FixedKind { get; set; } = VideoKind.Video;
-    public bool IsEnabled => _enabledCheck?.IsChecked == true || (!HasContent && _slot.IsEnabled);
+    public bool IsEnabled => _enabledCheck?.IsChecked == true || (!HasContent && _slots[0].IsEnabled);
     public bool HasContent { get; private set; } = false;
-    public FocusSlot SlotData => HasContent ? GetSlot() : _slot;
+    public FocusSlot SlotData => HasContent ? GetSlots()[0] : _slots[0];
 
-    private readonly FocusSlot _slot;
+    private readonly List<FocusSlot> _slots;
     private bool _suppressEnabledEvent = false;
     private System.Windows.Controls.CheckBox? _enabledCheck;
-    private System.Windows.Controls.Primitives.ToggleButton[] _dayBtns = Array.Empty<System.Windows.Controls.Primitives.ToggleButton>();
     private ComboBox? _modeBox;
-    private ComboBox? _windowBox, _intervalBox;
-    private ComboBox? _hourBox, _minuteBox;
     private ComboBox? _normalIntervalBox, _lowFreqBox;
     private StackPanel? _settingsPanel;
     private StackPanel? _normalPanel, _lowFreqPanel, _focusPanel;
+
+    /// <summary>時間指定1行分（カード）のコントロール一式</summary>
+    private sealed class TimeRowControls
+    {
+        public System.Windows.Controls.Primitives.ToggleButton[] DayBtns = Array.Empty<System.Windows.Controls.Primitives.ToggleButton>();
+        public ComboBox? HourBox;
+        public ComboBox? MinuteBox;
+        public ComboBox? WindowBox;
+        public ComboBox? IntervalBox;
+    }
+
+    private readonly List<TimeRowControls> _timeRows = new();
+    private StackPanel? _timeRowsHost;
+    private TextBlock? _timeRowCountText;
+    private System.Windows.Controls.Button? _addTimeRowButton;
 
     /// <summary>種別チェックを外したときの設定パネルの不透明度</summary>
     private const double SettingsPanelDisabledOpacity = 0.4;
@@ -485,6 +499,32 @@ internal class FocusTabPanel
     private static readonly Thickness SectionRowMargin = new(0, 0, 0, 8);
     private static readonly Thickness TimeSeparatorMargin = new(5, 0, 5, 0);
     private static readonly Thickness SlashSeparatorMargin = new(6, 0, 6, 0);
+
+    // ===== 時間指定の行（カード）関連 =====
+    private const int    TimeRowMaxCount               = 5;  // 1種別あたりの上限件数
+    private const int    TimeRowMinCount               = 1;  // 1種別あたりの下限件数
+    private const int    TimeRowDefaultHour            = 0;  // 追加時の初期 時
+    private const int    TimeRowDefaultMinute          = 0;  // 追加時の初期 分
+    private const int    TimeRowDefaultWindowMinutes   = 10; // 追加時の初期 投稿確認（分）
+    private const int    TimeRowDefaultIntervalMinutes = 1;  // 追加時の初期 間隔（分）
+    private const double TimeRowsHostMaxHeight = 260; // 時間カード表示領域の最大高さ（カード約2枚分）
+
+    private const string TimeRowSectionLabel           = "時間指定";
+    private const string TimeRowCountFormat            = "{0} / {1} 件";
+    private const string TimeRowHeaderFormat           = "時間 {0}";
+    private const string TimeRowAddButtonLabel         = "＋ 時間を追加";
+    private const string TimeRowAddButtonLimitFormat   = "上限（{0}件）に達しています";
+    private const string TimeRowRemoveToolTip          = "この時間を削除";
+    private const string TimeRowRemoveDisabledToolTip  = "最低1件は必要です";
+
+    private const double TimeRowCardCornerRadius         = 6;
+    private const double TimeRowCardBorderThickness      = 1;
+    private const double TimeRowRemoveButtonSize         = 22;
+    private const double TimeRowRemoveIconSize           = 12; // 削除ボタン内アイコンの一辺
+    private const double TimeRowTrashIconCanvasSize      = 24; // ゴミ箱アイコンの Canvas 一辺（元絵柄の座標系）
+    private const double TimeRowTrashIconStrokeThickness = 2;  // ゴミ箱アイコンの線の太さ
+    private static readonly Thickness TimeRowCardPadding = new(10, 8, 10, 6);
+    private static readonly Thickness TimeRowCardMargin  = new(0, 0, 0, 8);
 
     // ===== upcoming（プレミア／ライブ）通知方法：チャンネル個別設定（スロット非依存） =====
     private const int    DefaultLeadMinutes           = 10;
@@ -509,11 +549,17 @@ internal class FocusTabPanel
 
     private static readonly string[] DayLabels = { "Sun","Mon","Tue","Wed","Thu","Fri","Sat" };
 
-    public FocusTabPanel(FocusSlot slot) => _slot = slot;
+    public FocusTabPanel(List<FocusSlot> slots)
+    {
+        // 呼び出し側は1件以上を渡す前提。上限を超える分は切り捨てる
+        _slots = slots.Count > 0
+            ? slots.Take(TimeRowMaxCount).ToList()
+            : new List<FocusSlot> { new FocusSlot { NotifyKind = FixedKind, SlotMode = MonitorMode.Normal } };
+    }
 
     public void SetEnabled(bool enabled)
     {
-        _slot.IsEnabled = enabled;
+        foreach (var slot in _slots) slot.IsEnabled = enabled;
         if (_enabledCheck != null)
         {
             _suppressEnabledEvent = true;
@@ -523,18 +569,20 @@ internal class FocusTabPanel
         if (_settingsPanel != null)
         {
             _settingsPanel.IsEnabled = enabled;
-            _settingsPanel.Opacity   = enabled ? 1.0 : 0.4;
+            _settingsPanel.Opacity   = enabled ? 1.0 : SettingsPanelDisabledOpacity;
         }
     }
 
     public void ResetContent()
     {
-        if (HasContent) { SaveToSlot(); SaveUpcoming(); }
+        if (HasContent) { SaveToSlots(); SaveUpcoming(); }
         HasContent    = false;
         _enabledCheck = null;
-        _dayBtns      = Array.Empty<System.Windows.Controls.Primitives.ToggleButton>();
-        _modeBox = _windowBox = _intervalBox = null;
-        _hourBox = _minuteBox = _normalIntervalBox = _lowFreqBox = null;
+        _timeRows.Clear();
+        _timeRowsHost     = null;
+        _timeRowCountText = null;
+        _addTimeRowButton = null;
+        _modeBox = _normalIntervalBox = _lowFreqBox = null;
         _settingsPanel = _normalPanel = _lowFreqPanel = _focusPanel = null;
         _upcomingModeBox = _upcomingLeadBox = null;
         _upcomingLeadRow = null;
@@ -583,45 +631,59 @@ internal class FocusTabPanel
             : Visibility.Visible;
     }
 
-    private void SaveToSlot()
+    private void SaveToSlots()
     {
-        if (_enabledCheck != null) _slot.IsEnabled = _enabledCheck.IsChecked == true;
+        // 種別共通の値は全スロットへ書き込む
+        foreach (var slot in _slots)
+        {
+            if (_enabledCheck != null) slot.IsEnabled = _enabledCheck.IsChecked == true;
 
-        // スロットモード
-        if (_modeBox?.SelectedItem is ComboBoxItem mi && mi.Tag is string mt)
-            _slot.SlotMode = mt switch
-            {
-                "LowFreq" => MonitorMode.LowFreq,
-                "Focus"   => MonitorMode.Focus,
-                _         => MonitorMode.Normal
-            };
+            // スロットモード
+            if (_modeBox?.SelectedItem is ComboBoxItem mi && mi.Tag is string mt)
+                slot.SlotMode = mt switch
+                {
+                    "LowFreq" => MonitorMode.LowFreq,
+                    "Focus"   => MonitorMode.Focus,
+                    _         => MonitorMode.Normal
+                };
 
-        // 通常間隔（0=グローバル）
-        if (_normalIntervalBox?.SelectedItem is ComboBoxItem ni && ni.Tag is string ns && int.TryParse(ns, out var nv))
-            _slot.SlotNormalIntervalMinutes = nv;
+            // 通常間隔（0=グローバル）
+            if (_normalIntervalBox?.SelectedItem is ComboBoxItem ni && ni.Tag is string ns && int.TryParse(ns, out var nv))
+                slot.SlotNormalIntervalMinutes = nv;
 
-        // 低頻度間隔
-        if (_lowFreqBox?.SelectedItem is ComboBoxItem li && li.Tag is string ls && int.TryParse(ls, out var lv))
-            _slot.SlotLowFreqIntervalMinutes = lv;
+            // 低頻度間隔
+            if (_lowFreqBox?.SelectedItem is ComboBoxItem li && li.Tag is string ls && int.TryParse(ls, out var lv))
+                slot.SlotLowFreqIntervalMinutes = lv;
 
-        // 通知種別はタブ固定
-        _slot.NotifyKind = FixedKind;
-        int days = 0;
-        for (int i = 0; i < 7; i++)
-            if (_dayBtns.Length > i && _dayBtns[i].IsChecked == true) days |= (1 << i);
-        _slot.Days   = days;
-        _slot.Hour   = _hourBox?.SelectedIndex ?? _slot.Hour;
-        _slot.Minute = (_minuteBox?.SelectedIndex ?? 0) * 5;
-        if (_windowBox?.SelectedItem is ComboBoxItem wi && wi.Tag is string ws && int.TryParse(ws, out var w))
-            _slot.WindowMinutes = w;
-        if (_intervalBox?.SelectedItem is ComboBoxItem ii && ii.Tag is string ivs && int.TryParse(ivs, out var iv))
-            _slot.IntervalMinutes = iv;
+            // 通知種別はタブ固定
+            slot.NotifyKind = FixedKind;
+        }
+
+        // 行ごとの値（曜日／時／分／投稿確認／間隔）
+        for (int r = 0; r < _timeRows.Count && r < _slots.Count; r++)
+        {
+            var row     = _timeRows[r];
+            var rowSlot = _slots[r];
+            int days = 0;
+            for (int i = 0; i < 7; i++)
+                if (row.DayBtns.Length > i && row.DayBtns[i].IsChecked == true) days |= (1 << i);
+            rowSlot.Days   = days;
+            rowSlot.Hour   = row.HourBox?.SelectedIndex ?? rowSlot.Hour;
+            rowSlot.Minute = (row.MinuteBox?.SelectedIndex ?? 0) * 5;
+            if (row.WindowBox?.SelectedItem is ComboBoxItem wi && wi.Tag is string ws && int.TryParse(ws, out var w))
+                rowSlot.WindowMinutes = w;
+            if (row.IntervalBox?.SelectedItem is ComboBoxItem ii && ii.Tag is string ivs && int.TryParse(ivs, out var iv))
+                rowSlot.IntervalMinutes = iv;
+        }
     }
 
-    public FocusSlot GetSlot()
+    public List<FocusSlot> GetSlots()
     {
-        if (HasContent) SaveToSlot();
-        return _slot;
+        if (HasContent) SaveToSlots();
+        // 時間指定以外のモードでは1件目だけを保存対象とする（_slots 自体は切り詰めない）
+        return _slots[0].SlotMode == MonitorMode.Focus
+            ? new List<FocusSlot>(_slots)
+            : new List<FocusSlot> { _slots[0] };
     }
 
     public UIElement BuildContent()
@@ -640,7 +702,7 @@ internal class FocusTabPanel
                 VideoKind.Live  => EnabledCheckLabelLive,
                 _               => EnabledCheckLabelVideo
             },
-            IsChecked  = _slot.IsEnabled,
+            IsChecked  = _slots[0].IsEnabled,
             FontSize   = EnabledCheckFontSize,
             FontWeight = System.Windows.FontWeights.SemiBold,
             Foreground = (Brush)res["TextPrimaryBrush"],
@@ -670,8 +732,8 @@ internal class FocusTabPanel
         // 設定パネル
         _settingsPanel = new StackPanel
         {
-            IsEnabled = _slot.IsEnabled,
-            Opacity   = _slot.IsEnabled ? 1.0 : 0.4
+            IsEnabled = _slots[0].IsEnabled,
+            Opacity   = _slots[0].IsEnabled ? 1.0 : SettingsPanelDisabledOpacity
         };
         stack.Children.Add(_settingsPanel);
 
@@ -679,7 +741,7 @@ internal class FocusTabPanel
         _modeBox = new ComboBox { Style = (Style)res["ModernComboBox"] };
         foreach (var (tag, lbl) in new[] { ("Normal","通常"), ("LowFreq","低頻度"), ("Focus","時間指定") })
             _modeBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
-        var modeTag = _slot.SlotMode switch
+        var modeTag = _slots[0].SlotMode switch
         {
             MonitorMode.LowFreq => "LowFreq",
             MonitorMode.Focus   => "Focus",
@@ -709,10 +771,10 @@ internal class FocusTabPanel
             });
         }
         // 保存済み値がグローバルより短い場合は「一括で設定に従う」へフォールバック
-        var savedInterval = _slot.SlotNormalIntervalMinutes;
+        var savedInterval = _slots[0].SlotNormalIntervalMinutes;
         var selectTag = (savedInterval > 0 && savedInterval < globalInterval) ? "0" : savedInterval.ToString();
         SelectComboByTagStr(_normalIntervalBox, selectTag);
-        _normalIntervalBox.SelectionChanged += (_, _) => { if (_suppressEnabledEvent) return; SaveToSlot(); OnEnabledChanged?.Invoke(); };
+        _normalIntervalBox.SelectionChanged += (_, _) => { if (_suppressEnabledEvent) return; SaveToSlots(); OnEnabledChanged?.Invoke(); };
         _normalPanel.Children.Add(MakeRow("監視間隔", _normalIntervalBox, res));
         _settingsPanel.Children.Add(_normalPanel);
 
@@ -721,97 +783,60 @@ internal class FocusTabPanel
         _lowFreqBox = new ComboBox { Style = (Style)res["ModernComboBox"] };
         foreach (var (lbl, tag) in new[] { ("1時間","60"),("3時間","180"),("6時間","360"),("12時間","720"),("24時間","1440") })
             _lowFreqBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
-        SelectComboByTagStr(_lowFreqBox, _slot.SlotLowFreqIntervalMinutes.ToString());
-        _lowFreqBox.SelectionChanged += (_, _) => { if (_suppressEnabledEvent) return; SaveToSlot(); OnEnabledChanged?.Invoke(); };
+        SelectComboByTagStr(_lowFreqBox, _slots[0].SlotLowFreqIntervalMinutes.ToString());
+        _lowFreqBox.SelectionChanged += (_, _) => { if (_suppressEnabledEvent) return; SaveToSlots(); OnEnabledChanged?.Invoke(); };
         _lowFreqPanel.Children.Add(MakeRow("監視間隔", _lowFreqBox, res));
         _settingsPanel.Children.Add(_lowFreqPanel);
 
         // 4. 時間指定設定
         _focusPanel = new StackPanel { Margin = PanelTopMargin };
 
-        // 曜日指定
-        _focusPanel.Children.Add(new TextBlock
+        // 見出し行（「時間指定」／件数表示）
+        var focusHeaderGrid = new Grid { Margin = SectionLabelMargin };
+        focusHeaderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        focusHeaderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        focusHeaderGrid.Children.Add(new TextBlock
         {
-            Text       = "曜日指定",
-            FontSize   = SectionLabelFontSize,
-            Foreground = (Brush)res["TextSecondaryBrush"],
-            Margin     = SectionLabelMargin
+            Text              = TimeRowSectionLabel,
+            FontSize          = SectionLabelFontSize,
+            Foreground        = (Brush)res["TextSecondaryBrush"],
+            VerticalAlignment = VerticalAlignment.Center
         });
-        var dayRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = SectionRowMargin, HorizontalAlignment = HorizontalAlignment.Center };
-        _dayBtns = new System.Windows.Controls.Primitives.ToggleButton[7];
-        for (int i = 0; i < 7; i++)
+        _timeRowCountText = new TextBlock
         {
-            var btn = new System.Windows.Controls.Primitives.ToggleButton
-            {
-                Content   = DayLabels[i],
-                Style     = (Style)res["DayToggleButton"],
-                IsChecked = _slot.Days == 0 || (_slot.Days & (1 << i)) != 0
-            };
-            btn.Unchecked += (_, _) =>
-            {
-                if (_dayBtns.All(b => b.IsChecked != true))
-                    btn.IsChecked = true;
-            };
-            _dayBtns[i] = btn;
-            dayRow.Children.Add(btn);
-        }
-        _focusPanel.Children.Add(dayRow);
+            FontSize          = SectionLabelFontSize,
+            Foreground        = (Brush)res["TextMutedBrush"],
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        System.Windows.Controls.Grid.SetColumn(_timeRowCountText, 1);
+        focusHeaderGrid.Children.Add(_timeRowCountText);
+        _focusPanel.Children.Add(focusHeaderGrid);
 
-        // 投稿時刻
-        _hourBox   = new ComboBox { Style = (Style)res["ModernComboBox"], Width = TimeComboWidth };
-        _minuteBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = TimeComboWidth };
-        for (int h = 0; h < 24; h++)
-            _hourBox.Items.Add(new ComboBoxItem { Content = $"{h:D2}", Style = (Style)res["ModernComboBoxItem"] });
-        for (int m = 0; m < 60; m += 5)
-            _minuteBox.Items.Add(new ComboBoxItem { Content = $"{m:D2}", Style = (Style)res["ModernComboBoxItem"] });
-        _hourBox.SelectedIndex   = Math.Clamp(_slot.Hour, 0, 23);
-        _minuteBox.SelectedIndex = Math.Clamp(_slot.Minute / 5, 0, 11);
+        // 時間カードを並べる領域（カード2枚分の高さで固定し、超過分は内側でスクロール）
+        _timeRowsHost = new StackPanel();
+        var timeRowsScroll = new ScrollViewer
+        {
+            Style                       = (Style)res["SlimScrollViewer"],
+            MaxHeight                   = TimeRowsHostMaxHeight,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content                     = _timeRowsHost
+        };
+        _focusPanel.Children.Add(timeRowsScroll);
 
-        var timeGrid = new Grid { Margin = SectionRowMargin };
-        timeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        timeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var timeLbl  = new TextBlock { Text = "投稿時刻", FontSize = SectionLabelFontSize, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center };
-        var timeCtrl = new StackPanel { Orientation = Orientation.Horizontal };
-        timeCtrl.Children.Add(_hourBox);
-        timeCtrl.Children.Add(new TextBlock { Text = ":", FontSize = TimeSeparatorFontSize, FontWeight = System.Windows.FontWeights.SemiBold, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center, Margin = TimeSeparatorMargin });
-        timeCtrl.Children.Add(_minuteBox);
-        System.Windows.Controls.Grid.SetColumn(timeCtrl, 1);
-        timeGrid.Children.Add(timeLbl);
-        timeGrid.Children.Add(timeCtrl);
-        _focusPanel.Children.Add(timeGrid);
+        // 時間の追加ボタン
+        _addTimeRowButton = new System.Windows.Controls.Button
+        {
+            Style               = (Style)res["SecondaryButton"],
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        _addTimeRowButton.Click += (_, _) => AddTimeRow();
+        _focusPanel.Children.Add(_addTimeRowButton);
 
-        // 投稿監視時間 / 監視間隔
-        _windowBox   = new ComboBox { Style = (Style)res["ModernComboBox"], Width = WindowComboWidth };
-        _intervalBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = WindowComboWidth };
-        foreach (var (lbl, tag) in new[] { ("3分","3"),("5分","5"),("10分","10"),("15分","15") })
-            _windowBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
-        foreach (var (lbl, tag) in new[] { ("30秒","0"),("1分","1"),("5分","5") })
-            _intervalBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
-        // デフォルト：投稿確認10分・間隔5分
-        var windowTag   = _slot.WindowMinutes > 0 ? _slot.WindowMinutes.ToString() : "10";
-        var intervalTag = _slot.IntervalMinutes == 0 ? "0"
-                        : new[] { 0, 1, 5 }.Contains(_slot.IntervalMinutes) ? _slot.IntervalMinutes.ToString() : "5";
-        SelectComboByTagStr(_windowBox,   windowTag);
-        SelectComboByTagStr(_intervalBox, intervalTag);
-        _windowBox.SelectionChanged   += (_, _) => { if (_suppressEnabledEvent) return; OnEnabledChanged?.Invoke(); };
-        _intervalBox.SelectionChanged += (_, _) => { if (_suppressEnabledEvent) return; OnEnabledChanged?.Invoke(); };
-
-        var wiGrid = new Grid { Margin = new Thickness(0, 0, 0, 0) };
-        wiGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        wiGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var wiLbl  = new TextBlock { Text = "投稿確認 / 間隔", FontSize = SectionLabelFontSize, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center };
-        var wiCtrl = new StackPanel { Orientation = Orientation.Horizontal };
-        wiCtrl.Children.Add(_windowBox);
-        wiCtrl.Children.Add(new TextBlock { Text = "/", FontSize = SectionLabelFontSize, Foreground = (Brush)res["TextMutedBrush"], VerticalAlignment = VerticalAlignment.Center, Margin = SlashSeparatorMargin });
-        wiCtrl.Children.Add(_intervalBox);
-        System.Windows.Controls.Grid.SetColumn(wiCtrl, 1);
-        wiGrid.Children.Add(wiLbl);
-        wiGrid.Children.Add(wiCtrl);
-        _focusPanel.Children.Add(wiGrid);
+        RebuildTimeRows();
 
         _settingsPanel.Children.Add(_focusPanel);
 
-        // 5. upcoming（プレミア／ライブ）通知方法 ※チャンネル個別設定（_slot には保存しない）
+        // 5. upcoming（プレミア／ライブ）通知方法 ※チャンネル個別設定（_slots には保存しない）
         //    _settingsPanel の子にすることで、タブのチェック OFF 時に自動でグレーアウトされる
         if (_showUpcoming)
         {
@@ -858,7 +883,7 @@ internal class FocusTabPanel
         _modeBox.SelectionChanged += (_, _) =>
         {
             UpdateModePanels();
-            SaveToSlot();
+            SaveToSlots();
             if (!_suppressEnabledEvent)
             {
                 OnEnabledChanged?.Invoke();
@@ -868,6 +893,194 @@ internal class FocusTabPanel
 
         stack.Loaded += (_, _) => _suppressEnabledEvent = false;
         return stack;
+    }
+
+    /// <summary>時間指定のカード（行）を全件作り直す</summary>
+    private void RebuildTimeRows()
+    {
+        if (_timeRowsHost == null) return;
+        var res = System.Windows.Application.Current.Resources;
+        _timeRowsHost.Children.Clear();
+        _timeRows.Clear();
+
+        for (int r = 0; r < _slots.Count; r++)
+        {
+            int rowIndex = r;
+            var rowSlot  = _slots[r];
+            var row      = new TimeRowControls();
+            var cardStack = new StackPanel();
+
+            // カード見出し＋削除ボタン
+            var cardHeaderGrid = new Grid { Margin = SectionRowMargin };
+            cardHeaderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            cardHeaderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            cardHeaderGrid.Children.Add(new TextBlock
+            {
+                Text              = string.Format(TimeRowHeaderFormat, rowIndex + 1),
+                FontSize          = SectionLabelFontSize,
+                FontWeight        = System.Windows.FontWeights.SemiBold,
+                Foreground        = (Brush)res["TextPrimaryBrush"],
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            var removeButton = new System.Windows.Controls.Button
+            {
+                Content             = new Viewbox { Width = TimeRowRemoveIconSize, Height = TimeRowRemoveIconSize, Child = BuildTimeRowTrashIconCanvas(res) },
+                Width               = TimeRowRemoveButtonSize,
+                Height              = TimeRowRemoveButtonSize,
+                Background          = Brushes.Transparent,
+                BorderThickness     = new Thickness(0),
+                Cursor              = System.Windows.Input.Cursors.Hand,
+                ToolTip             = TimeRowRemoveToolTip,
+                VerticalAlignment   = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            if (_slots.Count <= TimeRowMinCount)
+            {
+                removeButton.IsEnabled = false;
+                removeButton.Opacity   = AppConstants.DisabledControlOpacity;
+                removeButton.ToolTip   = TimeRowRemoveDisabledToolTip;
+                ToolTipService.SetShowOnDisabled(removeButton, true);
+            }
+            removeButton.Click += (_, _) => RemoveTimeRow(rowIndex);
+            System.Windows.Controls.Grid.SetColumn(removeButton, 1);
+            cardHeaderGrid.Children.Add(removeButton);
+            cardStack.Children.Add(cardHeaderGrid);
+
+            // 曜日指定
+            var dayRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = SectionRowMargin, HorizontalAlignment = HorizontalAlignment.Center };
+            row.DayBtns = new System.Windows.Controls.Primitives.ToggleButton[7];
+            for (int i = 0; i < 7; i++)
+            {
+                var btn = new System.Windows.Controls.Primitives.ToggleButton
+                {
+                    Content   = DayLabels[i],
+                    Style     = (Style)res["DayToggleButton"],
+                    IsChecked = rowSlot.Days == 0 || (rowSlot.Days & (1 << i)) != 0
+                };
+                btn.Unchecked += (_, _) =>
+                {
+                    if (row.DayBtns.All(b => b.IsChecked != true))
+                        btn.IsChecked = true;
+                };
+                row.DayBtns[i] = btn;
+                dayRow.Children.Add(btn);
+            }
+            cardStack.Children.Add(dayRow);
+
+            // 投稿時刻
+            row.HourBox   = new ComboBox { Style = (Style)res["ModernComboBox"], Width = TimeComboWidth };
+            row.MinuteBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = TimeComboWidth };
+            for (int h = 0; h < 24; h++)
+                row.HourBox.Items.Add(new ComboBoxItem { Content = $"{h:D2}", Style = (Style)res["ModernComboBoxItem"] });
+            for (int m = 0; m < 60; m += 5)
+                row.MinuteBox.Items.Add(new ComboBoxItem { Content = $"{m:D2}", Style = (Style)res["ModernComboBoxItem"] });
+            row.HourBox.SelectedIndex   = Math.Clamp(rowSlot.Hour, 0, 23);
+            row.MinuteBox.SelectedIndex = Math.Clamp(rowSlot.Minute / 5, 0, 11);
+
+            var timeGrid = new Grid { Margin = SectionRowMargin };
+            timeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            timeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var timeLbl  = new TextBlock { Text = "投稿時刻", FontSize = SectionLabelFontSize, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center };
+            var timeCtrl = new StackPanel { Orientation = Orientation.Horizontal };
+            timeCtrl.Children.Add(row.HourBox);
+            timeCtrl.Children.Add(new TextBlock { Text = ":", FontSize = TimeSeparatorFontSize, FontWeight = System.Windows.FontWeights.SemiBold, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center, Margin = TimeSeparatorMargin });
+            timeCtrl.Children.Add(row.MinuteBox);
+            System.Windows.Controls.Grid.SetColumn(timeCtrl, 1);
+            timeGrid.Children.Add(timeLbl);
+            timeGrid.Children.Add(timeCtrl);
+            cardStack.Children.Add(timeGrid);
+
+            // 投稿監視時間 / 監視間隔
+            row.WindowBox   = new ComboBox { Style = (Style)res["ModernComboBox"], Width = WindowComboWidth };
+            row.IntervalBox = new ComboBox { Style = (Style)res["ModernComboBox"], Width = WindowComboWidth };
+            foreach (var (lbl, tag) in new[] { ("3分","3"),("5分","5"),("10分","10"),("15分","15") })
+                row.WindowBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
+            foreach (var (lbl, tag) in new[] { ("30秒","0"),("1分","1"),("5分","5") })
+                row.IntervalBox.Items.Add(new ComboBoxItem { Content = lbl, Tag = tag, Style = (Style)res["ModernComboBoxItem"] });
+            // デフォルト：投稿確認10分・間隔5分
+            var windowTag   = rowSlot.WindowMinutes > 0 ? rowSlot.WindowMinutes.ToString() : "10";
+            var intervalTag = rowSlot.IntervalMinutes == 0 ? "0"
+                            : new[] { 0, 1, 5 }.Contains(rowSlot.IntervalMinutes) ? rowSlot.IntervalMinutes.ToString() : "5";
+            SelectComboByTagStr(row.WindowBox,   windowTag);
+            SelectComboByTagStr(row.IntervalBox, intervalTag);
+            row.WindowBox.SelectionChanged   += (_, _) => { if (_suppressEnabledEvent) return; OnEnabledChanged?.Invoke(); };
+            row.IntervalBox.SelectionChanged += (_, _) => { if (_suppressEnabledEvent) return; OnEnabledChanged?.Invoke(); };
+
+            var wiGrid = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+            wiGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            wiGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var wiLbl  = new TextBlock { Text = "投稿確認 / 間隔", FontSize = SectionLabelFontSize, Foreground = (Brush)res["TextSecondaryBrush"], VerticalAlignment = VerticalAlignment.Center };
+            var wiCtrl = new StackPanel { Orientation = Orientation.Horizontal };
+            wiCtrl.Children.Add(row.WindowBox);
+            wiCtrl.Children.Add(new TextBlock { Text = "/", FontSize = SectionLabelFontSize, Foreground = (Brush)res["TextMutedBrush"], VerticalAlignment = VerticalAlignment.Center, Margin = SlashSeparatorMargin });
+            wiCtrl.Children.Add(row.IntervalBox);
+            System.Windows.Controls.Grid.SetColumn(wiCtrl, 1);
+            wiGrid.Children.Add(wiLbl);
+            wiGrid.Children.Add(wiCtrl);
+            cardStack.Children.Add(wiGrid);
+
+            _timeRowsHost.Children.Add(new Border
+            {
+                BorderBrush     = (Brush)res["BorderBrush"],
+                BorderThickness = new Thickness(TimeRowCardBorderThickness),
+                CornerRadius    = new CornerRadius(TimeRowCardCornerRadius),
+                Background      = (Brush)res["SurfaceAltBrush"],
+                Padding         = TimeRowCardPadding,
+                Margin          = TimeRowCardMargin,
+                Child           = cardStack
+            });
+            _timeRows.Add(row);
+        }
+
+        UpdateTimeRowCountUI();
+    }
+
+    /// <summary>件数表示と追加ボタンの状態を現在の件数に合わせる</summary>
+    private void UpdateTimeRowCountUI()
+    {
+        if (_timeRowCountText != null)
+            _timeRowCountText.Text = string.Format(TimeRowCountFormat, _slots.Count, TimeRowMaxCount);
+        if (_addTimeRowButton != null)
+        {
+            var reachedMax = _slots.Count >= TimeRowMaxCount;
+            _addTimeRowButton.IsEnabled = !reachedMax;
+            _addTimeRowButton.Content   = reachedMax
+                ? string.Format(TimeRowAddButtonLimitFormat, TimeRowMaxCount)
+                : TimeRowAddButtonLabel;
+        }
+    }
+
+    /// <summary>時間指定の行を1件追加する</summary>
+    private void AddTimeRow()
+    {
+        if (_slots.Count >= TimeRowMaxCount) return;
+        SaveToSlots();
+        _slots.Add(new FocusSlot
+        {
+            NotifyKind                 = FixedKind,
+            SlotMode                   = MonitorMode.Focus,
+            IsEnabled                  = _slots[0].IsEnabled,
+            SlotNormalIntervalMinutes  = _slots[0].SlotNormalIntervalMinutes,
+            SlotLowFreqIntervalMinutes = _slots[0].SlotLowFreqIntervalMinutes,
+            Days                       = AppConstants.AllDaysMask,
+            Hour                       = TimeRowDefaultHour,
+            Minute                     = TimeRowDefaultMinute,
+            WindowMinutes              = TimeRowDefaultWindowMinutes,
+            IntervalMinutes            = TimeRowDefaultIntervalMinutes
+        });
+        RebuildTimeRows();
+        OnEnabledChanged?.Invoke();
+    }
+
+    /// <summary>時間指定の行を1件削除する</summary>
+    private void RemoveTimeRow(int rowIndex)
+    {
+        if (_slots.Count <= TimeRowMinCount || rowIndex < 0 || rowIndex >= _slots.Count) return;
+        SaveToSlots();
+        _slots.RemoveAt(rowIndex);
+        RebuildTimeRows();
+        OnEnabledChanged?.Invoke();
     }
 
     private void UpdateModePanels()
@@ -899,5 +1112,29 @@ internal class FocusTabPanel
         foreach (ComboBoxItem item in box.Items)
             if (item.Tag?.ToString() == tag) { box.SelectedItem = item; return; }
         if (box.Items.Count > 0) box.SelectedIndex = 0;
+    }
+
+    /// <summary>時間指定カードの削除ボタン用ゴミ箱アイコン（Lucide 由来。色は目立たない色＝TextMutedBrush）</summary>
+    private static readonly string[] TimeRowTrashIconPathData =
+        { "M10 11v6", "M14 11v6", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", "M3 6h18", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" };
+
+    private static Canvas BuildTimeRowTrashIconCanvas(ResourceDictionary res)
+    {
+        var canvas = new Canvas { Width = TimeRowTrashIconCanvasSize, Height = TimeRowTrashIconCanvasSize };
+        foreach (var d in TimeRowTrashIconPathData)
+        {
+            var path = new System.Windows.Shapes.Path
+            {
+                Data                = Geometry.Parse(d),
+                StrokeThickness     = TimeRowTrashIconStrokeThickness,
+                StrokeStartLineCap  = PenLineCap.Round,
+                StrokeEndLineCap    = PenLineCap.Round,
+                StrokeLineJoin      = PenLineJoin.Round,
+                Fill                = Brushes.Transparent,
+                Stroke              = (Brush)res["TextMutedBrush"]
+            };
+            canvas.Children.Add(path);
+        }
+        return canvas;
     }
 }

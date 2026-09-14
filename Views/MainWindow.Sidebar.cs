@@ -258,11 +258,40 @@ public partial class MainWindow : System.Windows.Window
     }
 
     // ===== ナビゲーション =====
+    private void UpdateTitleBar(object sender, bool logSwitch = true)
+    {
+        if (sender == NavWatch)
+        {
+            if (logSwitch) AppLogger.Log(LogMsg.NavPageSwitched, null, "チャンネル");
+            TitleText.Text               = "チャンネル一覧";
+            TitleIconWatch.Visibility    = Visibility.Visible;
+            TitleIconDormant.Visibility  = Visibility.Collapsed;
+            TitleIconSettings.Visibility = Visibility.Collapsed;
+            TitleCountText.Visibility    = Visibility.Visible;
+        }
+        else if (sender == NavDormant)
+        {
+            if (logSwitch) AppLogger.Log(LogMsg.NavPageSwitched, null, "休眠");
+            TitleText.Text               = "休眠リスト";
+            TitleIconWatch.Visibility    = Visibility.Collapsed;
+            TitleIconDormant.Visibility  = Visibility.Visible;
+            TitleIconSettings.Visibility = Visibility.Collapsed;
+            TitleCountText.Visibility    = Visibility.Visible;
+        }
+        else if (sender == NavSettings)
+        {
+            if (logSwitch) AppLogger.Log(LogMsg.NavPageSwitched, null, "設定");
+            TitleText.Text               = "設定";
+            TitleIconWatch.Visibility    = Visibility.Collapsed;
+            TitleIconDormant.Visibility  = Visibility.Collapsed;
+            TitleIconSettings.Visibility = Visibility.Visible;
+            TitleCountText.Visibility    = Visibility.Collapsed;
+        }
+    }
+
     private void Nav_Click(object sender, RoutedEventArgs e)
     {
-        if (sender == NavWatch)         AppLogger.Log(LogMsg.NavPageSwitched, null, "チャンネル");
-        else if (sender == NavDormant)  AppLogger.Log(LogMsg.NavPageSwitched, null, "休眠");
-        else if (sender == NavSettings) AppLogger.Log(LogMsg.NavPageSwitched, null, "設定");
+        UpdateTitleBar(sender);
 
         PageWatch.Visibility    = Visibility.Collapsed;
         PageDormant.Visibility  = Visibility.Collapsed;
@@ -302,10 +331,9 @@ public partial class MainWindow : System.Windows.Window
             case Key.D1: e.Handled = true; Nav_Click(NavWatch,    new RoutedEventArgs()); break;
             case Key.D2: e.Handled = true; Nav_Click(NavDormant,  new RoutedEventArgs()); break;
             case Key.D3: e.Handled = true; Nav_Click(NavSettings, new RoutedEventArgs()); break;
-            case Key.D4: e.Handled = true; SidebarToggle_Click(SidebarToggleButton, new RoutedEventArgs()); break;
-            case Key.D5: e.Handled = true; MuteButton_Click(MuteButton, new RoutedEventArgs()); break;
-            case Key.D6: e.Handled = true; CompactModeButton_Click(CompactModeButton, new RoutedEventArgs()); break;
-            case Key.D7: e.Handled = true; PinButton_Click(PinButton, new RoutedEventArgs()); break;
+            case Key.D4: e.Handled = true; MuteButton_Click(MuteButton, new RoutedEventArgs()); break;
+            case Key.D5: e.Handled = true; CompactModeButton_Click(CompactModeButton, new RoutedEventArgs()); break;
+            case Key.D6: e.Handled = true; PinButton_Click(PinButton, new RoutedEventArgs()); break;
         }
     }
 
@@ -351,16 +379,11 @@ public partial class MainWindow : System.Windows.Window
     // ===== タイトルバー =====
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount == 2) { TitleBar_Maximize(sender, e); return; }
         if (e.ButtonState == MouseButtonState.Pressed)
             SendMessage(new WindowInteropHelper(this).Handle, WM_NCLBUTTONDOWN, new IntPtr(HTCAPTION), IntPtr.Zero);
     }
 
     private void TitleBar_Minimize(object sender, RoutedEventArgs e) => WindowState = System.Windows.WindowState.Minimized;
-
-    private void TitleBar_Maximize(object sender, RoutedEventArgs e) =>
-        WindowState = WindowState == System.Windows.WindowState.Maximized
-            ? System.Windows.WindowState.Normal : System.Windows.WindowState.Maximized;
 
     private void TitleBar_Close(object sender, RoutedEventArgs e) => Close();
 

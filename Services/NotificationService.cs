@@ -16,8 +16,6 @@ namespace YTNotifier.Services;
 public static class NotificationService
 {
     private const string BaseUrl     = "https://www.youtube.com";
-    private const string DirResources = "Resources";
-    private const string FileAppIcon  = "app.png";
 
     /// <summary>トースト通知用画像の一時保存先ディレクトリ名（%TEMP% 配下）</summary>
     private const string DirToastTempImages = "YTNotifier_ToastImages";
@@ -68,6 +66,26 @@ public static class NotificationService
         {
             try { File.Delete(path); } catch { }
         });
+    }
+
+    /// <summary>埋め込みリソースの app.png を一時フォルダへ書き出し、そのパスを返す。失敗時は null。</summary>
+    private static string? ExtractEmbeddedAppIconToTempFile()
+    {
+        try
+        {
+            var uri = new Uri("pack://application:,,,/Resources/app.png");
+            var sri = System.Windows.Application.GetResourceStream(uri);
+            if (sri == null) return null;
+
+            Directory.CreateDirectory(ToastTempImageDir);
+            var path = Path.Combine(ToastTempImageDir, $"{Guid.NewGuid():N}{ToastIconTempExtension}");
+            using (var fs = File.Create(path))
+                sri.Stream.CopyTo(fs);
+
+            ScheduleTempFileCleanup(path);
+            return path;
+        }
+        catch { return null; }
     }
 
     // ===== タスクバー点滅 =====
@@ -277,7 +295,7 @@ public static class NotificationService
     public static void ShowTestNotification()
     {
         var settings  = SettingsService.Instance.Settings;
-        var iconPath  = Path.Combine(ExeDir, DirResources, FileAppIcon);
+        var iconPath  = ExtractEmbeddedAppIconToTempFile();
         try
         {
             if (settings.ShowDesktopNotification)
@@ -287,7 +305,7 @@ public static class NotificationService
 
                 if (settings.ToastStyle == ToastStyle.Thumbnail)
                 {
-                    if (File.Exists(iconPath))
+                    if (iconPath != null)
                     {
                         try { builder.AddHeroImage(new Uri(ToFileUri(iconPath))); }
                         catch { }
@@ -301,7 +319,7 @@ public static class NotificationService
                 }
                 else
                 {
-                    if (File.Exists(iconPath))
+                    if (iconPath != null)
                         builder.AddAppLogoOverride(
                             new Uri(ToFileUri(iconPath)),
                             ToastGenericAppLogoCrop.Circle);

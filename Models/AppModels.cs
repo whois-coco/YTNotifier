@@ -74,9 +74,6 @@ public class AppSettings
     [JsonProperty("windowTop")]
     public double WindowTop { get; set; } = -1;
 
-    [JsonProperty("windowMaximized")]
-    public bool WindowMaximized { get; set; } = false;
-
     [JsonProperty("alwaysOnTop")]
     public bool AlwaysOnTop { get; set; } = false;
 
@@ -116,6 +113,9 @@ public class AppSettings
 
     [JsonProperty("continuousAddMode")]
     public bool ContinuousAddMode { get; set; } = true;  // 連続追加モード（デフォルトON）
+
+    [JsonProperty("ngWords")]
+    public List<string> NgWords { get; set; } = new();
 
     // 当日のAPI実使用量追跡（state.json で管理）
     [Newtonsoft.Json.JsonIgnore]
@@ -304,6 +304,10 @@ public class ChannelInfo
     [JsonProperty("notifyLive")]
     public bool NotifyLive { get; set; } = true;
 
+    /// <summary>このチャンネルにのみ適用するNGワード（共通NGワードとはOR判定）</summary>
+    [JsonProperty("ngWords")]
+    public List<string> NgWords { get; set; } = new();
+
     /// <summary>ライブ/プレミア待機所の通知方法（移行後は UpcomingNotifyMode を使用）</summary>
     [JsonProperty("notifyUpcoming")]
     public bool? NotifyUpcoming { get; set; } = null;
@@ -397,18 +401,13 @@ public class ChannelInfo
 
     /// <summary>
     /// 種別ごとの実効監視モードを返す。
-    /// スロットベース（MonitorMode.Focus + FocusSlots）の場合はタブ固定順（動画=0/Short=1/ライブ=2）のSlotModeを返す。
+    /// スロットベース（MonitorMode.Focus + FocusSlots）の場合は種別（NotifyKind）が一致する最初のスロットの SlotMode を返す。
     /// </summary>
     public MonitorMode GetEffectiveModeForKind(VideoKind kind)
     {
         if (MonitorMode != MonitorMode.Focus || FocusSlots.Count == 0) return MonitorMode;
-        int idx = kind switch
-        {
-            VideoKind.Short => 1,
-            VideoKind.Live  => 2,
-            _               => 0
-        };
-        return idx < FocusSlots.Count ? FocusSlots[idx].SlotMode : MonitorMode.Normal;
+        var kindSlot = FocusSlots.FirstOrDefault(s => s.NotifyKind == kind);
+        return kindSlot?.SlotMode ?? MonitorMode.Normal;
     }
 
     /// <summary>
@@ -765,6 +764,12 @@ public class AppState
     [JsonProperty("todayApiUnitsLiveStatus")]
     public int TodayApiUnitsLiveStatus { get; set; } = 0;
 
+    [JsonProperty("todayGeminiRequests")]
+    public int TodayGeminiRequests { get; set; } = 0;
+
+    [JsonProperty("todayGeminiRequestDate")]
+    public string TodayGeminiRequestDate { get; set; } = string.Empty;
+
     [JsonProperty("channels")]
     public Dictionary<string, ChannelState> Channels { get; set; } = new();
 
@@ -790,8 +795,8 @@ public class QuotaDonutSegment
     public string BrushKey { get; set; } = string.Empty;
 }
 
-/// <summary>ウィンドウ色（テーマ）。Themes/ の6テーマに対応する</summary>
-public enum AppTheme { Light, Dark, Blue, Gray, Pink, MatteBlack }
+/// <summary>ウィンドウ色（テーマ）。Themes/ の12テーマに対応する</summary>
+public enum AppTheme { Light, Dark, Blue, Gray, Pink, MatteBlack, Green, Purple, Amber, Teal, Plum, Wine }
 
 /// <summary>APIキー有効性テストの結果</summary>
 public enum ApiKeyTestResult { Valid, Invalid, NetworkError }

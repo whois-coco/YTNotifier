@@ -45,11 +45,18 @@ public class MonitorService : IDisposable
     /// <summary>クォータ超過による監視停止・再開予定時刻のログ表示フォーマット</summary>
     private const string QuotaResumeTimeFormat = "M/d HH:mm";
 
-    /// <summary>次のタイマー起動を毎分何秒に合わせるか（:01 秒）</summary>
+    /// <summary>次のタイマー起動を何秒に合わせるか（:01 秒・:31 秒。:00 秒ちょうどを避ける）</summary>
     private const int AlignedTickSecond = 1;
 
-    /// <summary>1分の秒数</summary>
-    private const int SecondsPerMinute = 60;
+    /// <summary>タイマーの発火間隔（秒）。時間指定スロットの最短間隔（30秒）に合わせる</summary>
+    private const int TickIntervalSeconds = 30;
+
+    /// <summary>
+    /// 次回チェック予定時刻をこの秒数だけ手前まで「到来済み」とみなす。
+    /// 予定時刻はチェック開始時刻＋間隔で決まり、タイマー発火時刻とは1秒未満ずれるため、
+    /// わずかに間に合わず1回分（TickIntervalSeconds）余計に待たされるのを防ぐ
+    /// </summary>
+    private const int DueCheckToleranceSeconds = 5;
 
     /// <summary>クォータリセットから何分後に定時全巡回を始めるか</summary>
     private const int DailyFullScanDelayMinutes = 1;
@@ -94,15 +101,15 @@ public class MonitorService : IDisposable
         NotificationService.RegisterToastActivation();
     }
 
-    /// <summary>次の :01 秒までの遅延を計算する（最大60秒・遅延最小化）</summary>
+    /// <summary>次の :01 秒または :31 秒までの遅延を計算する（最大30秒・遅延最小化）</summary>
     private static TimeSpan CalcAlignedDelay()
     {
-        var sec = SecondsPerMinute + AlignedTickSecond - DateTime.Now.Second;
-        if (sec > SecondsPerMinute) sec -= SecondsPerMinute;
+        var sec = TickIntervalSeconds + AlignedTickSecond - (DateTime.Now.Second % TickIntervalSeconds);
+        if (sec > TickIntervalSeconds) sec -= TickIntervalSeconds;
         return TimeSpan.FromSeconds(sec);
     }
 
-    /// <summary>次の :01 秒にタイマーを再スケジュールする</summary>
+    /// <summary>次の :01 秒または :31 秒にタイマーを再スケジュールする</summary>
     private void ScheduleNextTick()
     {
         if (!_isRunning) return;
@@ -321,6 +328,11 @@ public class MonitorService : IDisposable
             var kind     = isPendingLive ? VideoKind.Live : VideoKind.Premiere;
             var notifyOn = kind == VideoKind.Live ? ch.NotifyLive : ch.NotifyVideo;
             if (!notifyOn) return;
+            if (MatchesNgWord(ch, entry.Title))
+            {
+                AppLogger.Log(LogMsg.NgWordFilterSkipped, ch.ChannelName, entry.Title);
+                return;
+            }
 
             var videoInfo = new VideoInfo
             {
@@ -409,9 +421,10 @@ public class MonitorService : IDisposable
                 await CheckChannelsAliveAsync(SettingsService.Instance.Channels.Where(c => c.IsDormant).ToList(), LogMsg.DormantListBanCheckStarted, LogMsg.DormantListBanCheckCompleted, LogMsg.DormantListAllAlive);
             }
 
+            var dueThreshold = now.AddSeconds(DueCheckToleranceSeconds);
             var channels = forceAll
                 ? allChannels
-                : allChannels.Where(c => c.NextCheckAt <= now).ToList();
+                : allChannels.Where(c => c.NextCheckAt <= dueThreshold).ToList();
 
             if (channels.Count == 0) return true;
 
@@ -1016,12 +1029,31 @@ public class MonitorService : IDisposable
         return FilterByKind(channel, video, channel.NotifyVideo);
     }
 
+    /// <summary>タイトルが共通NGワード・チャンネル個別NGワードのいずれかに部分一致するか判定する（大文字小文字は区別しない）。</summary>
+    private static bool MatchesNgWord(ChannelInfo channel, string title)
+    {
+        if (string.IsNullOrEmpty(title)) return false;
+
+        bool ContainsAny(IEnumerable<string> words) =>
+            words.Any(w => !string.IsNullOrWhiteSpace(w) && title.Contains(w, StringComparison.OrdinalIgnoreCase));
+
+        return ContainsAny(SettingsService.Instance.Settings.NgWords) || ContainsAny(channel.NgWords);
+    }
+
     /// <summary>通知フィルターを適用し、スキップ時はログを出力する。</summary>
     private static VideoInfo? FilterByKind(ChannelInfo channel, VideoInfo video, bool enabled)
     {
-        if (enabled) return video;
-        AppLogger.Log(LogMsg.KindFilterSkipped, channel.ChannelName, video.KindLabel, video.Title);
-        return null;
+        if (!enabled)
+        {
+            AppLogger.Log(LogMsg.KindFilterSkipped, channel.ChannelName, video.KindLabel, video.Title);
+            return null;
+        }
+        if (MatchesNgWord(channel, video.Title))
+        {
+            AppLogger.Log(LogMsg.NgWordFilterSkipped, channel.ChannelName, video.Title);
+            return null;
+        }
+        return video;
     }
 
     /// <summary>

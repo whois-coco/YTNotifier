@@ -40,6 +40,9 @@ public partial class App : System.Windows.Application
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
+        // 前回の自己更新で残った退避ファイル（YTNotifier.exe.old 等）を掃除する
+        SelfUpdateService.CleanupLeftoverBackup();
+
         // トースト通知用 AppID 設定（WPFで ToastContentBuilder.Show() を使うために必要）
         Microsoft.Toolkit.Uwp.Notifications.ToastNotificationManagerCompat.History.Clear();
 
@@ -134,11 +137,18 @@ public partial class App : System.Windows.Application
         AppTheme.Gray => "GrayTheme",
         AppTheme.Pink => "PinkTheme",
         AppTheme.MatteBlack => "MatteBlackTheme",
+        AppTheme.Green   => "GreenTheme",
+        AppTheme.Purple  => "PurpleTheme",
+        AppTheme.Amber   => "AmberTheme",
+        AppTheme.Teal    => "TealTheme",
+        AppTheme.Plum    => "PlumTheme",
+        AppTheme.Wine    => "WineTheme",
         _             => "LightTheme",
     };
 
     private static readonly string[] AllThemeFileBaseNames =
-        { "LightTheme", "DarkTheme", "BlueTheme", "GrayTheme", "PinkTheme", "MatteBlackTheme" };
+        { "LightTheme", "DarkTheme", "BlueTheme", "GrayTheme", "PinkTheme", "MatteBlackTheme",
+          "GreenTheme", "PurpleTheme", "AmberTheme", "TealTheme", "PlumTheme", "WineTheme" };
 
     public static void ApplyTheme(AppTheme theme)
     {
@@ -370,6 +380,17 @@ public partial class App : System.Windows.Application
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         AppConstants.AppName, AppConstants.DirLogs);
 
+    /// <summary>常駐リソースの停止・保存・解放を行う。通常終了（OnExit）と自己更新時の差し替え直前の両方から呼ばれる。</summary>
+    internal void PrepareForSelfReplace()
+    {
+        MonitorService.Instance.Stop();
+        PluginBridge.Instance.Stop();
+        FlushAndBackup();
+        _trayIconService?.Dispose();
+        _mutex?.ReleaseMutex();
+        _mutex?.Dispose();
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
         if (_isDuplicateInstance)
@@ -378,12 +399,7 @@ public partial class App : System.Windows.Application
             base.OnExit(e);
             return;
         }
-        MonitorService.Instance.Stop();
-        PluginBridge.Instance.Stop();
-        FlushAndBackup();
-        _trayIconService?.Dispose();
-        _mutex?.ReleaseMutex();
-        _mutex?.Dispose();
+        PrepareForSelfReplace();
         base.OnExit(e);
     }
 }

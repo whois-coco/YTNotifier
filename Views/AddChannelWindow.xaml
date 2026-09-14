@@ -14,11 +14,12 @@
         FontFamily="Noto Sans JP">
 
     <Window.Resources>
-        <!-- ラベル・チェックボックス・ステータステキストを URL 入力欄の本文開始位置へ
-             合わせるための左インセット。値 11 = ModernTextBox の Padding 左 10 + BorderThickness 1 -->
+        <!-- ラベルを URL 入力欄の本文開始位置へ合わせるための左インセット。
+             値 11 = ModernTextBox の Padding 左 10 + BorderThickness 1 -->
         <Thickness x:Key="FieldContentAlignedLabelMargin">11,0,0,4</Thickness>
-        <Thickness x:Key="FieldContentAlignedCheckMargin">11,6,0,0</Thickness>
-        <Thickness x:Key="FieldContentAlignedStatusMargin">11,0,0,0</Thickness>
+        <!-- 連続追加モードチェックボックスの左インセット（値11の由来は上記と同じ）と、
+             右側のステータステキストとの間隔（右12） -->
+        <Thickness x:Key="ContinuousAddCheckBoxMargin">11,0,12,0</Thickness>
         <!-- プレースホルダーは実入力文字に合わせる。左24 = 本文開始位置11 + WPF TextBox 内部テキストインセット（実測で微調整した値） -->
         <Thickness x:Key="FieldContentAlignedPlaceholderMargin">24,0,50,0</Thickness>
         <!-- URL入力欄とペーストボタンを区切る仕切り線 -->
@@ -27,7 +28,7 @@
         <!-- 仕切り線の右位置 = ペーストボタン幅34 + 右余白3 + ボタンとの間隔5 -->
         <Thickness x:Key="PasteDividerMargin">0,0,42,0</Thickness>
         <!-- URL入力欄の本文右インセット。右50 = 仕切り線(右42)の手前で本文・キャレットが収まる位置 -->
-        <Thickness x:Key="ChannelInputContentPadding">10,8,50,8</Thickness>
+        <Thickness x:Key="ChannelInputContentPadding">10,4,50,4</Thickness>
         <!-- チャンネルアイコンプレビューの一辺（円形クリップの半径 = この値 / 2）。
              左カラムの ColumnDefinition Width と一致させること -->
         <sys:Double x:Key="PreviewIconSize">68</sys:Double>
@@ -114,7 +115,6 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
                         <TextBlock Grid.Row="0"
@@ -173,33 +173,32 @@
                             </Button>
                         </Grid>
 
-                        <!-- 連続追加チェックボックス -->
-                        <CheckBox Grid.Row="2" x:Name="ContinuousAddCheckBox"
-                                  Content="連続追加モード"
-                                  FontSize="11"
-                                  Foreground="{DynamicResource TextSecondaryBrush}"
-                                  Margin="{StaticResource FieldContentAlignedCheckMargin}"
-                                  Style="{StaticResource ModernCheckBox}"
-                                  Checked="ContinuousAddCheckBox_Changed"
-                                  Unchecked="ContinuousAddCheckBox_Changed"/>
-
-                        <!-- ステータステキスト + 検索・追加ボタン -->
-                        <Grid Grid.Row="3" Margin="0,8,0,0">
+                        <!-- 連続追加チェックボックス + ステータステキスト + 検索・追加ボタン -->
+                        <Grid Grid.Row="2" Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="PreviewStatusText" Grid.Column="0"
+                            <CheckBox Grid.Column="0" x:Name="ContinuousAddCheckBox"
+                                      Content="連続追加モード"
+                                      FontSize="11"
+                                      Foreground="{DynamicResource TextSecondaryBrush}"
+                                      VerticalAlignment="Center"
+                                      Margin="{StaticResource ContinuousAddCheckBoxMargin}"
+                                      Style="{StaticResource ModernCheckBox}"
+                                      Checked="ContinuousAddCheckBox_Changed"
+                                      Unchecked="ContinuousAddCheckBox_Changed"/>
+                            <TextBlock x:Name="PreviewStatusText" Grid.Column="1"
                                        FontSize="10" Foreground="{DynamicResource TextMutedBrush}"
-                                       TextWrapping="Wrap" VerticalAlignment="Center"
-                                       Margin="{StaticResource FieldContentAlignedStatusMargin}"/>
-                            <Button Grid.Column="1" x:Name="PreviewButton"
+                                       TextWrapping="Wrap" VerticalAlignment="Center"/>
+                            <Button Grid.Column="2" x:Name="PreviewButton"
                                     Style="{StaticResource PrimaryButton}"
                                     Content="検索" Padding="14,6"
                                     Margin="0,0,8,0"
                                     Click="PreviewChannel_Click"/>
-                            <Button Grid.Column="2" x:Name="AddChannelButton"
+                            <Button Grid.Column="3" x:Name="AddChannelButton"
                                     Style="{StaticResource PrimaryButton}"
                                     Content="追加" Padding="14,6"
                                     IsEnabled="False" Click="AddChannel_Click"/>

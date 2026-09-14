@@ -239,7 +239,7 @@ public partial class AddChannelWindow : Window
             bool exists = SettingsService.Instance.Channels.Any(c => c.ChannelId == _previewChannel.ChannelId);
             PreviewStatusText.Text = exists
                 ? "⚠ このチャンネルは既に追加されています。"
-                : $"✅ 「{_previewChannel.ChannelName}」が見つかりました。";
+                : "✅ 見つかりました。";
             var brushKey = exists ? "WarningBrush" : "SuccessBrush";
             PreviewStatusText.SetResourceReference(TextBlock.ForegroundProperty, brushKey);
             AddChannelButton.IsEnabled = !exists;
@@ -301,17 +301,23 @@ public partial class AddChannelWindow : Window
         if (_detailTabPanels.Count == AppConstants.KindSlotCount)
         {
             _previewChannel.MonitorMode = MonitorMode.Focus;
-            _previewChannel.FocusSlots  = _detailTabPanels.Select(p => p.GetSlot()).ToList();
+            _previewChannel.FocusSlots  = _detailTabPanels.SelectMany(p => p.GetSlots()).ToList();
             if (_isDormant)
             {
                 foreach (var slot in _previewChannel.FocusSlots) slot.IsEnabled = false;
             }
             else
             {
-                // タブの IsEnabled をチェック対象フラグと同期
-                _previewChannel.FocusSlots[0].IsEnabled = _previewChannel.NotifyVideo;
-                _previewChannel.FocusSlots[1].IsEnabled = _previewChannel.NotifyShort;
-                _previewChannel.FocusSlots[2].IsEnabled = _previewChannel.NotifyLive;
+                // スロットの IsEnabled を種別（NotifyKind）ごとのチェック対象フラグと同期
+                foreach (var kindSlot in _previewChannel.FocusSlots)
+                {
+                    kindSlot.IsEnabled = kindSlot.NotifyKind switch
+                    {
+                        VideoKind.Short => _previewChannel.NotifyShort,
+                        VideoKind.Live  => _previewChannel.NotifyLive,
+                        _               => _previewChannel.NotifyVideo
+                    };
+                }
             }
         }
 
@@ -482,7 +488,7 @@ public partial class AddChannelWindow : Window
                 SlotMode   = MonitorMode.Normal,
                 IsEnabled  = kindEnabled[i]
             };
-            var panel = new FocusTabPanel(slot);
+            var panel = new FocusTabPanel(new List<FocusSlot> { slot });
             panel.FixedKind = AppConstants.KindSlotKinds[i];
             _detailTabPanels.Add(panel);
 
