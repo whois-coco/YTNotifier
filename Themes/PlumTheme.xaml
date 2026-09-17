@@ -103,4 +103,7 @@
     <SolidColorBrush x:Key="LogLevelErrorBrush"   Color="#EF4444"/>
     <SolidColorBrush x:Key="LogLevelDebugBrush"   Color="#6B7280"/>
 
+    <!-- チャンネルBAN／自主削除：アイコン塗りつぶし（テーマ非依存の固定色） -->
+    <SolidColorBrush x:Key="ChannelUnavailableIconBrush" Color="#000000"/>
+
 </ResourceDictionary>

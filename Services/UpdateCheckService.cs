@@ -47,6 +47,33 @@ internal static class UpdateCheckService
         return Version.TryParse(s, out var v) ? v : new Version(0, 0);
     }
 
+    /// <summary>candidate が baseline より新しいバージョンかどうかを判定する（"1.2.3" 形式の文字列を比較）。</summary>
+    public static bool IsNewerVersion(string candidate, string baseline) =>
+        ParseVersion(candidate) > ParseVersion(baseline);
+
+    internal sealed record ReleaseNotes(string Tag, string? Body);
+
+    /// <summary>
+    /// 最新リリースのタグと本文（Markdown形式のリリースノート）を取得する。取得失敗時は null。
+    /// </summary>
+    public static async Task<ReleaseNotes?> GetLatestReleaseNotesAsync()
+    {
+        try
+        {
+            var json = await _http.GetStringAsync(GitHubReleasesApiUrl);
+            var release = JObject.Parse(json);
+            var tag = release["tag_name"]?.ToString();
+            if (string.IsNullOrEmpty(tag)) return null;
+
+            var body = release["body"]?.ToString();
+            return new ReleaseNotes(tag, body);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     internal sealed record UpdateAssetInfo(string Tag, string DownloadUrl, string? Sha256Digest);
 
     /// <summary>

@@ -92,6 +92,9 @@ public partial class MainWindow : System.Windows.Window
     private static readonly Thickness RowDeleteButtonMargin  = new(4, 0, 0, 0);
     private static readonly Thickness RowFavoriteMargin      = new(12, 0, 0, 0);
 
+    private const string ChannelUnavailableText  = "チャンネルは利用できません"; // BAN／自主削除チャンネルの表示文言（通常・コンパクト共通）
+    private const string LatestVideoDeletedText  = "動画は削除されました";       // 表示中動画削除時、および BAN／自主削除時の最新動画欄の文言
+
     // ===== チャンネル行生成（チャンネルリスト・休眠リストで共用） =====
     private UIElement CreateChannelRow(ChannelInfo ch) => CreateChannelRowCore(ch, isDormant: false);
 
@@ -117,11 +120,12 @@ public partial class MainWindow : System.Windows.Window
         if (isDormant)
         {
             row.ContextMenu = BuildDormantChannelContextMenu(ch);
-            row.ContextMenuOpening += (_, e) => { if (!_dormantEditMode) e.Handled = true; };
+            row.ContextMenuOpening += (_, e) => { if (!_dormantEditMode || ch.IsBanned) e.Handled = true; };
         }
         else
         {
             row.ContextMenu = BuildChannelContextMenu(ch);
+            row.ContextMenuOpening += (_, e) => { if (ch.IsBanned) e.Handled = true; };
         }
 
         // 共通: [4px新着帯] + コンテンツ列
@@ -158,12 +162,12 @@ public partial class MainWindow : System.Windows.Window
             var icon     = BuildIconBorderCompact(ch);
             var nameText = new TextBlock
             {
-                Text = ch.ChannelName, FontSize = RowEditNameFontSize, FontWeight = FontWeights.SemiBold,
+                Text = ch.IsBanned ? ChannelUnavailableText : ch.ChannelName, FontSize = RowEditNameFontSize, FontWeight = FontWeights.SemiBold,
                 TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = RowNameMargin
             };
-            SetDynamicBrush(nameText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+            SetDynamicBrush(nameText, TextBlock.ForegroundProperty, ch.IsBanned ? "TextMutedBrush" : "TextPrimaryBrush");
             if (!ch.IsBanned)
             {
                 nameText.Cursor = Cursors.Hand;
@@ -254,6 +258,13 @@ public partial class MainWindow : System.Windows.Window
             Clip = new EllipseGeometry(new System.Windows.Point(RowIconSizeCompact / 2.0, RowIconSizeCompact / 2.0), RowIconSizeCompact / 2.0, RowIconSizeCompact / 2.0),
             Tag  = "IconBorder"
         };
+
+        if (ch.IsBanned)
+        {
+            SetDynamicBrush(b, Border.BackgroundProperty, "ChannelUnavailableIconBrush");
+            return b;
+        }
+
         var img = GetCachedIcon(ch.ThumbnailUrl, ch.ChannelId);
         if (img != null) b.Child = new System.Windows.Controls.Image { Source = img, Stretch = Stretch.UniformToFill };
         return b;
@@ -271,7 +282,7 @@ public partial class MainWindow : System.Windows.Window
 
         if (ch.IsBanned)
         {
-            SetDynamicBrush(b, Border.BackgroundProperty, "BorderBrush");
+            SetDynamicBrush(b, Border.BackgroundProperty, "ChannelUnavailableIconBrush");
             return b;
         }
 
@@ -295,12 +306,20 @@ public partial class MainWindow : System.Windows.Window
         {
             var bannedText = new TextBlock
             {
-                Text = "チャンネルは利用できません", FontSize = RowNameFontSize, FontWeight = FontWeights.SemiBold,
+                Text = ChannelUnavailableText, FontSize = RowNameFontSize, FontWeight = FontWeights.SemiBold,
                 TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap,
                 VerticalAlignment = VerticalAlignment.Center
             };
             SetDynamicBrush(bannedText, TextBlock.ForegroundProperty, "TextMutedBrush");
             info.Children.Add(bannedText);
+
+            var bannedVideoText = new TextBlock
+            {
+                Text = LatestVideoDeletedText, FontSize = RowSubTextFontSize, Margin = TitleRowMargin
+            };
+            SetDynamicBrush(bannedVideoText, TextBlock.ForegroundProperty, "TextMutedBrush");
+            info.Children.Add(bannedVideoText);
+
             return info;
         }
 
@@ -369,7 +388,7 @@ public partial class MainWindow : System.Windows.Window
                 {
                     e.Handled = true;
                     var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
-                    new VideoSummaryPopupWindow(owner!, ch, VideoKind.Live, entry.Title, entry.VideoId).Show();
+                    new VideoSummaryPopupWindow(owner!, ch, VideoKind.Live, entry.Title, entry.VideoId).ShowDialog();
                 };
             }
             else
@@ -378,7 +397,7 @@ public partial class MainWindow : System.Windows.Window
                 {
                     e.Handled = true;
                     var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
-                    new VideoListPopupWindow(owner!, ch, VideoKind.Live, liveEntries).Show();
+                    new VideoListPopupWindow(owner!, ch, VideoKind.Live, liveEntries).ShowDialog();
                 };
             }
 
@@ -401,7 +420,7 @@ public partial class MainWindow : System.Windows.Window
                 {
                     e.Handled = true;
                     var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
-                    new VideoSummaryPopupWindow(owner!, ch, VideoKind.Premiere, entry.Title, entry.VideoId, allowSummary: false).Show();
+                    new VideoSummaryPopupWindow(owner!, ch, VideoKind.Premiere, entry.Title, entry.VideoId, allowSummary: false).ShowDialog();
                 };
             }
             else
@@ -410,7 +429,7 @@ public partial class MainWindow : System.Windows.Window
                 {
                     e.Handled = true;
                     var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
-                    new VideoListPopupWindow(owner!, ch, VideoKind.Premiere, premiereEntries, allowSummary: false).Show();
+                    new VideoListPopupWindow(owner!, ch, VideoKind.Premiere, premiereEntries, allowSummary: false).ShowDialog();
                 };
             }
 
@@ -434,7 +453,7 @@ public partial class MainWindow : System.Windows.Window
             {
                 e.Handled = true;
                 var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
-                new VideoSummaryPopupWindow(owner!, ch, VideoKind.Live, pendingLive.Title, pendingLive.VideoId, isPending: true).Show();
+                new VideoSummaryPopupWindow(owner!, ch, VideoKind.Live, pendingLive.Title, pendingLive.VideoId, isPending: true).ShowDialog();
             };
             row.Children.Add(bullet);
             anyStatusShown = true;
@@ -456,7 +475,7 @@ public partial class MainWindow : System.Windows.Window
             {
                 e.Handled = true;
                 var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
-                new VideoSummaryPopupWindow(owner!, ch, VideoKind.Premiere, pendingPremiere.Title, pendingPremiere.VideoId, allowSummary: false).Show();
+                new VideoSummaryPopupWindow(owner!, ch, VideoKind.Premiere, pendingPremiere.Title, pendingPremiere.VideoId, allowSummary: false).ShowDialog();
             };
             row.Children.Add(bullet);
             anyStatusShown = true;
@@ -475,7 +494,7 @@ public partial class MainWindow : System.Windows.Window
 
         if (ch.LatestVideoDeleted)
         {
-            var deletedText = new TextBlock { Text = "動画は削除されました", FontSize = RowSubTextFontSize };
+            var deletedText = new TextBlock { Text = LatestVideoDeletedText, FontSize = RowSubTextFontSize };
             SetDynamicBrush(deletedText, TextBlock.ForegroundProperty, "TextMutedBrush");
             row.Children.Add(deletedText);
             return row;
@@ -536,7 +555,7 @@ public partial class MainWindow : System.Windows.Window
                     e.Handled = true;
                     var owner = System.Windows.Window.GetWindow(titleText) as System.Windows.Window;
                     new VideoSummaryPopupWindow(owner!, ch, kind, fullTitle, videoId, duration,
-                        publishedAt: publishedAt).Show();
+                        publishedAt: publishedAt).ShowDialog();
                 };
             }
 
@@ -585,7 +604,7 @@ public partial class MainWindow : System.Windows.Window
                 .Take(RecentUploadsMaxEntries)
                 .ToList();
             AppLogger.Log(LogMsg.RecentUploadsPopupOpened, null, ch.ChannelName, filteredUploads.Count);
-            new VideoListPopupWindow(this, ch, filteredUploads).Show();
+            new VideoListPopupWindow(this, ch, filteredUploads).ShowDialog();
         };
 
         var manualCheckItem = new MenuItem { Header = "🔄 最新情報取得" };

@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -49,6 +50,9 @@ public partial class MainWindow : System.Windows.Window
 
     /// <summary>最大化時にウィンドウコンテンツへ付与する余白（画面端の切れ防止）</summary>
     private static readonly Thickness WindowContentPadding = new(6);
+
+    /// <summary>アップデートダウンロード中の回転リングが1周するのにかかる秒数</summary>
+    private const double UpdateDownloadSpinnerDurationSeconds = 1.0;
 
     // ===== フィールド =====
     private Border?    _navWatchUnreadBadge   = null;
@@ -218,7 +222,11 @@ public partial class MainWindow : System.Windows.Window
         if (FindName("AboutVersionText") is TextBlock versionText)
             versionText.Text = $"v{AppConstants.AppVersion}";
         _ = CheckForUpdateAsync();
+        _ = CheckPostUpdateReleaseNotesAsync();
     }
+
+    private const int UpdateNotifyAutoHideSeconds  = 5;
+    private const int UpdateNotifyFadeMilliseconds = 400;
 
     private async Task CheckForUpdateAsync()
     {
@@ -230,7 +238,67 @@ public partial class MainWindow : System.Windows.Window
         {
             if (FindName("UpdateAvailableBtn") is Button btn)
                 btn.Visibility = Visibility.Visible;
+            ShowUpdateNotifyBalloon(latestTag);
         });
+    }
+
+    private void ShowUpdateNotifyBalloon(string tag)
+    {
+        if (FindName("UpdateNotifyText") is not TextBlock text) return;
+        if (FindName("UpdateNotifyPopup") is not Popup popup) return;
+        if (FindName("UpdateNotifyBalloon") is not Border balloon) return;
+
+        text.Text = $"新しいバージョン {tag} が利用可能です";
+        balloon.Opacity = 1;
+        popup.IsOpen = true;
+
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(UpdateNotifyAutoHideSeconds) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            FadeOutUpdateNotifyBalloon();
+        };
+        timer.Start();
+    }
+
+    private void FadeOutUpdateNotifyBalloon()
+    {
+        if (FindName("UpdateNotifyBalloon") is not Border balloon) return;
+        if (FindName("UpdateNotifyPopup") is not Popup popup) return;
+
+        var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(UpdateNotifyFadeMilliseconds));
+        fadeOut.Completed += (_, _) => popup.IsOpen = false;
+        balloon.BeginAnimation(UIElement.OpacityProperty, fadeOut);
+    }
+
+    private void UpdateNotifyCloseBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (FindName("UpdateNotifyPopup") is Popup popup)
+            popup.IsOpen = false;
+    }
+
+    private async Task CheckPostUpdateReleaseNotesAsync()
+    {
+        var settings = SettingsService.Instance.Settings;
+        var lastSeen = settings.LastSeenAppVersion;
+        var current  = AppConstants.AppVersion;
+
+        if (!string.IsNullOrEmpty(lastSeen) && UpdateCheckService.IsNewerVersion(current, lastSeen))
+        {
+            if (ConfirmDialog.Show(this, "アップデート完了",
+                    $"バージョン {current} にアップデートしました。リリースノートを確認しますか？", "確認する") == true)
+            {
+                var notes = await UpdateCheckService.GetLatestReleaseNotesAsync();
+                if (notes != null && !string.IsNullOrEmpty(notes.Body))
+                    new ReleaseNotesWindow(this, notes.Tag, notes.Body).Show();
+                else
+                    System.Windows.MessageBox.Show(this, "リリースノートの取得に失敗しました。",
+                        "アップデート", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        settings.LastSeenAppVersion = current;
+        SettingsService.Instance.SaveSettingsSilent();
     }
 
     private async void UpdateAvailableBtn_Click(object sender, RoutedEventArgs e)
@@ -247,7 +315,16 @@ public partial class MainWindow : System.Windows.Window
                 return;
             }
 
-            var verifiedPath = await SelfUpdateService.DownloadAndVerifyAsync(assetInfo);
+            string? verifiedPath;
+            StartUpdateDownloadSpinner();
+            try
+            {
+                verifiedPath = await SelfUpdateService.DownloadAndVerifyAsync(assetInfo);
+            }
+            finally
+            {
+                StopUpdateDownloadSpinner();
+            }
             if (verifiedPath == null)
             {
                 System.Windows.MessageBox.Show(this, "ダウンロードまたは検証に失敗しました。しばらくしてから再度お試しください。",
@@ -273,6 +350,22 @@ public partial class MainWindow : System.Windows.Window
         {
             btn.IsEnabled = true;
         }
+    }
+
+    private void StartUpdateDownloadSpinner()
+    {
+        UpdateDownloadSpinner.Visibility = Visibility.Visible;
+        var rotateAnimation = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(UpdateDownloadSpinnerDurationSeconds))
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        UpdateDownloadSpinnerRotate.BeginAnimation(RotateTransform.AngleProperty, rotateAnimation);
+    }
+
+    private void StopUpdateDownloadSpinner()
+    {
+        UpdateDownloadSpinnerRotate.BeginAnimation(RotateTransform.AngleProperty, null);
+        UpdateDownloadSpinner.Visibility = Visibility.Collapsed;
     }
 
     private void InitChannelListDragDrop()

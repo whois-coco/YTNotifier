@@ -63,10 +63,10 @@ public class AppSettings
 
     // ウィンドウサイズ・位置
     [JsonProperty("windowWidth")]
-    public double WindowWidth { get; set; } = 1000;
+    public double WindowWidth { get; set; } = 429;
 
     [JsonProperty("windowHeight")]
-    public double WindowHeight { get; set; } = 740;
+    public double WindowHeight { get; set; } = 500;
 
     [JsonProperty("windowLeft")]
     public double WindowLeft { get; set; } = -1;
@@ -103,7 +103,7 @@ public class AppSettings
     public bool CompactMode { get; set; } = false;
 
     [JsonProperty("sidebarCollapsed")]
-    public bool SidebarCollapsed { get; set; } = false;
+    public bool SidebarCollapsed { get; set; } = true;
 
     [JsonProperty("logRetentionDays")]
     public int LogRetentionDays { get; set; } = 30;
@@ -112,7 +112,7 @@ public class AppSettings
     public bool AutoCleanLogs { get; set; } = false;
 
     [JsonProperty("continuousAddMode")]
-    public bool ContinuousAddMode { get; set; } = true;  // 連続追加モード（デフォルトON）
+    public bool ContinuousAddMode { get; set; } = false;  // 連続追加モード（デフォルトOFF）
 
     [JsonProperty("ngWords")]
     public List<string> NgWords { get; set; } = new();
@@ -126,6 +126,11 @@ public class AppSettings
     public string LastStartupCheckDate { get; set; } = "";
     [JsonProperty("lastDailyFullScanDate")]
     public string LastDailyFullScanDate { get; set; } = "";
+
+    /// <summary>直近起動時点のアプリバージョン。これより現在バージョンが新しい場合、アップデート後として
+    /// リリースノート確認ダイアログを表示する判定に使う</summary>
+    [JsonProperty("lastSeenAppVersion")]
+    public string LastSeenAppVersion { get; set; } = string.Empty;
 }
 
 public class ChannelInfo

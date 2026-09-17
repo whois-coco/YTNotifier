@@ -29,8 +29,11 @@ public sealed class PluginBridge
     private const string PipeNamePrefix        = "YTNotifier.Plugin.";
     private const int    MaxRestartCount       = 3;
     private const int    ShutdownWaitSeconds   = 5;
-    private const int    SummaryTimeoutMinutes = 5;
-    private const int    SummaryIdleTimeoutSeconds = 30;
+    private const int    PluginOverallTimeoutMinutes = 5;
+    private const int    PluginIdleTimeoutSeconds = 30;
+
+    /// <summary>HTTP呼び出し中のハートビート間隔を無音タイムアウトの何分の1にするかの係数。無音タイムアウト値を変更してもハートビート間隔が自動追随する。</summary>
+    private const int    HttpHeartbeatIntervalDivisor = 3;
 
     /// <summary>プラグインごとの有効・優先順の記録ファイル（<c>conf\</c> 直下・バックアップ対象外）</summary>
     private const string PluginConfigFileName = "plugins.json";
@@ -181,8 +184,8 @@ public sealed class PluginBridge
             if (!ready || candidates.Count == 0) return null;
 
             var apiKey = GeminiApiKeyService.Load(SettingsService.Instance.ConfDir) ?? string.Empty;
-            var overallTimeout = TimeSpan.FromMinutes(SummaryTimeoutMinutes);
-            var idleTimeout    = TimeSpan.FromSeconds(SummaryIdleTimeoutSeconds);
+            var overallTimeout = TimeSpan.FromMinutes(PluginOverallTimeoutMinutes);
+            var idleTimeout    = TimeSpan.FromSeconds(PluginIdleTimeoutSeconds);
 
             foreach (var plugin in candidates)
             {
@@ -498,7 +501,19 @@ public sealed class PluginBridge
                 if (call.Api == PluginProtocol.Apis.Http)
                 {
                     var input = Deserialize<HttpCallInput>(call.Input);
-                    output = context.HttpGateway.HttpRequest(input.Method, input.Url, input.HeadersJson, input.BodyText);
+
+                    // Gemini API応答待ち等、HttpRequest が応答を待っている間は活動時刻の更新が起きないため、
+                    // 定期的に MarkActivity() を呼び続けて無音タイムアウトの誤検知を防ぐ。
+                    var heartbeatInterval = TimeSpan.FromSeconds(PluginIdleTimeoutSeconds) / HttpHeartbeatIntervalDivisor;
+                    var heartbeatTimer = new System.Threading.Timer(_ => context.MarkActivity(), null, heartbeatInterval, heartbeatInterval);
+                    try
+                    {
+                        output = context.HttpGateway.HttpRequest(input.Method, input.Url, input.HeadersJson, input.BodyText);
+                    }
+                    finally
+                    {
+                        heartbeatTimer.Dispose();
+                    }
                 }
                 else if (call.Api == PluginProtocol.Apis.Log)
                 {

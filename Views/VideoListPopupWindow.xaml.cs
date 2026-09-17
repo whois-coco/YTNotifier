@@ -77,7 +77,7 @@ public partial class VideoListPopupWindow : Window
             titleText.MouseLeftButtonUp += (_, e) =>
             {
                 e.Handled = true;
-                new VideoSummaryPopupWindow(this, _channel, _kind, entry.Title, entry.VideoId, allowSummary: _allowSummary).Show();
+                new VideoSummaryPopupWindow(this, _channel, _kind, entry.Title, entry.VideoId, allowSummary: _allowSummary).ShowDialog();
             };
             EntriesPanel.Children.Add(titleText);
         }
@@ -206,7 +206,7 @@ public partial class VideoListPopupWindow : Window
             e.Handled = true;
             new VideoSummaryPopupWindow(this, channel, entry.Kind, entry.Title, entry.VideoId,
                 duration: entry.Duration, thumbnailUrl: entry.ThumbnailUrl,
-                publishedAt: entry.PublishedAt).Show();
+                publishedAt: entry.PublishedAt).ShowDialog();
         };
 
         var row = new DockPanel();
