@@ -17,8 +17,14 @@ public partial class App : System.Windows.Application
     private static Mutex? _mutex;
     private MainWindow? _mainWindow;
     private TrayIconService? _trayIconService;
+    private UptimeTracker? _uptimeTracker;
     private bool _isDuplicateInstance = false;
     private bool _errorShown = false;
+    private readonly HashSet<string> _shownErrorKeys = new();
+
+    /// <summary>表示済みエラーの識別子（種別・例外の型名・メッセージ）を連結する区切り文字</summary>
+    private const string ErrorKeySeparator = "|";
+
     private int _flushed = 0;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -52,14 +58,20 @@ public partial class App : System.Windows.Application
         {
             // 起動前にデータ破損・消失を検知して自動復元（ユーザー意識不要）
             // TryAutoRestore が成功した場合、ImportBackup 内で Load() を呼ぶため二重呼び出し不要
-            var restoreReason = SettingsService.Instance.TryAutoRestore();
+            var restoreReason = SettingsService.Instance.Backup.TryAutoRestore();
             if (restoreReason == null)
                 SettingsService.Instance.Load();
             else
                 AppLogger.Log(LogMsg.AutoRestored, null, restoreReason);
 
+            // 通知済み記録を読み込む（期限切れ行の整理も同時に行う）
+            NotifiedRecordService.Instance.Load();
+
             // 現行は画像をメモリキャッシュのみで扱う。旧バージョンが %APPDATA% に残した画像ディスクキャッシュを掃除する
             ImageCacheService.CleanupLegacyDiskCache(SettingsService.Instance.AppDataDir);
+
+            // 通知用の一時画像は表示後に削除するが、失敗や終了前の未削除で残ることがある。起動時にまとめて掃除する
+            NotificationService.CleanupTempImages();
 
             // 現行は要約結果を保存しない。旧バージョンが残した要約結果キャッシュファイルを掃除する
             GeminiSummaryService.CleanupLegacySummaryCache(SettingsService.Instance.AppDataDir);
@@ -68,6 +80,13 @@ public partial class App : System.Windows.Application
 
         try { ApplyTheme(SettingsService.Instance.Settings.Theme); }
         catch (Exception ex) { ShowFatalError("テーマの適用に失敗しました", ex); Shutdown(); return; }
+
+        // 動作ログの日付切り替え（0時）監視を開始する
+        LoggerService.Instance.StartDayRollWatch();
+
+        // 起動時間の記録を開始する
+        _uptimeTracker = new UptimeTracker();
+        _uptimeTracker.Start();
 
         // プラグインが置かれている場合、別プロセス（PluginHost.exe）を起動して受け入れる
         PluginBridge.Instance.Start();
@@ -97,13 +116,13 @@ public partial class App : System.Windows.Application
         {
             // 内部例外も含めて全てログに記録
             var sb = new System.Text.StringBuilder();
-            var e2 = ex;
-            while (e2 != null)
+            var currentException = ex;
+            while (currentException != null)
             {
-                sb.AppendLine($"[{e2.GetType().FullName}] {e2.Message}");
-                sb.AppendLine(e2.StackTrace);
+                sb.AppendLine($"[{currentException.GetType().FullName}] {currentException.Message}");
+                sb.AppendLine(currentException.StackTrace);
                 sb.AppendLine("---");
-                e2 = e2.InnerException;
+                currentException = currentException.InnerException;
             }
             LogError("ウィンドウ初期化エラー（詳細）", sb.ToString());
             ShowFatalError("ウィンドウの初期化に失敗しました", ex);
@@ -163,8 +182,8 @@ public partial class App : System.Windows.Application
             .Where(d => d.Source != null &&
                 AllThemeFileBaseNames.Any(n => d.Source.OriginalString.Contains(n)))
             .ToList();
-        foreach (var r in toRemove)
-            Current.Resources.MergedDictionaries.Remove(r);
+        foreach (var oldThemeDictionary in toRemove)
+            Current.Resources.MergedDictionaries.Remove(oldThemeDictionary);
 
         // 先頭に挿入（CommonStyles より前に配置して確実に上書き）
         Current.Resources.MergedDictionaries.Insert(0, dict);
@@ -265,16 +284,16 @@ public partial class App : System.Windows.Application
 
         const System.Globalization.NumberStyles hexStyle = System.Globalization.NumberStyles.HexNumber;
         var culture = System.Globalization.CultureInfo.InvariantCulture;
-        if (!byte.TryParse(body.AsSpan(0, 2), hexStyle, culture, out var r)) return false;
-        if (!byte.TryParse(body.AsSpan(2, 2), hexStyle, culture, out var g)) return false;
-        if (!byte.TryParse(body.AsSpan(4, 2), hexStyle, culture, out var b)) return false;
+        if (!byte.TryParse(body.AsSpan(0, 2), hexStyle, culture, out var red)) return false;
+        if (!byte.TryParse(body.AsSpan(2, 2), hexStyle, culture, out var green)) return false;
+        if (!byte.TryParse(body.AsSpan(4, 2), hexStyle, culture, out var blue)) return false;
 
-        color = System.Windows.Media.Color.FromRgb(r, g, b);
+        color = System.Windows.Media.Color.FromRgb(red, green, blue);
         return true;
     }
 
     /// <summary>各チャンネルに係数を乗算し 0–255 でクランプした不透明色を返す。</summary>
-    private static System.Windows.Media.Color Scale(System.Windows.Media.Color c, double f)
+    private static System.Windows.Media.Color Scale(System.Windows.Media.Color sourceColor, double scaleFactor)
     {
         static byte ScaleChannel(byte channel, double factor)
         {
@@ -284,21 +303,21 @@ public partial class App : System.Windows.Application
             return (byte)scaled;
         }
         return System.Windows.Media.Color.FromRgb(
-            ScaleChannel(c.R, f), ScaleChannel(c.G, f), ScaleChannel(c.B, f));
+            ScaleChannel(sourceColor.R, scaleFactor), ScaleChannel(sourceColor.G, scaleFactor), ScaleChannel(sourceColor.B, scaleFactor));
     }
 
     /// <summary>sRGB 単純線形補間（a 側 1-t）で不透明色を返す。</summary>
-    private static System.Windows.Media.Color Mix(System.Windows.Media.Color a, System.Windows.Media.Color b, double t)
+    private static System.Windows.Media.Color Mix(System.Windows.Media.Color fromColor, System.Windows.Media.Color toColor, double mixRatio)
     {
         static byte MixChannel(byte from, byte to, double ratio)
             => (byte)Math.Round(from * (1 - ratio) + to * ratio);
         return System.Windows.Media.Color.FromRgb(
-            MixChannel(a.R, b.R, t), MixChannel(a.G, b.G, t), MixChannel(a.B, b.B, t));
+            MixChannel(fromColor.R, toColor.R, mixRatio), MixChannel(fromColor.G, toColor.G, mixRatio), MixChannel(fromColor.B, toColor.B, mixRatio));
     }
 
     /// <summary>相対輝度 (0.299R + 0.587G + 0.114B) / 255 を返す。</summary>
-    private static double RelativeLuminance(System.Windows.Media.Color c)
-        => (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) / 255.0;
+    private static double RelativeLuminance(System.Windows.Media.Color color)
+        => (0.299 * color.R + 0.587 * color.G + 0.114 * color.B) / 255.0;
 
     private void ExitApp()
     {
@@ -332,7 +351,8 @@ public partial class App : System.Windows.Application
     {
         if (Interlocked.Exchange(ref _flushed, 1) != 0) return;
         try { SettingsService.Instance.FlushAll(); } catch { }
-        try { SettingsService.Instance.SaveAutoBackupIfDirty(); } catch { }
+        try { SettingsService.Instance.Backup.SaveAutoBackupIfDirty(); } catch { }
+        try { LoggerService.Instance.SaveUnsavedTodayLogOnExit(); } catch { }
         try { LoggerService.Instance.CloseDebugDb(); } catch { }
     }
 
@@ -352,7 +372,10 @@ public partial class App : System.Windows.Application
     private void LogAndShow(string kind, Exception ex)
     {
         LogError(kind, ex.ToString());
+        var errorKey = string.Join(ErrorKeySeparator, kind, ex.GetType().Name, ex.Message);
+        if (_shownErrorKeys.Contains(errorKey)) return;
         if (_errorShown) return;
+        _shownErrorKeys.Add(errorKey);
         _errorShown = true;
         try
         {
@@ -385,6 +408,7 @@ public partial class App : System.Windows.Application
     {
         MonitorService.Instance.Stop();
         PluginBridge.Instance.Stop();
+        _uptimeTracker?.Dispose();
         FlushAndBackup();
         _trayIconService?.Dispose();
         _mutex?.ReleaseMutex();
