@@ -40,7 +40,7 @@ public class QuotaDonut : UserControl
     private const double BreakdownSwatchCornerRadius = 2;
     private const double BreakdownSwatchTopMargin    = 2;
     private const double BreakdownSwatchRightMargin  = 5;
-    private const double BreakdownValueLeftMargin    = 6;
+    private const double BreakdownValueLeftMargin    = 12;
     private const double TotalRowFontSize        = 10;
     private const double TotalRowTopMargin       = 4;
 
@@ -64,10 +64,10 @@ public class QuotaDonut : UserControl
 
     // 固定ブラシキー（差し色非依存）
     private const string TrackBrushKey          = "SurfaceElevatedBrush";
-    private const string TitleBrushKey          = "TextMutedBrush";
-    private const string CenterSubBrushKey      = "TextMutedBrush";
-    private const string TotalRowBrushKey       = "TextMutedBrush";
-    private const string BreakdownLabelBrushKey = "TextMutedBrush";
+    private const string TitleBrushKey          = "TextSecondaryBrush";
+    private const string CenterSubBrushKey      = "TextSecondaryBrush";
+    private const string TotalRowBrushKey       = "TextSecondaryBrush";
+    private const string BreakdownLabelBrushKey = "TextSecondaryBrush";
     private const string BreakdownValueBrushKey = "TextPrimaryBrush";
     private const string PercentWarnHighBrushKey = "QuotaWarnHighBrush";
     private const string PercentWarnLowBrushKey  = "QuotaWarnLowBrush";
@@ -90,10 +90,7 @@ public class QuotaDonut : UserControl
         root.Children.Add(BuildDonut(limitUnits, arcTotalUnits, segments));
         if (showBreakdown)
         {
-            foreach (var segment in segments)
-            {
-                root.Children.Add(BuildBreakdownRow(segment));
-            }
+            root.Children.Add(BuildBreakdown(segments));
         }
         root.Children.Add(BuildTotalRow(limitUnits, segments, unitLabel));
         Content = root;
@@ -105,6 +102,7 @@ public class QuotaDonut : UserControl
         {
             Text                = title,
             FontSize            = TitleFontSize,
+            TextWrapping        = TextWrapping.Wrap,
             TextAlignment       = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
             Margin              = new Thickness(0, 0, 0, TitleBottomMargin),
@@ -247,32 +245,50 @@ public class QuotaDonut : UserControl
          : percentValue >= ApiQuotaHelper.QuotaWarnLowThresholdPct  ? PercentWarnLowBrushKey
                                                                     : PercentOkBrushKey;
 
-    private static Grid BuildBreakdownRow(QuotaDonutSegment segment)
+    /// <summary>
+    /// 凡例全体（色見本／ラベル／件数の3列・行＝セグメント数）を1つの Grid で組み立てる。
+    /// 1つの Grid にすることで全行のラベル列・件数列の幅が揃う。横方向は中央に置く（ドーナツの真下）。
+    /// </summary>
+    private static Grid BuildBreakdown(IReadOnlyList<QuotaDonutSegment> segments)
     {
-        var row = new Grid { Margin = new Thickness(0, BreakdownRowTopMargin, 0, 0) };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var legend = new Grid { HorizontalAlignment = HorizontalAlignment.Center };
+        legend.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        legend.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        legend.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+        for (var rowIndex = 0; rowIndex < segments.Count; rowIndex++)
+        {
+            legend.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            AddBreakdownRow(legend, rowIndex, segments[rowIndex]);
+        }
+        return legend;
+    }
+
+    private static void AddBreakdownRow(Grid legend, int rowIndex, QuotaDonutSegment segment)
+    {
         var swatch = new Border
         {
             Width               = BreakdownSwatchSize,
             Height              = BreakdownSwatchSize,
             CornerRadius        = new CornerRadius(BreakdownSwatchCornerRadius),
             VerticalAlignment   = VerticalAlignment.Top,
-            Margin              = new Thickness(0, BreakdownSwatchTopMargin, BreakdownSwatchRightMargin, 0),
+            Margin              = new Thickness(0, BreakdownRowTopMargin + BreakdownSwatchTopMargin, BreakdownSwatchRightMargin, 0),
         };
         SetResourceRef(swatch, Border.BackgroundProperty, segment.BrushKey);
+        Grid.SetRow(swatch, rowIndex);
         Grid.SetColumn(swatch, 0);
 
         var label = new TextBlock
         {
-            Text              = segment.Label,
-            FontSize          = BreakdownFontSize,
-            TextWrapping      = TextWrapping.Wrap,
-            VerticalAlignment = VerticalAlignment.Center,
+            Text                = segment.Label,
+            FontSize            = BreakdownFontSize,
+            TextWrapping        = TextWrapping.Wrap,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment   = VerticalAlignment.Center,
+            Margin              = new Thickness(0, BreakdownRowTopMargin, 0, 0),
         };
         SetResourceRef(label, TextBlock.ForegroundProperty, BreakdownLabelBrushKey);
+        Grid.SetRow(label, rowIndex);
         Grid.SetColumn(label, 1);
 
         var value = new TextBlock
@@ -282,16 +298,16 @@ public class QuotaDonut : UserControl
             FontWeight          = FontWeights.SemiBold,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment   = VerticalAlignment.Center,
-            Margin              = new Thickness(BreakdownValueLeftMargin, 0, 0, 0),
+            Margin              = new Thickness(BreakdownValueLeftMargin, BreakdownRowTopMargin, 0, 0),
         };
         Typography.SetNumeralAlignment(value, FontNumeralAlignment.Tabular);
         SetResourceRef(value, TextBlock.ForegroundProperty, BreakdownValueBrushKey);
+        Grid.SetRow(value, rowIndex);
         Grid.SetColumn(value, 2);
 
-        row.Children.Add(swatch);
-        row.Children.Add(label);
-        row.Children.Add(value);
-        return row;
+        legend.Children.Add(swatch);
+        legend.Children.Add(label);
+        legend.Children.Add(value);
     }
 
     private static TextBlock BuildTotalRow(int limitUnits, IReadOnlyList<QuotaDonutSegment> segments, string unitLabel)
@@ -303,6 +319,7 @@ public class QuotaDonut : UserControl
         {
             Text                = string.Format(CultureInfo.CurrentCulture, TotalRowFormat, segmentTotal, limitUnits, unitLabel),
             FontSize            = TotalRowFontSize,
+            TextWrapping        = TextWrapping.Wrap,
             TextAlignment       = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
             Margin              = new Thickness(0, TotalRowTopMargin, 0, 0),
