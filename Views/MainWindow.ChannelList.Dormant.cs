@@ -36,13 +36,16 @@ namespace YTNotifier.Views;
 
 public partial class MainWindow : System.Windows.Window
 {
+    /// <summary>休眠リストの未分類見出し行の Tag 値（通常側の UncategorizedRowTag に対応）</summary>
+    private const string DormantUncategorizedRowTag = "dormant_uncategorized";
+
     private bool _dormantUncategorizedCollapsed  = false;
 
     // ===== 休眠チャンネル =====
     internal void RefreshDormantChannelList()
     {
         DormantChannelList.Children.Clear();
-        var channels        = SettingsService.Instance.Channels;
+        var channels        = SettingsService.Instance.Channels.GetChannelsSnapshot();
         var dormantChannels = channels.Where(c => c.IsDormant).ToList();
 
         var keyword = _dormantSearchQuery;
@@ -60,7 +63,7 @@ public partial class MainWindow : System.Windows.Window
 
         if (_currentNav == "Dormant")
             TitleCountText.Text = $"{dormantChannels.Count}{AppConstants.ChannelCountUnitSuffix}";
-        var categories = SettingsService.Instance.DormantCategories.OrderBy(c => c.SortOrder);
+        var categories = SettingsService.Instance.Channels.DormantCategories.OrderBy(c => c.SortOrder);
         var settings = SettingsService.Instance.Settings;
 
         if (settings.NoCategoryMode || !categories.Any())
@@ -98,6 +101,17 @@ public partial class MainWindow : System.Windows.Window
     private void DormantEditModeButton_Click(object sender, RoutedEventArgs e)
     {
         _dormantEditMode = !_dormantEditMode;
+        if (_dormantEditMode)
+        {
+            DormantEditModeButton.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "PrimaryBrush");
+            DormantEditModeButton.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "TextOnColorBrush");
+        }
+        else
+        {
+            DormantEditModeButton.Background = Brushes.Transparent;
+            DormantEditModeButton.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "TextSecondaryBrush");
+        }
+
         AppLogger.Log(_dormantEditMode ? LogMsg.EditModeOn : LogMsg.EditModeOff);
         RefreshChannelList();
         RefreshDormantChannelList();
@@ -134,8 +148,8 @@ public partial class MainWindow : System.Windows.Window
             if (catName != null)
             {
                 var oldCategoryId = ch.CategoryId;
-                var cat = SettingsService.Instance.AddDormantCategory(catName);
-                SettingsService.Instance.SetDormantChannelCategory(ch.ChannelId, cat.CategoryId);
+                var cat = SettingsService.Instance.Channels.AddDormantCategory(catName);
+                SettingsService.Instance.Channels.SetDormantChannelCategory(ch.ChannelId, cat.CategoryId);
                 AppLogger.Log(LogMsg.DormantChannelMovedToCategory, null, ch.ChannelName, catName);
                 RefreshDormantChannelList();
                 CheckCategoryAutoDelete(oldCategoryId, true);
@@ -155,29 +169,29 @@ public partial class MainWindow : System.Windows.Window
             if (!_dormantEditMode) { menu.IsOpen = false; return; }
 
             moveToCatItem.Items.Clear();
-            var dormantCategories = SettingsService.Instance.DormantCategories;
+            var dormantCategories = SettingsService.Instance.Channels.DormantCategories;
             foreach (var cat in dormantCategories.OrderBy(c => c.SortOrder))
             {
                 var item = new MenuItem { Header = cat.CategoryName, Tag = (ch, cat) };
                 item.Click += (s, _) =>
                 {
-                    if (s is MenuItem mi && mi.Tag is (ChannelInfo c, CategoryInfo ca))
+                    if (s is MenuItem menuItem && menuItem.Tag is (ChannelInfo targetChannel, CategoryInfo targetCategory))
                     {
-                        var oldCategoryId = c.CategoryId;
-                        AppLogger.Log(LogMsg.DormantChannelMovedToCategory, null, c.ChannelName, ca.CategoryName);
-                        SettingsService.Instance.SetDormantChannelCategory(c.ChannelId, ca.CategoryId);
+                        var oldCategoryId = targetChannel.CategoryId;
+                        AppLogger.Log(LogMsg.DormantChannelMovedToCategory, null, targetChannel.ChannelName, targetCategory.CategoryName);
+                        SettingsService.Instance.Channels.SetDormantChannelCategory(targetChannel.ChannelId, targetCategory.CategoryId);
                         RefreshDormantChannelList();
                         CheckCategoryAutoDelete(oldCategoryId, true);
                     }
                 };
                 moveToCatItem.Items.Add(item);
             }
-            var uncatItem = new MenuItem { Header = "（未分類）" };
+            var uncatItem = new MenuItem { Header = AppConstants.UncategorizedMenuLabel };
             uncatItem.Click += (_, _) =>
             {
                 var oldCategoryId = ch.CategoryId;
-                AppLogger.Log(LogMsg.DormantChannelMovedToCategory, null, ch.ChannelName, "未分類");
-                SettingsService.Instance.SetDormantChannelCategory(ch.ChannelId, null);
+                AppLogger.Log(LogMsg.DormantChannelMovedToCategory, null, ch.ChannelName, AppConstants.UncategorizedLabel);
+                SettingsService.Instance.Channels.SetDormantChannelCategory(ch.ChannelId, null);
                 RefreshDormantChannelList();
                 CheckCategoryAutoDelete(oldCategoryId, true);
             };
@@ -190,11 +204,11 @@ public partial class MainWindow : System.Windows.Window
 
     private Border CreateDormantUncategorizedRow()
     {
-        var row = CreateGroupHeaderRow("未分類", 0, _dormantUncategorizedCollapsed, "dormant_uncategorized");
+        var row = CreateGroupHeaderRow(AppConstants.UncategorizedLabel, 0, _dormantUncategorizedCollapsed, DormantUncategorizedRowTag);
         row.MouseLeftButtonUp += (_, _) =>
         {
             _dormantUncategorizedCollapsed = !_dormantUncategorizedCollapsed;
-            AppLogger.Log(LogMsg.CategoryCollapsed, null, "未分類", _dormantUncategorizedCollapsed ? "折り畳み" : "展開");
+            AppLogger.Log(LogMsg.CategoryCollapsed, null, AppConstants.UncategorizedLabel, _dormantUncategorizedCollapsed ? AppConstants.LogCollapsedText : AppConstants.LogExpandedText);
             RefreshDormantChannelList();
         };
         return row;
@@ -208,27 +222,12 @@ public partial class MainWindow : System.Windows.Window
         row.MouseLeftButtonUp += (_, _) =>
         {
             cat.IsCollapsed = !cat.IsCollapsed;
-            AppLogger.Log(LogMsg.CategoryCollapsed, null, cat.CategoryName, cat.IsCollapsed ? "折り畳み" : "展開");
+            AppLogger.Log(LogMsg.CategoryCollapsed, null, cat.CategoryName, cat.IsCollapsed ? AppConstants.LogCollapsedText : AppConstants.LogExpandedText);
             SettingsService.Instance.MarkDirty();
             RefreshDormantChannelList();
         };
 
-        System.Windows.Point catDragStart = default;
-        bool catDragReady = false;
-
-        row.PreviewMouseLeftButtonDown += (_, e) => { if (_dormantEditMode) { catDragStart = e.GetPosition(DormantChannelList); catDragReady = true; } };
-        row.PreviewMouseMove += (s, e) =>
-        {
-            if (!_dormantEditMode || !catDragReady) return;
-            if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) { catDragReady = false; return; }
-            var diff = e.GetPosition(DormantChannelList) - catDragStart;
-            if (Math.Abs(diff.X) < SystemParameters.MinimumHorizontalDragDistance &&
-                Math.Abs(diff.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-            catDragReady = false;
-            CacheCategoryBoundariesCore(DormantCategoryDnd);
-            if (s is Border b) DragDrop.DoDragDrop(b, new DataObject(DormantCategoryDragFormat, cat.CategoryId), DragDropEffects.Move);
-        };
-        row.PreviewMouseLeftButtonUp += (_, _) => { catDragReady = false; };
+        AttachCategoryRowDragEvents(row, cat, DormantCategoryDnd);
 
         return row;
     }
@@ -241,7 +240,7 @@ public partial class MainWindow : System.Windows.Window
         renameItem.Click += (_, _) =>
         {
             var newName = ShowCategoryNameDialog("カテゴリ名を変更", cat.CategoryName);
-            if (newName != null) { AppLogger.Log(LogMsg.CategoryRenamed, null, cat.CategoryName, newName); SettingsService.Instance.RenameDormantCategory(cat.CategoryId, newName); RefreshDormantChannelList(); }
+            if (newName != null) { AppLogger.Log(LogMsg.CategoryRenamed, null, cat.CategoryName, newName); SettingsService.Instance.Channels.RenameDormantCategory(cat.CategoryId, newName); RefreshDormantChannelList(); }
         };
 
         var deleteItem = new MenuItem { Header = "🗑 カテゴリを削除" };
@@ -250,7 +249,7 @@ public partial class MainWindow : System.Windows.Window
             if (ConfirmDialog.Show(Application.Current.MainWindow as Window ?? this, "カテゴリ削除", $"「{cat.CategoryName}」を削除しますか？\nチャンネルは未分類に移動されます。", "削除") == true)
             {
                 AppLogger.Log(LogMsg.CategoryDeleted, null, cat.CategoryName);
-                SettingsService.Instance.RemoveDormantCategory(cat.CategoryId);
+                SettingsService.Instance.Channels.RemoveDormantCategory(cat.CategoryId);
                 RefreshDormantChannelList();
             }
         };
@@ -263,8 +262,8 @@ public partial class MainWindow : System.Windows.Window
         {
             renameItem.Visibility = _dormantEditMode ? Visibility.Visible : Visibility.Collapsed;
             deleteItem.Visibility = _dormantEditMode ? Visibility.Visible : Visibility.Collapsed;
-            var seps = menu.Items.OfType<Separator>().ToList();
-            foreach (var s in seps) s.Visibility = _dormantEditMode ? Visibility.Visible : Visibility.Collapsed;
+            var separators = menu.Items.OfType<Separator>().ToList();
+            foreach (var separator in separators) separator.Visibility = _dormantEditMode ? Visibility.Visible : Visibility.Collapsed;
         };
 
         return menu;
@@ -275,24 +274,15 @@ public partial class MainWindow : System.Windows.Window
 
     private void DormantChannelList_Drop(object sender, DragEventArgs e)     => CategoryListDropCore(DormantCategoryDnd, e);
 
-    // 指定チャンネルを、同じ IsDormant・CategoryId を持つチャンネル群の最後尾（該当が無ければ全体の最後尾）へ再配置する
-    private static void MoveChannelToCategoryEnd(ChannelInfo ch)
-    {
-        var channels = SettingsService.Instance.Channels;
-        channels.Remove(ch);
-        var lastIdx = channels.FindLastIndex(c => c.IsDormant == ch.IsDormant && c.CategoryId == ch.CategoryId);
-        channels.Insert(lastIdx < 0 ? channels.Count : lastIdx + 1, ch);
-    }
-
     private void MoveChannelToDormant(ChannelInfo ch)
     {
         var oldCategoryId = ch.CategoryId;
         if (!string.IsNullOrEmpty(ch.CategoryId))
         {
-            var monCat = SettingsService.Instance.Categories
+            var monCat = SettingsService.Instance.Channels.Categories
                 .FirstOrDefault(c => c.CategoryId == ch.CategoryId);
             if (monCat != null)
-                ch.CategoryId = SettingsService.Instance.EnsureDormantCategory(monCat.CategoryId, monCat.CategoryName);
+                ch.CategoryId = SettingsService.Instance.Channels.EnsureDormantCategory(monCat.CategoryId, monCat.CategoryName);
         }
         ch.IsDormant = true;
 
@@ -303,44 +293,44 @@ public partial class MainWindow : System.Windows.Window
         foreach (var slot in ch.FocusSlots) slot.IsEnabled = false;
 
         // 休眠移動時、これまでの動画チェック情報を全て破棄する（015修正）
-        ch.LastCheckedVideoId          = string.Empty;
-        ch.LastCheckedVideoPublishedAt = null;
-        lock (MonitorService._pendingListLock)
+        ch.State.LastCheckedVideoId          = string.Empty;
+        ch.State.LastCheckedVideoPublishedAt = null;
+        MonitorService.RunUnderPendingListLock(() =>
         {
-            ch.PendingLives.Clear();
-            ch.PendingPremieres.Clear();
-            ch.ActiveLives.Clear();
-            ch.ActivePremieres.Clear();
-        }
-        ch.LastLiveNotifiedId          = string.Empty;
-        ch.LastPremiereNotifiedId      = string.Empty;
-        ch.LastLiveId                  = string.Empty;
-        ch.LastPremiereId              = string.Empty;
-        ch.NextLiveCheckAt             = null;
-        ch.LiveGraceRemaining          = 0;
-        ch.NextPremiereCheckAt         = null;
-        ch.LastVideoTitle              = string.Empty;
-        ch.LastVideoNotifiedAt         = null;
-        ch.LastShortNotifiedId         = string.Empty;
-        ch.LastShortTitle              = string.Empty;
-        ch.LastShortNotifiedAt         = null;
-        ch.LastLiveNotifiedTitle       = string.Empty;
-        ch.LastLiveNotifiedAt          = null;
-        ch.LastPremiereNotifiedTitle   = string.Empty;
-        ch.LastPremiereNotifiedAt      = null;
-        ch.LatestTitle                 = null;
-        ch.LatestKind                  = null;
-        ch.LatestVideoId               = null;
-        ch.LatestDuration              = null;
-        ch.LatestThumbnailUrl          = null;
-        ch.RecentUploads.Clear();
-        ch.VideoKindCache.Clear();
-        ch.LatestVideoDeleted          = false;
-        ch.NoVideosFound               = false;
-        ch.HasUnread                   = false;
+            ch.State.PendingLives.Clear();
+            ch.State.PendingPremieres.Clear();
+            ch.State.ActiveLives.Clear();
+            ch.State.ActivePremieres.Clear();
+        });
+        ch.State.LastLiveNotifiedId          = string.Empty;
+        ch.State.LastPremiereNotifiedId      = string.Empty;
+        ch.State.LastLiveId                  = string.Empty;
+        ch.State.LastPremiereId              = string.Empty;
+        ch.State.NextLiveCheckAt             = null;
+        ch.State.LiveGraceRemaining          = 0;
+        ch.State.NextPremiereCheckAt         = null;
+        ch.State.LastVideoTitle              = string.Empty;
+        ch.State.LastVideoNotifiedAt         = null;
+        ch.State.LastShortNotifiedId         = string.Empty;
+        ch.State.LastShortTitle              = string.Empty;
+        ch.State.LastShortNotifiedAt         = null;
+        ch.State.LastLiveNotifiedTitle       = string.Empty;
+        ch.State.LastLiveNotifiedAt          = null;
+        ch.State.LastPremiereNotifiedTitle   = string.Empty;
+        ch.State.LastPremiereNotifiedAt      = null;
+        ch.State.LatestTitle                 = null;
+        ch.State.LatestKind                  = null;
+        ch.State.LatestVideoId               = null;
+        ch.State.LatestDuration              = null;
+        ch.State.LatestThumbnailUrl          = null;
+        ch.State.RecentUploads.Clear();
+        ch.State.VideoKindCache.Clear();
+        ch.State.LatestVideoDeleted          = false;
+        ch.State.NoVideosFound               = false;
+        ch.HasUnread                         = false;
 
-        MoveChannelToCategoryEnd(ch);
-        SettingsService.Instance.UpdateChannel(ch);
+        SettingsService.Instance.Channels.MoveChannelToCategoryEnd(ch);
+        SettingsService.Instance.Channels.UpdateChannel(ch);
         AppLogger.Log(LogMsg.MovedToDormant, null, ch.ChannelName);
         RefreshChannelList();
         RefreshDormantChannelList();
@@ -352,10 +342,10 @@ public partial class MainWindow : System.Windows.Window
         var oldCategoryId = ch.CategoryId;
         if (!string.IsNullOrEmpty(ch.CategoryId))
         {
-            var dormantCat = SettingsService.Instance.DormantCategories
+            var dormantCat = SettingsService.Instance.Channels.DormantCategories
                 .FirstOrDefault(c => c.CategoryId == ch.CategoryId);
             if (dormantCat != null)
-                ch.CategoryId = SettingsService.Instance.EnsureCategory(dormantCat.CategoryId, dormantCat.CategoryName);
+                ch.CategoryId = SettingsService.Instance.Channels.EnsureCategory(dormantCat.CategoryId, dormantCat.CategoryName);
         }
         ch.IsDormant        = false;
         ch.NotifyVideo      = false;
@@ -363,8 +353,8 @@ public partial class MainWindow : System.Windows.Window
         ch.NotifyLive       = false;
         foreach (var slot in ch.FocusSlots) slot.IsEnabled = false;
 
-        MoveChannelToCategoryEnd(ch);
-        SettingsService.Instance.UpdateChannel(ch);
+        SettingsService.Instance.Channels.MoveChannelToCategoryEnd(ch);
+        SettingsService.Instance.Channels.UpdateChannel(ch);
         AppLogger.Log(LogMsg.MovedToActive, null, ch.ChannelName);
         RefreshChannelList();
         RefreshDormantChannelList();

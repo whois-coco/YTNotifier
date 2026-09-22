@@ -5,8 +5,12 @@
         WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        Width="560" Height="620"
+        Width="700" Height="620"
         FontFamily="Noto Sans JP">
+
+    <Window.Resources>
+        <Style TargetType="ScrollBar" BasedOn="{StaticResource SlimScrollBar}"/>
+    </Window.Resources>
 
     <Border Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
@@ -36,7 +40,15 @@
             </Border>
 
             <mdxam:MarkdownScrollViewer x:Name="NotesViewer" Grid.Row="1" Margin="20,16,20,20"
-                                        ClickAction="OpenBrowser"/>
+                                        ClickAction="OpenBrowser"
+                                        Foreground="{DynamicResource TextPrimaryBrush}"
+                                        Background="{DynamicResource SurfaceBrush}">
+                <mdxam:MarkdownScrollViewer.MarkdownStyle>
+                    <Style TargetType="FlowDocument" BasedOn="{x:Static mdxam:MarkdownStyle.Sasabune}">
+                        <Setter Property="FontFamily" Value="Noto Sans JP"/>
+                    </Style>
+                </mdxam:MarkdownScrollViewer.MarkdownStyle>
+            </mdxam:MarkdownScrollViewer>
         </Grid>
     </Border>
 </Window>

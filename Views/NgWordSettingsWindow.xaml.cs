@@ -24,9 +24,9 @@ public partial class NgWordSettingsWindow : Window
     {
         InitializeComponent();
         Owner   = owner;
-        Loaded += (_, _) => WindowCornerHelper.Apply(this);
+        WindowCornerHelper.ApplyOnLoaded(this);
 
-        _allChannels = SettingsService.Instance.GetEnabledChannelsSnapshot();
+        _allChannels = SettingsService.Instance.Channels.GetEnabledChannelsSnapshot();
 
         RefreshCommonChips();
         RefreshCommonRefChips();
@@ -37,9 +37,7 @@ public partial class NgWordSettingsWindow : Window
     // ===== タイトルバー =====
 
     private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ButtonState == MouseButtonState.Pressed) DragMove();
-    }
+        => WindowTitleBarHelper.DragMoveOnPress(this, e);
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
@@ -237,7 +235,7 @@ public partial class NgWordSettingsWindow : Window
         }
 
         _selectedChannel.NgWords = _selectedChannel.NgWords.Append(word).ToList();
-        SettingsService.Instance.UpdateChannel(_selectedChannel);
+        SettingsService.Instance.Channels.UpdateChannel(_selectedChannel);
         AppLogger.Log(LogMsg.NgWordAddedChannel, _selectedChannel.ChannelName, word);
 
         ChannelNgWordInput.Clear();
@@ -252,7 +250,7 @@ public partial class NgWordSettingsWindow : Window
 
         _selectedChannel.NgWords =
             _selectedChannel.NgWords.Where(w => !string.Equals(w, word, StringComparison.Ordinal)).ToList();
-        SettingsService.Instance.UpdateChannel(_selectedChannel);
+        SettingsService.Instance.Channels.UpdateChannel(_selectedChannel);
         AppLogger.Log(LogMsg.NgWordRemovedChannel, _selectedChannel.ChannelName, word);
 
         RefreshChannelNgWords();

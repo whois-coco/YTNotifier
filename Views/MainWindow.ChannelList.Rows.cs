@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -120,12 +119,11 @@ public partial class MainWindow : System.Windows.Window
         if (isDormant)
         {
             row.ContextMenu = BuildDormantChannelContextMenu(ch);
-            row.ContextMenuOpening += (_, e) => { if (!_dormantEditMode || ch.IsBanned) e.Handled = true; };
+            row.ContextMenuOpening += (_, e) => { if (!_dormantEditMode || ch.State.IsBanned) e.Handled = true; };
         }
         else
         {
             row.ContextMenu = BuildChannelContextMenu(ch);
-            row.ContextMenuOpening += (_, e) => { if (ch.IsBanned) e.Handled = true; };
         }
 
         // 共通: [4px新着帯] + コンテンツ列
@@ -148,7 +146,7 @@ public partial class MainWindow : System.Windows.Window
             row.MouseLeftButtonUp += async (s, e) =>
             {
                 var nowEditMode = isDormant ? _dormantEditMode : _editMode;
-                if (!nowEditMode && s is Border b && b.Tag is ChannelInfo c && !c.IsBanned && !c.LatestVideoDeleted) { e.Handled = true; AppLogger.Log(LogMsg.ChannelRowClicked, null, c.ChannelName); await OpenChannelLatestVideoAsync(c); }
+                if (!nowEditMode && s is Border clickedBorder && clickedBorder.Tag is ChannelInfo clickedChannel && !clickedChannel.State.IsBanned && !clickedChannel.State.LatestVideoDeleted) { e.Handled = true; AppLogger.Log(LogMsg.ChannelRowClicked, null, clickedChannel.ChannelName); await OpenChannelLatestVideoAsync(clickedChannel); }
             };
 
             var grid = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = RowContentMarginEdit };
@@ -162,13 +160,13 @@ public partial class MainWindow : System.Windows.Window
             var icon     = BuildIconBorderCompact(ch);
             var nameText = new TextBlock
             {
-                Text = ch.IsBanned ? ChannelUnavailableText : ch.ChannelName, FontSize = RowEditNameFontSize, FontWeight = FontWeights.SemiBold,
+                Text = ch.State.IsBanned ? ChannelUnavailableText : ch.ChannelName, FontSize = RowEditNameFontSize, FontWeight = FontWeights.SemiBold,
                 TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = RowNameMargin
             };
-            SetDynamicBrush(nameText, TextBlock.ForegroundProperty, ch.IsBanned ? "TextMutedBrush" : "TextPrimaryBrush");
-            if (!ch.IsBanned)
+            SetDynamicBrush(nameText, TextBlock.ForegroundProperty, ch.State.IsBanned ? "TextMutedBrush" : "TextPrimaryBrush");
+            if (!ch.State.IsBanned)
             {
                 nameText.Cursor = Cursors.Hand;
                 nameText.ToolTip = "クリックしてチャンネルページを開く";
@@ -177,7 +175,7 @@ public partial class MainWindow : System.Windows.Window
                 {
                     e.Handled = true;
                     AppLogger.Log(LogMsg.ChannelNameClicked, null, ch.ChannelName);
-                    OpenUrl(ch.ChannelUrl);
+                    BrowserLaunchHelper.OpenUrl(ch.ChannelUrl);
                 };
             }
 
@@ -221,16 +219,16 @@ public partial class MainWindow : System.Windows.Window
     private static Canvas BuildTrashIconCanvas()
     {
         var trashCanvas = new Canvas { Width = RowTrashCanvasSize, Height = RowTrashCanvasSize };
-        foreach (var d in TrashIconPathData)
+        foreach (var pathData in TrashIconPathData)
         {
-            var p = new System.Windows.Shapes.Path
+            var trashPath = new System.Windows.Shapes.Path
             {
-                Data = Geometry.Parse(d), StrokeThickness = RowTrashStrokeThickness,
+                Data = Geometry.Parse(pathData), StrokeThickness = RowTrashStrokeThickness,
                 StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
                 StrokeLineJoin = PenLineJoin.Round, Fill = Brushes.Transparent
             };
-            SetDynamicBrush(p, System.Windows.Shapes.Path.StrokeProperty, "ErrorBrush");
-            trashCanvas.Children.Add(p);
+            SetDynamicBrush(trashPath, System.Windows.Shapes.Path.StrokeProperty, "ErrorBrush");
+            trashCanvas.Children.Add(trashPath);
         }
         return trashCanvas;
     }
@@ -251,7 +249,7 @@ public partial class MainWindow : System.Windows.Window
 
     private static Border BuildIconBorderCompact(ChannelInfo ch)
     {
-        var b = new Border
+        var iconBorder = new Border
         {
             Width = RowIconSizeCompact, Height = RowIconSizeCompact, CornerRadius = new CornerRadius(RowIconSizeCompact / 2),
             VerticalAlignment = VerticalAlignment.Center,
@@ -259,20 +257,20 @@ public partial class MainWindow : System.Windows.Window
             Tag  = "IconBorder"
         };
 
-        if (ch.IsBanned)
+        if (ch.State.IsBanned)
         {
-            SetDynamicBrush(b, Border.BackgroundProperty, "ChannelUnavailableIconBrush");
-            return b;
+            SetDynamicBrush(iconBorder, Border.BackgroundProperty, "ChannelUnavailableIconBrush");
+            return iconBorder;
         }
 
         var img = GetCachedIcon(ch.ThumbnailUrl, ch.ChannelId);
-        if (img != null) b.Child = new System.Windows.Controls.Image { Source = img, Stretch = Stretch.UniformToFill };
-        return b;
+        if (img != null) iconBorder.Child = new System.Windows.Controls.Image { Source = img, Stretch = Stretch.UniformToFill };
+        return iconBorder;
     }
 
     private static Border BuildIconBorder(ChannelInfo ch)
     {
-        var b = new Border
+        var iconBorder = new Border
         {
             Width = RowIconSize, Height = RowIconSize, CornerRadius = new CornerRadius(RowIconSize / 2),
             Margin = RowIconMargin, VerticalAlignment = VerticalAlignment.Center,
@@ -280,29 +278,30 @@ public partial class MainWindow : System.Windows.Window
             Tag = "IconBorder"
         };
 
-        if (ch.IsBanned)
+        if (ch.State.IsBanned)
         {
-            SetDynamicBrush(b, Border.BackgroundProperty, "ChannelUnavailableIconBrush");
-            return b;
+            SetDynamicBrush(iconBorder, Border.BackgroundProperty, "ChannelUnavailableIconBrush");
+            return iconBorder;
         }
 
-        if (!ch.LatestVideoDeleted)
+        if (!ch.State.LatestVideoDeleted)
         {
-            b.Cursor = Cursors.Hand;
-            b.ToolTip = "クリックして最新動画を開く";
-            b.PreviewMouseLeftButtonDown += (_, e) => e.Handled = true;
-            b.MouseLeftButtonUp += async (_, _) => { AppLogger.Log(LogMsg.ChannelRowClicked, null, ch.ChannelName); await OpenChannelLatestVideoAsync(ch); };
+            iconBorder.Cursor = Cursors.Hand;
+            iconBorder.ToolTip = "クリックして最新動画を開く";
+            iconBorder.PreviewMouseLeftButtonDown += (_, e) => e.Handled = true;
+            iconBorder.MouseLeftButtonUp += async (_, _) => { AppLogger.Log(LogMsg.ChannelRowClicked, null, ch.ChannelName); await OpenChannelLatestVideoAsync(ch); };
         }
+        iconBorder.Background = Brushes.Transparent;
         var img = GetCachedIcon(ch.ThumbnailUrl, ch.ChannelId);
-        if (img != null) b.Child = new System.Windows.Controls.Image { Source = img, Stretch = Stretch.UniformToFill };
-        return b;
+        if (img != null) iconBorder.Child = new System.Windows.Controls.Image { Source = img, Stretch = Stretch.UniformToFill };
+        return iconBorder;
     }
 
     private StackPanel BuildInfoPanelCore(ChannelInfo ch, bool editMode, bool isDormant)
     {
         var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = RowInfoMargin };
 
-        if (ch.IsBanned)
+        if (ch.State.IsBanned)
         {
             var bannedText = new TextBlock
             {
@@ -337,7 +336,7 @@ public partial class MainWindow : System.Windows.Window
         {
             e.Handled = true;
             AppLogger.Log(LogMsg.ChannelNameClicked, null, ch.ChannelName);
-            OpenUrl(ch.ChannelUrl);
+            BrowserLaunchHelper.OpenUrl(ch.ChannelUrl);
         };
         info.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { nameText } });
 
@@ -347,9 +346,9 @@ public partial class MainWindow : System.Windows.Window
             if (!isDormant)
             {
                 var kindRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
-                kindRow.Children.Add(MakeKindToggle("動画",  ch.NotifyVideo, ch.GetEffectiveModeForKind(VideoKind.Video),  VideoKind.Video,  v => { ch.NotifyVideo = v; SettingsService.Instance.UpdateChannelSilent(ch); SettingsService.Instance.MarkDirty(); AppLogger.Log(LogMsg.KindToggleChanged, ch.ChannelName, "動画",  v ? "ON" : "OFF"); }));
-                kindRow.Children.Add(MakeKindToggle("Short", ch.NotifyShort, ch.GetEffectiveModeForKind(VideoKind.Short),  VideoKind.Short,  v => { ch.NotifyShort = v; SettingsService.Instance.UpdateChannelSilent(ch); SettingsService.Instance.MarkDirty(); AppLogger.Log(LogMsg.KindToggleChanged, ch.ChannelName, "Short", v ? "ON" : "OFF"); }));
-                kindRow.Children.Add(MakeKindToggle("ライブ", ch.NotifyLive,  ch.GetEffectiveModeForKind(VideoKind.Live),   VideoKind.Live,   v => { ch.NotifyLive  = v; SettingsService.Instance.UpdateChannelSilent(ch); SettingsService.Instance.MarkDirty(); AppLogger.Log(LogMsg.KindToggleChanged, ch.ChannelName, "ライブ", v ? "ON" : "OFF"); }));
+                kindRow.Children.Add(MakeKindToggle("動画",  ch.NotifyVideo, ch.GetEffectiveModeForKind(VideoKind.Video),  VideoKind.Video,  v => { ch.NotifyVideo = v; SettingsService.Instance.Channels.UpdateChannelSilent(ch); SettingsService.Instance.MarkDirty(); AppLogger.Log(LogMsg.KindToggleChanged, ch.ChannelName, "動画",  AppLogger.OnOffText(v)); }));
+                kindRow.Children.Add(MakeKindToggle("Short", ch.NotifyShort, ch.GetEffectiveModeForKind(VideoKind.Short),  VideoKind.Short,  v => { ch.NotifyShort = v; SettingsService.Instance.Channels.UpdateChannelSilent(ch); SettingsService.Instance.MarkDirty(); AppLogger.Log(LogMsg.KindToggleChanged, ch.ChannelName, "Short", AppLogger.OnOffText(v)); }));
+                kindRow.Children.Add(MakeKindToggle("ライブ", ch.NotifyLive,  ch.GetEffectiveModeForKind(VideoKind.Live),   VideoKind.Live,   v => { ch.NotifyLive  = v; SettingsService.Instance.Channels.UpdateChannelSilent(ch); SettingsService.Instance.MarkDirty(); AppLogger.Log(LogMsg.KindToggleChanged, ch.ChannelName, "ライブ", AppLogger.OnOffText(v)); }));
                 kindRow.Children.Add(MakeFavoriteToggle(ch));
                 info.Children.Add(kindRow);
             }
@@ -368,123 +367,152 @@ public partial class MainWindow : System.Windows.Window
 
     private static UIElement BuildStatusRow(ChannelInfo ch)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = TitleRowMargin };
-
         var cardStatus = MonitorService.ResolveCardStatus(ch);
+
+        var liveTitleRow = cardStatus.ActiveLiveEntries.Count == 1
+            ? BuildLiveStatusPillRow(ch, cardStatus.ActiveLiveEntries[0])
+            : null;
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = TitleRowMargin };
         var anyStatusShown = false;
 
-        if (cardStatus.ActiveLiveEntries.Count > 0)
+        if (cardStatus.ActiveLiveEntries.Count > 1)
         {
-            var bullet = new TextBlock { Margin = RowBulletMargin, FontSize = RowNameFontSize, Cursor = Cursors.Hand };
-            bullet.Text = cardStatus.ActiveLiveEntries.Count == 1 ? "● ライブ配信中" : $"● ライブ配信中 ×{cardStatus.ActiveLiveEntries.Count}";
-            SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "ErrorBrush");
-
-            var liveEntries = cardStatus.ActiveLiveEntries;
-            if (liveEntries.Count == 1)
-            {
-                var entry = liveEntries[0];
-                bullet.ToolTip = entry.Title;
-                bullet.MouseLeftButtonUp += (_, e) =>
-                {
-                    e.Handled = true;
-                    var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
-                    new VideoSummaryPopupWindow(owner!, ch, VideoKind.Live, entry.Title, entry.VideoId).ShowDialog();
-                };
-            }
-            else
-            {
-                bullet.MouseLeftButtonUp += (_, e) =>
-                {
-                    e.Handled = true;
-                    var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
-                    new VideoListPopupWindow(owner!, ch, VideoKind.Live, liveEntries).ShowDialog();
-                };
-            }
-
-            row.Children.Add(bullet);
+            row.Children.Add(BuildMultipleLiveBullet(ch, cardStatus.ActiveLiveEntries));
             anyStatusShown = true;
         }
 
         if (cardStatus.ActivePremiereEntries.Count > 0)
         {
-            var bullet = new TextBlock { Margin = RowBulletMargin, FontSize = RowNameFontSize, Cursor = Cursors.Hand };
-            bullet.Text = cardStatus.ActivePremiereEntries.Count == 1 ? "● プレミア公開中" : $"● プレミア公開中 ×{cardStatus.ActivePremiereEntries.Count}";
-            SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "WarningBrush");
-
-            var premiereEntries = cardStatus.ActivePremiereEntries;
-            if (premiereEntries.Count == 1)
-            {
-                var entry = premiereEntries[0];
-                bullet.ToolTip = entry.Title;
-                bullet.MouseLeftButtonUp += (_, e) =>
-                {
-                    e.Handled = true;
-                    var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
-                    new VideoSummaryPopupWindow(owner!, ch, VideoKind.Premiere, entry.Title, entry.VideoId, allowSummary: false).ShowDialog();
-                };
-            }
-            else
-            {
-                bullet.MouseLeftButtonUp += (_, e) =>
-                {
-                    e.Handled = true;
-                    var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
-                    new VideoListPopupWindow(owner!, ch, VideoKind.Premiere, premiereEntries, allowSummary: false).ShowDialog();
-                };
-            }
-
-            row.Children.Add(bullet);
+            row.Children.Add(BuildActivePremiereBullet(ch, cardStatus.ActivePremiereEntries));
             anyStatusShown = true;
         }
 
         if (cardStatus.PendingLiveDisplay != null)
         {
-            var pendingLive = cardStatus.PendingLiveDisplay;
-            var bullet = new TextBlock
-            {
-                Text = $"⏲ {pendingLive.ScheduledAt!.Value:HH:mm} から配信予定",
-                Margin = RowBulletMargin,
-                FontSize = RowNameFontSize, Opacity = RowSubTextOpacity,
-                Cursor = Cursors.Hand,
-                ToolTip = pendingLive.Title
-            };
-            SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "WarningBrush");
-            bullet.MouseLeftButtonUp += (_, e) =>
-            {
-                e.Handled = true;
-                var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
-                new VideoSummaryPopupWindow(owner!, ch, VideoKind.Live, pendingLive.Title, pendingLive.VideoId, isPending: true).ShowDialog();
-            };
-            row.Children.Add(bullet);
+            row.Children.Add(BuildPendingLiveBullet(ch, cardStatus.PendingLiveDisplay));
             anyStatusShown = true;
         }
 
         if (cardStatus.PendingPremiereDisplay != null)
         {
-            var pendingPremiere = cardStatus.PendingPremiereDisplay;
-            var bullet = new TextBlock
-            {
-                Text = $"⏲ {pendingPremiere.ScheduledAt!.Value:HH:mm} からプレミア公開予定",
-                Margin = RowBulletMargin,
-                FontSize = RowNameFontSize, Opacity = RowSubTextOpacity,
-                Cursor = Cursors.Hand,
-                ToolTip = pendingPremiere.Title
-            };
-            SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "WarningBrush");
-            bullet.MouseLeftButtonUp += (_, e) =>
-            {
-                e.Handled = true;
-                var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
-                new VideoSummaryPopupWindow(owner!, ch, VideoKind.Premiere, pendingPremiere.Title, pendingPremiere.VideoId, allowSummary: false).ShowDialog();
-            };
-            row.Children.Add(bullet);
+            row.Children.Add(BuildPendingPremiereBullet(ch, cardStatus.PendingPremiereDisplay));
             anyStatusShown = true;
+        }
+
+        if (liveTitleRow != null)
+        {
+            if (!anyStatusShown)
+                return liveTitleRow;
+
+            var statusStack = new StackPanel { Orientation = Orientation.Vertical };
+            statusStack.Children.Add(liveTitleRow);
+            statusStack.Children.Add(row);
+            return statusStack;
         }
 
         if (anyStatusShown)
             return row;
 
-        if (ch.NoVideosFound)
+        return BuildStatusFallbackRow(ch, row);
+    }
+
+    /// <summary>複数ライブ配信中の札を組み立てる。</summary>
+    private static TextBlock BuildMultipleLiveBullet(ChannelInfo ch, List<PendingVideoEntry> liveEntries)
+    {
+        var bullet = new TextBlock { Margin = RowBulletMargin, FontSize = RowNameFontSize, Cursor = Cursors.Hand };
+        bullet.Text = $"● ライブ配信中 ×{liveEntries.Count}";
+        SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "ErrorBrush");
+
+        bullet.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
+            new VideoListPopupWindow(owner!, ch, VideoKind.Live, liveEntries).ShowDialog();
+        };
+
+        return bullet;
+    }
+
+    /// <summary>プレミア公開中の札を組み立てる。</summary>
+    private static TextBlock BuildActivePremiereBullet(ChannelInfo ch, List<PendingVideoEntry> premiereEntries)
+    {
+        var bullet = new TextBlock { Margin = RowBulletMargin, FontSize = RowNameFontSize, Cursor = Cursors.Hand };
+        bullet.Text = premiereEntries.Count == 1 ? "● プレミア公開中" : $"● プレミア公開中 ×{premiereEntries.Count}";
+        SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "WarningBrush");
+
+        if (premiereEntries.Count == 1)
+        {
+            var entry = premiereEntries[0];
+            bullet.ToolTip = entry.Title;
+            bullet.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
+                new VideoSummaryPopupWindow(owner!, ch, VideoKind.Premiere, entry.Title, entry.VideoId, allowSummary: false).ShowDialog();
+            };
+        }
+        else
+        {
+            bullet.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
+                new VideoListPopupWindow(owner!, ch, VideoKind.Premiere, premiereEntries, allowSummary: false).ShowDialog();
+            };
+        }
+
+        return bullet;
+    }
+
+    /// <summary>配信予定の札を組み立てる。</summary>
+    private static TextBlock BuildPendingLiveBullet(ChannelInfo ch, PendingVideoEntry pendingLive)
+    {
+        var bullet = new TextBlock
+        {
+            Text = $"⏲ {pendingLive.ScheduledAt!.Value:HH:mm} から配信予定",
+            Margin = RowBulletMargin,
+            FontSize = RowNameFontSize, Opacity = RowSubTextOpacity,
+            Cursor = Cursors.Hand,
+            ToolTip = pendingLive.Title
+        };
+        SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "WarningBrush");
+        bullet.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
+            new VideoSummaryPopupWindow(owner!, ch, VideoKind.Live, pendingLive.Title, pendingLive.VideoId,
+                isPending: true, thumbnailUrl: pendingLive.ThumbnailUrl).ShowDialog();
+        };
+        return bullet;
+    }
+
+    /// <summary>プレミア予定の札を組み立てる。</summary>
+    private static TextBlock BuildPendingPremiereBullet(ChannelInfo ch, PendingVideoEntry pendingPremiere)
+    {
+        var bullet = new TextBlock
+        {
+            Text = $"⏲ {pendingPremiere.ScheduledAt!.Value:HH:mm} からプレミア公開予定",
+            Margin = RowBulletMargin,
+            FontSize = RowNameFontSize, Opacity = RowSubTextOpacity,
+            Cursor = Cursors.Hand,
+            ToolTip = pendingPremiere.Title
+        };
+        SetDynamicBrush(bullet, TextBlock.ForegroundProperty, "WarningBrush");
+        bullet.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            var owner = System.Windows.Window.GetWindow(bullet) as System.Windows.Window;
+            new VideoSummaryPopupWindow(owner!, ch, VideoKind.Premiere, pendingPremiere.Title, pendingPremiere.VideoId,
+                allowSummary: false, thumbnailUrl: pendingPremiere.ThumbnailUrl).ShowDialog();
+        };
+        return bullet;
+    }
+
+    /// <summary>札が1つも出ないときの表示（動画なし・削除済み・最新動画・通知なし）を組み立てる。</summary>
+    private static UIElement BuildStatusFallbackRow(ChannelInfo ch, StackPanel row)
+    {
+        if (ch.State.NoVideosFound)
         {
             var noVideosText = new TextBlock { Text = "投稿された動画が見つかりません", FontSize = RowSubTextFontSize };
             SetDynamicBrush(noVideosText, TextBlock.ForegroundProperty, "TextMutedBrush");
@@ -492,7 +520,7 @@ public partial class MainWindow : System.Windows.Window
             return row;
         }
 
-        if (ch.LatestVideoDeleted)
+        if (ch.State.LatestVideoDeleted)
         {
             var deletedText = new TextBlock { Text = LatestVideoDeletedText, FontSize = RowSubTextFontSize };
             SetDynamicBrush(deletedText, TextBlock.ForegroundProperty, "TextMutedBrush");
@@ -500,79 +528,125 @@ public partial class MainWindow : System.Windows.Window
             return row;
         }
 
-        if (!string.IsNullOrEmpty(ch.LatestTitle) && ch.LatestKind.HasValue)
+        if (!string.IsNullOrEmpty(ch.State.LatestTitle) && ch.State.LatestKind.HasValue)
         {
-            var kindLabel = ch.LatestKind.Value switch
-            {
-                VideoKind.Video    => "動画",
-                VideoKind.Short    => "Short",
-                VideoKind.Live     => ch.ActiveLives.Count == 0 ? "アーカイブ" : "ライブ",
-                VideoKind.Premiere => "プレミア",
-                _                  => string.Empty,
-            };
-
-            var (bgKey, fgKey) = ch.LatestKind.Value switch
-            {
-                VideoKind.Video    => ("KindPillVideoBgBrush",    "KindPillVideoFgBrush"),
-                VideoKind.Short    => ("KindPillShortBgBrush",    "KindPillShortFgBrush"),
-                VideoKind.Live     => ("KindPillLiveBgBrush",     "KindPillLiveFgBrush"),
-                VideoKind.Premiere => ("KindPillPremiereBgBrush", "KindPillPremiereFgBrush"),
-                _                  => ("KindPillVideoBgBrush",    "KindPillVideoFgBrush"),
-            };
-
-            var pill = new Border
-            {
-                CornerRadius = new CornerRadius(RowKindPillCornerRadius),
-                Padding = RowKindPillPadding,
-                Margin = RowKindPillMargin,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            SetDynamicBrush(pill, Border.BackgroundProperty, bgKey);
-            var pillText = new TextBlock { Text = kindLabel, FontSize = RowSubTextFontSize };
-            SetDynamicBrush(pillText, TextBlock.ForegroundProperty, fgKey);
-            pill.Child = pillText;
-
-            var titleText = new TextBlock
-            {
-                Text = ch.LatestTitle,
-                FontSize = RowSubTextFontSize,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                TextWrapping = TextWrapping.NoWrap,
-                VerticalAlignment = VerticalAlignment.Center,
-                Cursor = Cursors.Hand,
-                ToolTip = ch.LatestTitle
-            };
-            SetDynamicBrush(titleText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-            if (!string.IsNullOrEmpty(ch.LatestVideoId))
-            {
-                var kind     = ch.LatestKind.Value;
-                var videoId  = ch.LatestVideoId;
-                var fullTitle = ch.LatestTitle ?? string.Empty;
-                var duration = ch.LatestDuration;
-                var publishedAt = ch.RecentUploads.FirstOrDefault(r => r.VideoId == videoId)?.PublishedAt;
-                titleText.MouseLeftButtonUp += (_, e) =>
-                {
-                    e.Handled = true;
-                    var owner = System.Windows.Window.GetWindow(titleText) as System.Windows.Window;
-                    new VideoSummaryPopupWindow(owner!, ch, kind, fullTitle, videoId, duration,
-                        publishedAt: publishedAt).ShowDialog();
-                };
-            }
-
-            // ピルを左固定、タイトルは残り幅いっぱい。
-            // 水平 StackPanel（row）だと子に無限幅が渡り TextTrimming が効かないため、
-            // 幅が確定する DockPanel に入れて自動省略（…）を機能させる。
-            var titleRow = new DockPanel { Margin = TitleRowMargin };
-            DockPanel.SetDock(pill, Dock.Left);
-            titleRow.Children.Add(pill);
-            titleRow.Children.Add(titleText); // LastChildFill=true（既定）で残り幅を占有
-            return titleRow;
+            return BuildLatestVideoTitleRow(ch, ch.State.LatestKind.Value);
         }
 
         var noNotify = new TextBlock { Text = "通知なし", FontSize = RowSubTextFontSize };
         SetDynamicBrush(noNotify, TextBlock.ForegroundProperty, "TextMutedBrush");
         row.Children.Add(noNotify);
         return row;
+    }
+
+    /// <summary>最新動画の札とタイトルの行を組み立てる。</summary>
+    private static UIElement BuildLatestVideoTitleRow(ChannelInfo ch, VideoKind latestKind)
+    {
+        var kindLabel = latestKind switch
+        {
+            VideoKind.Video    => "動画",
+            VideoKind.Short    => "Short",
+            VideoKind.Live     => ch.State.ActiveLives.Count == 0 ? "アーカイブ" : "ライブ",
+            VideoKind.Premiere => "プレミア",
+            _                  => string.Empty,
+        };
+
+        var (bgKey, fgKey) = latestKind switch
+        {
+            VideoKind.Video    => ("KindPillVideoBgBrush",    "KindPillVideoFgBrush"),
+            VideoKind.Short    => ("KindPillShortBgBrush",    "KindPillShortFgBrush"),
+            VideoKind.Live     => ("KindPillLiveBgBrush",     "KindPillLiveFgBrush"),
+            VideoKind.Premiere => ("KindPillPremiereBgBrush", "KindPillPremiereFgBrush"),
+            _                  => ("KindPillVideoBgBrush",    "KindPillVideoFgBrush"),
+        };
+
+        var pill = new Border
+        {
+            CornerRadius = new CornerRadius(RowKindPillCornerRadius),
+            Padding = RowKindPillPadding,
+            Margin = RowKindPillMargin,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        SetDynamicBrush(pill, Border.BackgroundProperty, bgKey);
+        var pillText = new TextBlock { Text = kindLabel, FontSize = RowSubTextFontSize };
+        SetDynamicBrush(pillText, TextBlock.ForegroundProperty, fgKey);
+        pill.Child = pillText;
+
+        var titleText = new TextBlock
+        {
+            Text = ch.State.LatestTitle,
+            FontSize = RowSubTextFontSize,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.NoWrap,
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = Cursors.Hand,
+            ToolTip = ch.State.LatestTitle
+        };
+        SetDynamicBrush(titleText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        if (!string.IsNullOrEmpty(ch.State.LatestVideoId))
+        {
+            var kind     = latestKind;
+            var videoId  = ch.State.LatestVideoId;
+            var fullTitle = ch.State.LatestTitle ?? string.Empty;
+            var duration = ch.State.LatestDuration;
+            var publishedAt = ch.State.RecentUploads.FirstOrDefault(r => r.VideoId == videoId)?.PublishedAt;
+            titleText.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                var owner = System.Windows.Window.GetWindow(titleText) as System.Windows.Window;
+                new VideoSummaryPopupWindow(owner!, ch, kind, fullTitle, videoId, duration,
+                    publishedAt: publishedAt).ShowDialog();
+            };
+        }
+
+        // ピルを左固定、タイトルは残り幅いっぱい。
+        // 水平 StackPanel（row）だと子に無限幅が渡り TextTrimming が効かないため、
+        // 幅が確定する DockPanel に入れて自動省略（…）を機能させる。
+        var titleRow = new DockPanel { Margin = TitleRowMargin };
+        DockPanel.SetDock(pill, Dock.Left);
+        titleRow.Children.Add(pill);
+        titleRow.Children.Add(titleText); // LastChildFill=true（既定）で残り幅を占有
+        return titleRow;
+    }
+
+    private static UIElement BuildLiveStatusPillRow(ChannelInfo ch, PendingVideoEntry entry)
+    {
+        var pill = new Border
+        {
+            CornerRadius = new CornerRadius(RowKindPillCornerRadius),
+            Padding = RowKindPillPadding,
+            Margin = RowKindPillMargin,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        SetDynamicBrush(pill, Border.BackgroundProperty, "KindPillLiveBgBrush");
+        var pillText = new TextBlock { Text = "配信中", FontSize = RowSubTextFontSize };
+        SetDynamicBrush(pillText, TextBlock.ForegroundProperty, "KindPillLiveFgBrush");
+        pill.Child = pillText;
+
+        var titleText = new TextBlock
+        {
+            Text = entry.Title,
+            FontSize = RowSubTextFontSize,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.NoWrap,
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = Cursors.Hand,
+            ToolTip = entry.Title
+        };
+        SetDynamicBrush(titleText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        titleText.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            var owner = System.Windows.Window.GetWindow(titleText) as System.Windows.Window;
+            new VideoSummaryPopupWindow(owner!, ch, VideoKind.Live, entry.Title, entry.VideoId).ShowDialog();
+        };
+
+        // ピルを左固定、タイトルは残り幅いっぱい（水平StackPanelでは無限幅が渡りTextTrimmingが効かないためDockPanelを使用）
+        var titleRow = new DockPanel { Margin = TitleRowMargin };
+        DockPanel.SetDock(pill, Dock.Left);
+        titleRow.Children.Add(pill);
+        titleRow.Children.Add(titleText);
+        return titleRow;
     }
 
     private static StackPanel BuildActionsPanel(ChannelInfo ch)
@@ -592,41 +666,66 @@ public partial class MainWindow : System.Windows.Window
     private ContextMenu BuildChannelContextMenu(ChannelInfo ch)
     {
         var menu = new ContextMenu();
+        var items = CreateChannelContextMenuItems(ch);
 
+        menu.Items.Add(items.ClearNew);
+        menu.Items.Add(items.SeparatorAfterClearNew);
+        menu.Items.Add(items.ManualCheck);
+        menu.Items.Add(items.RecentUploads);
+        menu.Items.Add(items.Detail);
+        menu.Items.Add(items.SeparatorAfterDetail);
+        menu.Items.Add(items.Rename);
+        menu.Items.Add(items.SeparatorAfterRename);
+        menu.Items.Add(items.NewCategory);
+        menu.Items.Add(items.MoveToCategory);
+        menu.Items.Add(items.SeparatorAfterMoveToCategory);
+        menu.Items.Add(items.Dormant);
+
+        menu.Opened += (_, _) =>
+        {
+            UpdateManualCheckAvailability(items.ManualCheck);
+
+            if (ch.State.IsBanned)
+            {
+                ApplyBannedChannelMenuVisibility(items);
+                return;
+            }
+
+            ApplyNormalChannelMenuVisibility(ch, items);
+            PopulateMoveToCategoryMenu(ch, items.MoveToCategory);
+        };
+
+        return menu;
+    }
+
+    // チャンネルの右クリックメニューを構成する項目と区切り線の組（開いたときの状態更新で使う）
+    private sealed class ChannelContextMenuItems
+    {
+        public required MenuItem ClearNew;
+        public required Separator SeparatorAfterClearNew;
+        public required MenuItem ManualCheck;
+        public required MenuItem RecentUploads;
+        public required MenuItem Detail;
+        public required Separator SeparatorAfterDetail;
+        public required MenuItem Rename;
+        public required Separator SeparatorAfterRename;
+        public required MenuItem NewCategory;
+        public required MenuItem MoveToCategory;
+        public required Separator SeparatorAfterMoveToCategory;
+        public required MenuItem Dormant;
+    }
+
+    /// <summary>右クリックメニューの項目と区切り線を生成し、クリック処理を取り付ける。</summary>
+    private ChannelContextMenuItems CreateChannelContextMenuItems(ChannelInfo ch)
+    {
         var clearItem = new MenuItem { Header = "🔔 NEWバッジを消す" };
-        clearItem.Click += (_, _) => { AppLogger.Log(LogMsg.ChannelContextClearNew, null, ch.ChannelName); ch.HasUnread = false; SettingsService.Instance.UpdateChannelSilent(ch); RefreshChannelList(); };
+        clearItem.Click += (_, _) => { AppLogger.Log(LogMsg.ChannelContextClearNew, null, ch.ChannelName); ch.HasUnread = false; SettingsService.Instance.Channels.UpdateChannelSilent(ch); RefreshChannelList(); };
 
         var recentUploadsItem = new MenuItem { Header = "📜 動画一覧" };
-        recentUploadsItem.Click += (_, _) =>
-        {
-            var filteredUploads = ch.RecentUploads
-                .Where(v => IsRecentUploadKindEnabled(ch, v.Kind))
-                .Take(RecentUploadsMaxEntries)
-                .ToList();
-            AppLogger.Log(LogMsg.RecentUploadsPopupOpened, null, ch.ChannelName, filteredUploads.Count);
-            new VideoListPopupWindow(this, ch, filteredUploads).ShowDialog();
-        };
+        recentUploadsItem.Click += (_, _) => ShowRecentUploadsPopup(ch);
 
         var manualCheckItem = new MenuItem { Header = "🔄 最新情報取得" };
-        manualCheckItem.Click += async (_, _) =>
-        {
-            if (_channelManualCheckInProgress) return;
-            AppLogger.Log(LogMsg.ChannelContextManualCheck, null, ch.ChannelName);
-            _channelManualCheckInProgress = true;
-            try
-            {
-                await MonitorService.Instance.ManualCheckChannelAsync(ch);
-                RefreshChannelList();
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log(LogMsg.CheckFailed, ch.ChannelName, ex.Message);
-            }
-            finally
-            {
-                _channelManualCheckInProgress = false;
-            }
-        };
+        manualCheckItem.Click += async (_, _) => await RunManualCheckFromMenuAsync(ch);
 
         var renameItem = new MenuItem { Header = "✏ 名称を変更" };
         renameItem.Click += (_, _) => ShowRenameDialog(ch);
@@ -634,30 +733,13 @@ public partial class MainWindow : System.Windows.Window
         var sepRename = new Separator();
 
         var newCatItem = new MenuItem { Header = "📁 カテゴリを作成して移動" };
-        newCatItem.Click += (_, _) =>
-        {
-            var catName = ShowCategoryNameDialog("新規カテゴリを作成");
-            if (catName != null)
-            {
-                var oldCategoryId = ch.CategoryId;
-                var cat = SettingsService.Instance.AddCategory(catName);
-                SettingsService.Instance.SetChannelCategory(ch.ChannelId, cat.CategoryId);
-                AppLogger.Log(LogMsg.ChannelMovedToCategory, null, ch.ChannelName, catName);
-                RefreshChannelList();
-                CheckCategoryAutoDelete(oldCategoryId, false);
-            }
-        };
+        newCatItem.Click += (_, _) => CreateCategoryAndMoveChannel(ch);
 
         var moveToCatItem = new MenuItem { Header = "📂 カテゴリを移動" };
         var sep = new Separator();
 
         var detailItem = new MenuItem { Header = "⚙ 詳細設定" };
-        detailItem.Click += (_, _) =>
-        {
-            AppLogger.Log(LogMsg.ChannelContextOpenDetail, null, ch.ChannelName);
-            var win = new ChannelDetailWindow(ch, this);
-            if (win.ShowDialog() == true) { RefreshChannelList(); UpdateQuotaInfo(); }
-        };
+        detailItem.Click += (_, _) => OpenChannelDetailDialog(ch);
 
         var dormantItem = new MenuItem { Header = "💤 休眠リストへ移動" };
         dormantItem.Click += (_, _) => MoveChannelToDormant(ch);
@@ -665,73 +747,163 @@ public partial class MainWindow : System.Windows.Window
 
         var sepClearRecent = new Separator();
 
-        menu.Items.Add(clearItem);
-        menu.Items.Add(sepClearRecent);
-        menu.Items.Add(manualCheckItem);
-        menu.Items.Add(recentUploadsItem);
-        menu.Items.Add(detailItem);
-        menu.Items.Add(sepDormant);
-        menu.Items.Add(renameItem);
-        menu.Items.Add(sepRename);
-        menu.Items.Add(newCatItem);
-        menu.Items.Add(moveToCatItem);
-        menu.Items.Add(sep);
-        menu.Items.Add(dormantItem);
-
-        menu.Opened += (_, _) =>
+        return new ChannelContextMenuItems
         {
-            var vis = _editMode ? Visibility.Visible : Visibility.Collapsed;
-            clearItem.Visibility     = _editMode ? Visibility.Collapsed : Visibility.Visible;
-            clearItem.IsEnabled      = ch.HasUnread;
-            clearItem.Opacity        = ch.HasUnread ? 1.0 : 0.4;
-            sepClearRecent.Visibility    = _editMode ? Visibility.Collapsed : Visibility.Visible;
-            recentUploadsItem.Visibility = _editMode ? Visibility.Collapsed : Visibility.Visible;
-            recentUploadsItem.IsEnabled  = ch.RecentUploads.Any(v => IsRecentUploadKindEnabled(ch, v.Kind));
-            manualCheckItem.Visibility = _editMode ? Visibility.Collapsed : Visibility.Visible;
-
-            var appState    = SettingsService.Instance.AppState;
-            var quotaKey    = AppConstants.GetQuotaDayKey();
-            var actualUnits = appState.TodayApiDate == quotaKey ? appState.TodayApiUnits : 0;
-            var actualPct   = actualUnits * 100.0 / ApiQuotaHelper.DailyLimit;
-            manualCheckItem.IsEnabled = actualPct <= ApiQuotaHelper.QuotaDisableThresholdPct
-                                        && !MonitorService.Instance.QuotaSuspendedUntil.HasValue;
-            renameItem.Visibility    = vis; sepRename.Visibility    = vis;
-            newCatItem.Visibility    = vis; moveToCatItem.Visibility = vis;
-            sep.Visibility           = vis; detailItem.Visibility   = vis;
-            sepDormant.Visibility    = vis; dormantItem.Visibility  = vis;
-
-            moveToCatItem.Items.Clear();
-            var categories = SettingsService.Instance.Categories;
-            foreach (var cat in categories.OrderBy(c => c.SortOrder))
-            {
-                var item = new MenuItem { Header = cat.CategoryName, Tag = (ch, cat) };
-                item.Click += (s, _) =>
-                {
-                    if (s is MenuItem mi && mi.Tag is (ChannelInfo c, CategoryInfo ca))
-                    {
-                        var oldCategoryId = c.CategoryId;
-                        AppLogger.Log(LogMsg.ChannelMovedToCategory, null, c.ChannelName, ca.CategoryName);
-                        SettingsService.Instance.SetChannelCategory(c.ChannelId, ca.CategoryId);
-                        RefreshChannelList();
-                        CheckCategoryAutoDelete(oldCategoryId, false);
-                    }
-                };
-                moveToCatItem.Items.Add(item);
-            }
-            var uncatItem = new MenuItem { Header = "（未分類）" };
-            uncatItem.Click += (_, _) =>
-            {
-                var oldCategoryId = ch.CategoryId;
-                AppLogger.Log(LogMsg.ChannelMovedToCategory, null, ch.ChannelName, "未分類");
-                SettingsService.Instance.SetChannelCategory(ch.ChannelId, null);
-                RefreshChannelList();
-                CheckCategoryAutoDelete(oldCategoryId, false);
-            };
-            if (categories.Count > 0) moveToCatItem.Items.Add(new Separator());
-            moveToCatItem.Items.Add(uncatItem);
+            ClearNew                     = clearItem,
+            SeparatorAfterClearNew       = sepClearRecent,
+            ManualCheck                  = manualCheckItem,
+            RecentUploads                = recentUploadsItem,
+            Detail                       = detailItem,
+            SeparatorAfterDetail         = sepDormant,
+            Rename                       = renameItem,
+            SeparatorAfterRename         = sepRename,
+            NewCategory                  = newCatItem,
+            MoveToCategory               = moveToCatItem,
+            SeparatorAfterMoveToCategory = sep,
+            Dormant                      = dormantItem
         };
+    }
 
-        return menu;
+    /// <summary>「動画一覧」を選んだときの、動画一覧ポップアップの表示。</summary>
+    private void ShowRecentUploadsPopup(ChannelInfo ch)
+    {
+        var filteredUploads = ch.State.RecentUploads
+            .Where(v => IsRecentUploadKindEnabled(ch, v.Kind))
+            .Take(RecentUploadsMaxEntries)
+            .ToList();
+        AppLogger.Log(LogMsg.RecentUploadsPopupOpened, null, ch.ChannelName, filteredUploads.Count);
+        new VideoListPopupWindow(this, ch, filteredUploads).ShowDialog();
+    }
+
+    /// <summary>「最新情報取得」を選んだときの、チャンネルの手動チェック（BAN中は再確認）の実行。</summary>
+    private async Task RunManualCheckFromMenuAsync(ChannelInfo ch)
+    {
+        if (_channelManualCheckInProgress) return;
+        _channelManualCheckInProgress = true;
+        try
+        {
+            if (ch.State.IsBanned)
+            {
+                AppLogger.Log(LogMsg.ChannelContextBanRecheck, null, ch.ChannelName);
+                await MonitorService.Instance.RecheckBannedChannelAsync(ch);
+            }
+            else
+            {
+                AppLogger.Log(LogMsg.ChannelContextManualCheck, null, ch.ChannelName);
+                await MonitorService.Instance.ManualCheckChannelAsync(ch);
+            }
+            RefreshChannelList();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log(LogMsg.CheckFailed, ch.ChannelName, ex.Message);
+        }
+        finally
+        {
+            _channelManualCheckInProgress = false;
+        }
+    }
+
+    /// <summary>「カテゴリを作成して移動」を選んだときの、カテゴリ作成とチャンネルの移動。</summary>
+    private void CreateCategoryAndMoveChannel(ChannelInfo ch)
+    {
+        var catName = ShowCategoryNameDialog("新規カテゴリを作成");
+        if (catName != null)
+        {
+            var oldCategoryId = ch.CategoryId;
+            var cat = SettingsService.Instance.Channels.AddCategory(catName);
+            SettingsService.Instance.Channels.SetChannelCategory(ch.ChannelId, cat.CategoryId);
+            AppLogger.Log(LogMsg.ChannelMovedToCategory, null, ch.ChannelName, catName);
+            RefreshChannelList();
+            CheckCategoryAutoDelete(oldCategoryId, false);
+        }
+    }
+
+    /// <summary>「詳細設定」を選んだときの、チャンネル詳細ウィンドウの表示。</summary>
+    private void OpenChannelDetailDialog(ChannelInfo ch)
+    {
+        AppLogger.Log(LogMsg.ChannelContextOpenDetail, null, ch.ChannelName);
+        var win = new ChannelDetailWindow(ch, this);
+        if (win.ShowDialog() == true) { RefreshChannelList(); }
+    }
+
+    /// <summary>「最新情報取得」の有効・無効を、API使用量と停止状態から決める。</summary>
+    private static void UpdateManualCheckAvailability(MenuItem manualCheckItem)
+    {
+        var appState    = SettingsService.Instance.MonitorState.AppState;
+        var quotaKey    = AppConstants.GetQuotaDayKey();
+        var actualUnits = appState.TodayApiDate == quotaKey ? appState.TodayApiUnits : 0;
+        var actualPct   = actualUnits * 100.0 / ApiQuotaHelper.DailyLimit;
+        manualCheckItem.IsEnabled = actualPct <= ApiQuotaHelper.QuotaDisableThresholdPct
+                                    && !MonitorService.Instance.QuotaSuspendedUntil.HasValue;
+    }
+
+    /// <summary>BAN中のチャンネルの右クリックメニューで、項目の表示・非表示を切り替える。</summary>
+    private static void ApplyBannedChannelMenuVisibility(ChannelContextMenuItems items)
+    {
+        items.ManualCheck.Visibility                  = Visibility.Visible;
+        items.Dormant.Visibility                      = Visibility.Visible;
+        items.ClearNew.Visibility                     = Visibility.Collapsed;
+        items.SeparatorAfterClearNew.Visibility       = Visibility.Collapsed;
+        items.RecentUploads.Visibility                = Visibility.Collapsed;
+        items.Detail.Visibility                       = Visibility.Collapsed;
+        items.SeparatorAfterDetail.Visibility         = Visibility.Collapsed;
+        items.Rename.Visibility                       = Visibility.Collapsed;
+        items.SeparatorAfterRename.Visibility         = Visibility.Collapsed;
+        items.NewCategory.Visibility                  = Visibility.Collapsed;
+        items.MoveToCategory.Visibility               = Visibility.Collapsed;
+        items.SeparatorAfterMoveToCategory.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>通常時のチャンネルの右クリックメニューで、項目の表示・非表示と有効・無効を編集モードに応じて切り替える。</summary>
+    private void ApplyNormalChannelMenuVisibility(ChannelInfo ch, ChannelContextMenuItems items)
+    {
+        var editModeVisibility = _editMode ? Visibility.Visible : Visibility.Collapsed;
+        items.ClearNew.Visibility               = _editMode ? Visibility.Collapsed : Visibility.Visible;
+        items.ClearNew.IsEnabled                = ch.HasUnread;
+        items.ClearNew.Opacity                  = ch.HasUnread ? 1.0 : CategoryDimmedOpacity;
+        items.SeparatorAfterClearNew.Visibility = _editMode ? Visibility.Collapsed : Visibility.Visible;
+        items.RecentUploads.Visibility          = _editMode ? Visibility.Collapsed : Visibility.Visible;
+        items.RecentUploads.IsEnabled           = ch.State.RecentUploads.Any(v => IsRecentUploadKindEnabled(ch, v.Kind));
+        items.ManualCheck.Visibility            = _editMode ? Visibility.Collapsed : Visibility.Visible;
+        items.Rename.Visibility                 = editModeVisibility; items.SeparatorAfterRename.Visibility = editModeVisibility;
+        items.NewCategory.Visibility            = editModeVisibility; items.MoveToCategory.Visibility = editModeVisibility;
+        items.SeparatorAfterMoveToCategory.Visibility = editModeVisibility; items.Detail.Visibility = editModeVisibility;
+        items.SeparatorAfterDetail.Visibility   = editModeVisibility; items.Dormant.Visibility = editModeVisibility;
+    }
+
+    /// <summary>「カテゴリを移動」の子項目（各カテゴリと未分類）を作り直す。</summary>
+    private void PopulateMoveToCategoryMenu(ChannelInfo ch, MenuItem moveToCategoryItem)
+    {
+        moveToCategoryItem.Items.Clear();
+        var categories = SettingsService.Instance.Channels.Categories;
+        foreach (var cat in categories.OrderBy(c => c.SortOrder))
+        {
+            var item = new MenuItem { Header = cat.CategoryName, Tag = (ch, cat) };
+            item.Click += (s, _) =>
+            {
+                if (s is MenuItem menuItem && menuItem.Tag is (ChannelInfo targetChannel, CategoryInfo targetCategory))
+                {
+                    var oldCategoryId = targetChannel.CategoryId;
+                    AppLogger.Log(LogMsg.ChannelMovedToCategory, null, targetChannel.ChannelName, targetCategory.CategoryName);
+                    SettingsService.Instance.Channels.SetChannelCategory(targetChannel.ChannelId, targetCategory.CategoryId);
+                    RefreshChannelList();
+                    CheckCategoryAutoDelete(oldCategoryId, false);
+                }
+            };
+            moveToCategoryItem.Items.Add(item);
+        }
+        var uncatItem = new MenuItem { Header = AppConstants.UncategorizedMenuLabel };
+        uncatItem.Click += (_, _) =>
+        {
+            var oldCategoryId = ch.CategoryId;
+            AppLogger.Log(LogMsg.ChannelMovedToCategory, null, ch.ChannelName, AppConstants.UncategorizedLabel);
+            SettingsService.Instance.Channels.SetChannelCategory(ch.ChannelId, null);
+            RefreshChannelList();
+            CheckCategoryAutoDelete(oldCategoryId, false);
+        };
+        if (categories.Count > 0) moveToCategoryItem.Items.Add(new Separator());
+        moveToCategoryItem.Items.Add(uncatItem);
     }
 
     /// <summary>RecentUploads（最新動画一覧）表示用に、動画種別が対応する通知トグルでONになっているかを判定する。</summary>
@@ -808,9 +980,9 @@ public partial class MainWindow : System.Windows.Window
             if (Application.Current.MainWindow is not MainWindow win || !win._editMode) return;
             e.Handled = true;
             ch.IsFavorite = !ch.IsFavorite;
-            SettingsService.Instance.UpdateChannelSilent(ch);
+            SettingsService.Instance.Channels.UpdateChannelSilent(ch);
             SettingsService.Instance.MarkDirty();
-            AppLogger.Log(LogMsg.FavoriteToggleChanged, ch.ChannelName, ch.IsFavorite ? "ON" : "OFF");
+            AppLogger.Log(LogMsg.FavoriteToggleChanged, ch.ChannelName, AppLogger.OnOffText(ch.IsFavorite));
             border.Child = BuildFavoriteIcon(ch.IsFavorite);
         };
         return border;

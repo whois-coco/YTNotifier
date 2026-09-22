@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -31,6 +30,10 @@ public partial class VideoListPopupWindow : Window
     private const double RecentUploadThumbnailWidth  = 96;
     private const double RecentUploadThumbnailHeight = 54;
 
+    /// <summary>複数ライブ／プレミア一覧の行サムネイルの表示サイズ</summary>
+    private const double LiveEntryThumbnailWidth  = 96;
+    private const double LiveEntryThumbnailHeight = 54;
+
     /// <summary>ライブ配信中（配信終了していない）の動画時間バッジに表示する文言</summary>
     private const string LiveBadgeText = "LIVE";
 
@@ -55,7 +58,10 @@ public partial class VideoListPopupWindow : Window
     public VideoListPopupWindow(Window owner, ChannelInfo channel, VideoKind kind, List<PendingVideoEntry> entries, bool allowSummary = true)
     {
         InitializeComponent();
-        Loaded += (_, _) => WindowCornerHelper.Apply(this);
+        MinWidth                = RecentUploadsWindowMinWidth;
+        MaxWidth                = RecentUploadsWindowMaxWidth;
+        EntriesScroll.MaxHeight = RecentUploadsListMaxHeight;
+        WindowCornerHelper.ApplyOnLoaded(this);
         Owner         = owner;
         _channel      = channel;
         _kind         = kind;
@@ -64,23 +70,7 @@ public partial class VideoListPopupWindow : Window
         HeaderText.Text = kind == VideoKind.Premiere ? HeaderTextPremiere : HeaderTextLive;
 
         foreach (var entry in entries)
-        {
-            var titleText = new TextBlock
-            {
-                Text = entry.Title,
-                FontSize = TitleFontSize,
-                TextWrapping = TextWrapping.Wrap,
-                Cursor = Cursors.Hand,
-                Margin = new Thickness(0, 0, 0, RowBottomMargin),
-                Foreground = (Brush)TryFindResource("TextPrimaryBrush")
-            };
-            titleText.MouseLeftButtonUp += (_, e) =>
-            {
-                e.Handled = true;
-                new VideoSummaryPopupWindow(this, _channel, _kind, entry.Title, entry.VideoId, allowSummary: _allowSummary).ShowDialog();
-            };
-            EntriesPanel.Children.Add(titleText);
-        }
+            EntriesPanel.Children.Add(BuildLiveEntryRow(entry));
 
         AppLogger.Log(LogMsg.VideoListPopupOpened, null, channel.ChannelName, entries.Count);
     }
@@ -92,7 +82,7 @@ public partial class VideoListPopupWindow : Window
         MinWidth                = RecentUploadsWindowMinWidth;
         MaxWidth                = RecentUploadsWindowMaxWidth;
         EntriesScroll.MaxHeight = RecentUploadsListMaxHeight;
-        Loaded += (_, _) => WindowCornerHelper.Apply(this);
+        WindowCornerHelper.ApplyOnLoaded(this);
         Owner         = owner;
         _channel      = channel;
         _allowSummary = true;
@@ -103,6 +93,94 @@ public partial class VideoListPopupWindow : Window
             EntriesPanel.Children.Add(BuildRecentUploadRow(channel, entry));
 
         AppLogger.Log(LogMsg.RecentUploadsPopupOpened, null, channel.ChannelName, entries.Count);
+    }
+
+    private UIElement BuildLiveEntryRow(PendingVideoEntry entry)
+    {
+        var thumbnailImage = new Image { Stretch = Stretch.UniformToFill };
+        var thumbnailBorder = new Border
+        {
+            Width        = LiveEntryThumbnailWidth,
+            Height       = LiveEntryThumbnailHeight,
+            CornerRadius = new CornerRadius(CardCornerRadius),
+            ClipToBounds = true,
+            Background   = (Brush)TryFindResource("SurfaceElevatedBrush"),
+            Child        = thumbnailImage
+        };
+        LoadLiveEntryThumbnail(entry, thumbnailImage);
+
+        var (pillLabel, pillBgKey, pillFgKey) = _kind == VideoKind.Premiere
+            ? ("プレミア", "KindPillPremiereBgBrush", "KindPillPremiereFgBrush")
+            : ("ライブ",   "KindPillLiveBgBrush",     "KindPillLiveFgBrush");
+        var kindPill = new Border
+        {
+            CornerRadius = new CornerRadius(BadgeCornerRadius),
+            Padding      = BadgePadding,
+            Margin       = BadgeMargin,
+            Background   = (Brush)TryFindResource(pillBgKey),
+            Child = new TextBlock
+            {
+                Text       = pillLabel,
+                FontSize   = MetaFontSize,
+                Foreground = (Brush)TryFindResource(pillFgKey)
+            }
+        };
+
+        var metaRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = MetaRowMargin };
+        metaRow.Children.Add(kindPill);
+
+        var titleText = new TextBlock
+        {
+            Text         = entry.Title,
+            FontSize     = TitleFontSize,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground   = (Brush)TryFindResource("TextPrimaryBrush")
+        };
+
+        var infoPanel = new StackPanel { Margin = InfoPanelMargin, VerticalAlignment = VerticalAlignment.Center };
+        infoPanel.Children.Add(metaRow);
+        infoPanel.Children.Add(titleText);
+
+        var row = new DockPanel();
+        DockPanel.SetDock(thumbnailBorder, Dock.Left);
+        row.Children.Add(thumbnailBorder);
+        row.Children.Add(infoPanel);
+
+        var card = new Border
+        {
+            CornerRadius    = new CornerRadius(CardCornerRadius),
+            BorderThickness = new Thickness(CardBorderThickness),
+            Padding         = CardPadding,
+            Margin          = new Thickness(0, 0, 0, RowBottomMargin),
+            Background      = (Brush)TryFindResource("SurfaceElevatedBrush"),
+            BorderBrush     = (Brush)TryFindResource("BorderBrush"),
+            Cursor          = Cursors.Hand,
+            Child           = row
+        };
+        card.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            new VideoSummaryPopupWindow(this, _channel, _kind, entry.Title, entry.VideoId, allowSummary: _allowSummary).ShowDialog();
+        };
+        return card;
+    }
+
+    private void LoadLiveEntryThumbnail(PendingVideoEntry entry, Image image)
+    {
+        if (ImageCacheService.TryGetCachedThumbnail(_channel.ChannelId, _kind, entry.VideoId, out var cached) && cached != null)
+        {
+            image.Source = cached;
+            return;
+        }
+
+        if (string.IsNullOrEmpty(entry.ThumbnailUrl)) return;
+
+        Task.Run(async () =>
+        {
+            var bmp = await ImageCacheService.GetOrDownloadThumbnailAsync(entry.ThumbnailUrl, _channel.ChannelId, _kind, entry.VideoId);
+            if (bmp == null) return;
+            await image.Dispatcher.InvokeAsync(() => image.Source = bmp);
+        });
     }
 
     private UIElement BuildRecentUploadRow(ChannelInfo channel, RecentUploadEntry entry)
@@ -196,7 +274,7 @@ public partial class VideoListPopupWindow : Window
         {
             e.Handled = true;
             var url = YouTubeConstants.WatchUrlBase + entry.VideoId;
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            BrowserLaunchHelper.OpenUrl(url);
             AppLogger.Log(LogMsg.RecentUploadThumbnailOpened, null, channel.ChannelName);
         };
 
@@ -257,9 +335,7 @@ public partial class VideoListPopupWindow : Window
     }
 
     private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ButtonState == MouseButtonState.Pressed) DragMove();
-    }
+        => WindowTitleBarHelper.DragMoveOnPress(this, e);
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }

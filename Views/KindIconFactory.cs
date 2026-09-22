@@ -59,11 +59,11 @@ internal static class KindIconFactory
             {
                 var strokePaths = new List<Path>();
                 var canvas = new Canvas { Width = canvasSize, Height = canvasSize };
-                foreach (var d in LiveIconPaths)
+                foreach (var pathData in LiveIconPaths)
                 {
                     var path = new Path
                     {
-                        Data               = Geometry.Parse(d),
+                        Data               = Geometry.Parse(pathData),
                         Fill               = Brushes.Transparent,
                         StrokeThickness    = IconStrokeThickness,
                         StrokeStartLineCap = PenLineCap.Round,

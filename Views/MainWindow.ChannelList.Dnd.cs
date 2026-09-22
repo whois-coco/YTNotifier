@@ -150,11 +150,11 @@ public partial class MainWindow : System.Windows.Window
     private void InitRowTransforms(StackPanel panel)
     {
         var catId = GetDragCatId(_dragSource!);
-        foreach (var b in panel.Children.OfType<Border>()
+        foreach (var channelRowBorder in panel.Children.OfType<Border>()
             .Where(b => b.Tag is ChannelInfo ch && MatchesCatId(ch, catId)))
         {
-            if (b.RenderTransform is TranslateTransform tt) tt.Y = 0;
-            else b.RenderTransform = new TranslateTransform(0, 0);
+            if (channelRowBorder.RenderTransform is TranslateTransform translateTransform) translateTransform.Y = 0;
+            else channelRowBorder.RenderTransform = new TranslateTransform(0, 0);
         }
     }
 
@@ -179,10 +179,10 @@ public partial class MainWindow : System.Windows.Window
 
         // マウス位置に最も近い中心を持つ行のインデックス
         int best = 0; double bestDist = double.MaxValue;
-        for (int i = 0; i < centers.Count; i++)
+        for (int centerIndex = 0; centerIndex < centers.Count; centerIndex++)
         {
-            double d = Math.Abs(mouseY - centers[i]);
-            if (d < bestDist) { bestDist = d; best = i; }
+            double distance = Math.Abs(mouseY - centers[centerIndex]);
+            if (distance < bestDist) { bestDist = distance; best = centerIndex; }
         }
         return best;
     }
@@ -205,23 +205,23 @@ public partial class MainWindow : System.Windows.Window
         var duration = new Duration(TimeSpan.FromMilliseconds(DndReorderAnimDurationMs));
         double rowH  = _dragSourceRow.ActualHeight + _dragSourceRow.Margin.Bottom;
 
-        for (int i = 0; i < rows.Count; i++)
+        for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
-            if (rows[i] == _dragSourceRow) continue;
-            if (rows[i].RenderTransform is not TranslateTransform tt)
+            if (rows[rowIndex] == _dragSourceRow) continue;
+            if (rows[rowIndex].RenderTransform is not TranslateTransform translateTransform)
             {
-                tt = new TranslateTransform(0, 0);
-                rows[i].RenderTransform = tt;
+                translateTransform = new TranslateTransform(0, 0);
+                rows[rowIndex].RenderTransform = translateTransform;
             }
 
             // srcIdx → best に動いたとき、間にある行を反対方向へずらす
             double target = 0;
-            if (srcIdx < best && i > srcIdx && i <= best) target = -rowH;
-            else if (srcIdx > best && i >= best && i < srcIdx) target = rowH;
+            if (srcIdx < best && rowIndex > srcIdx && rowIndex <= best) target = -rowH;
+            else if (srcIdx > best && rowIndex >= best && rowIndex < srcIdx) target = rowH;
 
-            if (Math.Abs(tt.Y - target) < 1) continue;
-            tt.BeginAnimation(TranslateTransform.YProperty,
-                new DoubleAnimation(tt.Y, target, duration)
+            if (Math.Abs(translateTransform.Y - target) < 1) continue;
+            translateTransform.BeginAnimation(TranslateTransform.YProperty,
+                new DoubleAnimation(translateTransform.Y, target, duration)
                 { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
         }
     }
@@ -231,20 +231,20 @@ public partial class MainWindow : System.Windows.Window
     {
         var src   = _dragSourceRow?.Tag as ChannelInfo;
         var catId = src != null ? GetDragCatId(src) : null;
-        foreach (var b in panel.Children.OfType<Border>()
+        foreach (var channelRowBorder in panel.Children.OfType<Border>()
             .Where(b => b.Tag is ChannelInfo ch && MatchesCatId(ch, catId)))
         {
-            if (b.RenderTransform is not TranslateTransform tt) continue;
+            if (channelRowBorder.RenderTransform is not TranslateTransform translateTransform) continue;
             // 確定時は即時リセット（アニメーション中の状態でRefreshが走るのを防ぐ）
-            tt.BeginAnimation(TranslateTransform.YProperty, null);
-            tt.Y = 0;
+            translateTransform.BeginAnimation(TranslateTransform.YProperty, null);
+            translateTransform.Y = 0;
         }
     }
 
     // データを実際に並び替えてリストを再描画
     private void CommitSwap(ChannelInfo srcCh, string? catId, int destRelIdx, StackPanel panel)
     {
-        var channels  = SettingsService.Instance.Channels;
+        var channels  = SettingsService.Instance.Channels.GetChannelsSnapshot();
         var isDormant = panel == DormantChannelList;
         var sameCat   = channels
             .Select((c, i) => (c, i))
@@ -261,28 +261,7 @@ public partial class MainWindow : System.Windows.Window
             return;
         }
 
-        var (moving, movingGlobal) = sameCat[srcCatIdx];
-        channels.RemoveAt(movingGlobal);
-
-        // RemoveAt後にインデックスを再取得
-        var updated = channels.Select((c, i) => (c, i)).Where(t => MatchesCatId(t.c, catId) && t.c.IsDormant == isDormant).ToList();
-
-        // destRelIdx は「移動先の行インデックス」（CalcSwapIndex が返す最近傍行）
-        // srcより下に移動する場合: destの後ろに挿入（Remove後インデックスは1つずれる）
-        // srcより上に移動する場合: destの前に挿入
-        int insertIdx;
-        if (destRelIdx > srcCatIdx)
-        {
-            // 下移動: destRelIdx行の後ろ → Remove後は destRelIdx-1 の後ろ
-            var afterIdx = destRelIdx - 1;
-            insertIdx = afterIdx < updated.Count ? updated[afterIdx].i + 1 : channels.Count;
-        }
-        else
-        {
-            // 上移動: destRelIdx行の前
-            insertIdx = destRelIdx < updated.Count ? updated[destRelIdx].i : channels.Count;
-        }
-        channels.Insert(Math.Clamp(insertIdx, 0, channels.Count), moving);
+        SettingsService.Instance.Channels.ReorderChannelInGroup(srcCh, channel => MatchesCatId(channel, catId) && channel.IsDormant == isDormant, srcCatIdx, destRelIdx);
 
         // Transform を即時リセットしてから再描画
         ResetRowTransforms(true, panel);
@@ -316,7 +295,8 @@ public partial class MainWindow : System.Windows.Window
         public required string DragFormat;
         public required Func<List<CategoryInfo>> GetCategories;
         public required Action Refresh;
-        public List<(double y, int childIndex)> Boundaries = new();
+        public required Func<bool> IsEditMode;
+        public List<(double boundaryY, int childIndex)> Boundaries = new();
         public Border? DropIndicator;
         public int DropIndicatorIndex = -1;
     }
@@ -328,17 +308,40 @@ public partial class MainWindow : System.Windows.Window
     {
         Panel         = ChannelList,
         DragFormat    = CategoryDragFormat,
-        GetCategories = () => SettingsService.Instance.Categories,
+        GetCategories = () => SettingsService.Instance.Channels.Categories,
         Refresh       = RefreshChannelList,
+        IsEditMode    = () => _editMode,
     };
 
     private CategoryDndUi DormantCategoryDnd => _dormantCategoryDnd ??= new CategoryDndUi
     {
         Panel         = DormantChannelList,
         DragFormat    = DormantCategoryDragFormat,
-        GetCategories = () => SettingsService.Instance.DormantCategories,
+        GetCategories = () => SettingsService.Instance.Channels.DormantCategories,
         Refresh       = RefreshDormantChannelList,
+        IsEditMode    = () => _dormantEditMode,
     };
+
+    // カテゴリ行に、編集モード中のドラッグ開始処理を取り付ける
+    private void AttachCategoryRowDragEvents(Border row, CategoryInfo cat, CategoryDndUi ui)
+    {
+        System.Windows.Point catDragStart = default;
+        bool catDragReady = false;
+
+        row.PreviewMouseLeftButtonDown += (_, downArgs) => { if (ui.IsEditMode()) { catDragStart = downArgs.GetPosition(ui.Panel); catDragReady = true; } };
+        row.PreviewMouseMove += (sender, moveArgs) =>
+        {
+            if (!ui.IsEditMode() || !catDragReady) return;
+            if (moveArgs.LeftButton != System.Windows.Input.MouseButtonState.Pressed) { catDragReady = false; return; }
+            var diff = moveArgs.GetPosition(ui.Panel) - catDragStart;
+            if (Math.Abs(diff.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(diff.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            catDragReady = false;
+            CacheCategoryBoundariesCore(ui);
+            if (sender is Border dragSourceBorder) DragDrop.DoDragDrop(dragSourceBorder, new DataObject(ui.DragFormat, cat.CategoryId), DragDropEffects.Move);
+        };
+        row.PreviewMouseLeftButtonUp += (_, _) => { catDragReady = false; };
+    }
 
     // ドラッグ開始時にカテゴリ行の境界位置（Y座標と挿入先インデックス）を記録する
     private static void CacheCategoryBoundariesCore(CategoryDndUi ui)
@@ -359,7 +362,7 @@ public partial class MainWindow : System.Windows.Window
             if (lastRow != null)
             {
                 double lastH = lastRow.ActualHeight + lastRow.Margin.Top + lastRow.Margin.Bottom;
-                ui.Boundaries.Add((last.y + lastH, last.childIndex + 1));
+                ui.Boundaries.Add((last.boundaryY + lastH, last.childIndex + 1));
             }
         }
     }
@@ -409,9 +412,9 @@ public partial class MainWindow : System.Windows.Window
         if (ui.Boundaries.Count == 0) { e.Handled = true; return; }
 
         int bestIdx = ui.Boundaries[^1].childIndex; double bestDist = double.MaxValue;
-        foreach (var (y, idx) in ui.Boundaries)
+        foreach (var (boundaryY, idx) in ui.Boundaries)
         {
-            double dist = Math.Abs(posY - y);
+            double dist = Math.Abs(posY - boundaryY);
             if (dist < bestDist) { bestDist = dist; bestIdx = idx; }
         }
         ShowDropIndicatorCore(ui, bestIdx);
@@ -447,7 +450,7 @@ public partial class MainWindow : System.Windows.Window
         if (catDstIdx > catSrcIdx) catDstIdx--;
         catDstIdx = Math.Max(0, Math.Min(catDstIdx, categories.Count));
         categories.Insert(catDstIdx, movingCat);
-        for (int i = 0; i < categories.Count; i++) categories[i].SortOrder = i;
+        for (int categoryIndex = 0; categoryIndex < categories.Count; categoryIndex++) categories[categoryIndex].SortOrder = categoryIndex;
 
         SettingsService.Instance.MarkDirty();
         AppLogger.Log(LogMsg.CategoryReordered, null, movingCat.CategoryName);

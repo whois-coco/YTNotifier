@@ -1,9 +1,6 @@
-using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using KeyEventArgs  = System.Windows.Input.KeyEventArgs;
 using Application   = System.Windows.Application;
@@ -15,11 +12,6 @@ namespace YTNotifier.Views;
 public partial class ApiKeySetupWindow : Window
 {
     public bool ApiKeySaved { get; private set; } = false;
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-    private const int WM_NCLBUTTONDOWN = 0xA1;
-    private const int HTCAPTION        = 2;
 
     private const int IntroStepIndex      = 0;
     private const int FirstImageStepIndex = 1;
@@ -190,7 +182,7 @@ public partial class ApiKeySetupWindow : Window
 
     private void OpenConsoleButton_Click(object sender, RoutedEventArgs e)
     {
-        Process.Start(new ProcessStartInfo(GoogleCloudConsoleUrl) { UseShellExecute = true });
+        BrowserLaunchHelper.OpenUrl(GoogleCloudConsoleUrl);
     }
 
     private void DiscardStepImages()
@@ -199,10 +191,7 @@ public partial class ApiKeySetupWindow : Window
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ButtonState == MouseButtonState.Pressed)
-            SendMessage(new WindowInteropHelper(this).Handle, WM_NCLBUTTONDOWN, new IntPtr(HTCAPTION), IntPtr.Zero);
-    }
+        => WindowTitleBarHelper.CaptionDragOnPress(this, e);
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
@@ -264,7 +253,7 @@ public partial class ApiKeySetupWindow : Window
         };
         if (dlg.ShowDialog() != true) return;
 
-        var (success, message) = Services.SettingsService.Instance.ImportBackup(dlg.FileName);
+        var (success, message) = Services.SettingsService.Instance.Backup.ImportBackup(dlg.FileName);
         if (success)
         {
             AppLogger.Log(LogMsg.SettingBackupImported, null, System.IO.Path.GetFileName(dlg.FileName));

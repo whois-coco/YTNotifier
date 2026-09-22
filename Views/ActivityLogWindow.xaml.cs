@@ -2,12 +2,10 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
-using System.Windows.Interop;
 using YTNotifier.Constants;
 using YTNotifier.Models;
 using YTNotifier.Services;
@@ -18,11 +16,6 @@ public partial class ActivityLogWindow : Window
 {
     private const string WindowsExplorer = "explorer.exe";
     private const string DefaultLogFilterTag = "Info";
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-    private const int WM_NCLBUTTONDOWN = 0xA1;
-    private const int HTCAPTION        = 2;
 
     private System.Collections.Specialized.NotifyCollectionChangedEventHandler? _handler;
     private ICollectionView? _logView;
@@ -107,10 +100,7 @@ public partial class ActivityLogWindow : Window
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ButtonState == MouseButtonState.Pressed)
-            SendMessage(new WindowInteropHelper(this).Handle, WM_NCLBUTTONDOWN, new IntPtr(HTCAPTION), IntPtr.Zero);
-    }
+        => WindowTitleBarHelper.CaptionDragOnPress(this, e);
 
     private void TitleBar_Minimize(object sender, RoutedEventArgs e)
         => WindowState = WindowState.Minimized;

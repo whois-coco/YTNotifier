@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Windows;
@@ -8,6 +7,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using YTNotifier.Constants;
 using YTNotifier.Plugin;
+using YTNotifier.Services;
 using Button = System.Windows.Controls.Button;
 
 namespace YTNotifier.Views;
@@ -48,11 +48,10 @@ public partial class VideoSummaryPopupWindow
     private const string TextPrimaryBrushKey     = "TextPrimaryBrush";
     private const string TextSecondaryBrushKey   = "TextSecondaryBrush";
     private const string SurfaceAltBrushKey      = "SurfaceAltBrush";
-    private const string HttpsScheme             = "https://";
-    private const string HttpScheme              = "http://";
 
     private const string StatusRunningText = "実行しています…";
     private const string StatusFailedText  = "実行できませんでした";
+    private const string StatusHostUnavailableText = "プラグインを起動できませんでした";
     private const string ResultNoneText    = "完了しました";
 
     private const string RejectReasonTooManyCommands = "1画面あたりの上限超過";
@@ -146,8 +145,8 @@ public partial class VideoSummaryPopupWindow
     {
         var order        = PluginBridge.Instance.GetPluginOrder();
         var rankByFolder = new Dictionary<string, int>(StringComparer.Ordinal);
-        for (var i = 0; i < order.Count; i++)
-            if (!rankByFolder.ContainsKey(order[i])) rankByFolder[order[i]] = i;
+        for (var orderIndex = 0; orderIndex < order.Count; orderIndex++)
+            if (!rankByFolder.ContainsKey(order[orderIndex])) rankByFolder[order[orderIndex]] = orderIndex;
 
         return PluginBridge.Instance.Plugins
             .OrderBy(p => rankByFolder.TryGetValue(p.Folder, out var rank) ? rank : int.MaxValue)
@@ -238,10 +237,10 @@ public partial class VideoSummaryPopupWindow
         bool Contains(List<PendingVideoEntry> entries) =>
             entries.Any(entry => string.Equals(entry.VideoId, videoId, StringComparison.Ordinal));
 
-        return Contains(_channel.ActiveLives)
-            || Contains(_channel.ActivePremieres)
-            || Contains(_channel.PendingLives)
-            || Contains(_channel.PendingPremieres);
+        return Contains(_channel.State.ActiveLives)
+            || Contains(_channel.State.ActivePremieres)
+            || Contains(_channel.State.PendingLives)
+            || Contains(_channel.State.PendingPremieres);
     }
 
     private static string? FormatPublishedAtIso(DateTime? publishedAt)
@@ -283,8 +282,8 @@ public partial class VideoSummaryPopupWindow
         PluginActionsButtons.Children.Clear();
 
         var inlineCount = Math.Min(commands.Count, InlineActionSlots);
-        for (var i = 0; i < inlineCount; i++)
-            PluginActionsButtons.Children.Add(CreateActionButton(commands[i]));
+        for (var actionIndex = 0; actionIndex < inlineCount; actionIndex++)
+            PluginActionsButtons.Children.Add(CreateActionButton(commands[actionIndex]));
 
         if (commands.Count > InlineActionSlots)
             PluginActionsButtons.Children.Add(CreateOverflowButton(commands.Skip(InlineActionSlots).ToList()));
@@ -360,9 +359,15 @@ public partial class VideoSummaryPopupWindow
 
         ShowActionStatus(StatusRunningText, target);
 
-        var output = await PluginBridge.Instance.InvokeAsync(entry.Command.Job, BuildInvokeInput(entry.Command));
+        var invokeResult = await PluginBridge.Instance.InvokeAsync(entry.Command.Job, BuildInvokeInput(entry.Command));
 
-        RenderActionResult(entry, output, target);
+        if (invokeResult.HostUnavailable)
+        {
+            ShowActionStatus(StatusHostUnavailableText, target);
+            return;
+        }
+
+        RenderActionResult(entry, invokeResult.Output, target);
     }
 
     // ── 右サイドパネルの開閉 ─────────────────────────────────────────────
@@ -649,15 +654,7 @@ public partial class VideoSummaryPopupWindow
     {
         var url = YouTubeConstants.WatchUrlBase + _videoId
                   + YouTubeConstants.TimeParamPrefix + clampedStart + YouTubeConstants.TimeParamSuffix;
-        OpenInDefaultBrowser(url);
-    }
-
-    private static void OpenInDefaultBrowser(string url)
-    {
-        if (!url.StartsWith(HttpsScheme, StringComparison.OrdinalIgnoreCase) &&
-            !url.StartsWith(HttpScheme,  StringComparison.OrdinalIgnoreCase))
-            return;
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        BrowserLaunchHelper.OpenUrl(url);
     }
 
     // ── 内部型 ────────────────────────────────────────────────────────

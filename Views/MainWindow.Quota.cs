@@ -40,136 +40,15 @@ public partial class MainWindow : System.Windows.Window
     internal void AutoAdjustIntervalForQuota()
     {
         var svc      = SettingsService.Instance;
-        var s        = svc.Settings;
-        var channels = svc.Channels;
+        var settings = svc.Settings;
+        var channels = svc.Channels.GetChannelsSnapshot();
         if (channels.Count == 0) return;
 
-        var (safe, recommended) = ApiQuotaHelper.ValidateInterval(s.CheckIntervalMinutes, channels);
-        if (!safe && s.CheckIntervalMinutes != recommended)
+        var (safe, recommended) = ApiQuotaHelper.ValidateInterval(settings.CheckIntervalMinutes, channels);
+        if (!safe && settings.CheckIntervalMinutes != recommended)
         {
-            var recItem = IntervalComboBox?.Items.OfType<ComboBoxItem>()
-                .FirstOrDefault(i => i.Tag?.ToString() == recommended.ToString());
-            if (recItem != null && IntervalComboBox != null)
-                IntervalComboBox.SelectedItem = recItem;
+            settings.CheckIntervalMinutes = recommended;
             AppLogger.Log(LogMsg.QuotaRiskAdjusted, null, recommended);
-        }
-        UpdateQuotaInfo();
-    }
-
-    // API使用量ドーナツのタイトル・内訳ラベル
-    private const string QuotaDonutTitleEstimate       = "API使用量（見積り）";
-    private const string QuotaDonutTitleActual         = "本日の実使用量";
-    private const string QuotaDonutLabelEstimateNormal  = "通常";
-    private const string QuotaDonutLabelEstimateLowFreq = "低頻度";
-    private const string QuotaDonutLabelEstimateFocus   = "時間指定";
-    private const string QuotaDonutLabelActualNormal    = "通常巡回";
-    private const string QuotaDonutLabelActualPending   = "配信予定";
-    private const string QuotaDonutLabelActualLive      = "配信中";
-
-    // API使用量ドーナツの内訳セグメント色（差し色非依存の固定ブラシキー）
-    private const string QuotaDonutBrushEstimateNormal   = "QuotaEstimateNormalBrush";
-    private const string QuotaDonutBrushEstimateLowFreq  = "QuotaEstimateLowFreqBrush";
-    private const string QuotaDonutBrushEstimateFocus    = "QuotaEstimateFocusBrush";
-    private const string QuotaDonutBrushActualNormal     = "QuotaActualNormalBrush";
-    private const string QuotaDonutBrushActualPending    = "QuotaActualPendingBrush";
-    private const string QuotaDonutBrushActualLiveStatus = "QuotaActualLiveStatusBrush";
-
-    // Gemini API使用量ドーナツのタイトル・ラベル・色・単位文言
-    private const string QuotaDonutTitleGemini         = "Gemini API使用量（本日）";
-    private const string QuotaDonutLabelGeminiRequests = "要約リクエスト";
-    private const string QuotaDonutBrushGeminiRequests = "QuotaActualNormalBrush";
-    private const string QuotaDonutUnitLabelGemini     = "回/日";
-
-    private void UpdateQuotaInfo()
-    {
-        try
-        {
-            if (QuotaDonutEstimate == null || QuotaDonutActual == null || QuotaDonutGemini == null) return;
-            var svc      = SettingsService.Instance;
-            var settings = svc.Settings;
-            var channels = svc.GetChannelsSnapshot();
-            var interval = settings.CheckIntervalMinutes;
-            var banCheckUnits = ApiQuotaHelper.EstimateDailyUnitsForBanCheck(
-                channels.Count(c => c.IsEnabled && !c.IsDormant),
-                channels.Count(c => c.IsDormant));
-            var daily    = ApiQuotaHelper.EstimateDailyUnitsForChannels(interval, channels) + banCheckUnits;
-
-            var (normalUnits, lowFreqUnits, focusUnits) =
-                ApiQuotaHelper.EstimateDailyUnitsByMode(interval, channels);
-            QuotaDonutEstimate.SetData(
-                QuotaDonutTitleEstimate, ApiQuotaHelper.DailyLimit, daily,
-                new List<QuotaDonutSegment>
-                {
-                    new() { Label = QuotaDonutLabelEstimateNormal,  Units = normalUnits,  BrushKey = QuotaDonutBrushEstimateNormal  },
-                    new() { Label = QuotaDonutLabelEstimateLowFreq, Units = lowFreqUnits, BrushKey = QuotaDonutBrushEstimateLowFreq },
-                    new() { Label = QuotaDonutLabelEstimateFocus,   Units = focusUnits,   BrushKey = QuotaDonutBrushEstimateFocus   },
-                });
-            UpdateIntervalComboBoxItems(channels, channels.Count);
-
-            // 当日実使用量ドーナツ（クォータ期間 = 太平洋時間0:00リセット）。カテゴリ別に3セグメント表示。
-            var appState              = SettingsService.Instance.AppState;
-            var quotaKey              = AppConstants.GetQuotaDayKey();
-            var isTodayQuota          = appState.TodayApiDate == quotaKey;
-            var actualUnits           = isTodayQuota ? appState.TodayApiUnits             : 0;
-            var actualPendingUnits    = isTodayQuota ? appState.TodayApiUnitsPendingTrack : 0;
-            var actualLiveStatusUnits = isTodayQuota ? appState.TodayApiUnitsLiveStatus   : 0;
-            var actualNormalUnits     = Math.Max(0, actualUnits - actualPendingUnits - actualLiveStatusUnits);
-            QuotaDonutActual.SetData(
-                QuotaDonutTitleActual, ApiQuotaHelper.DailyLimit, actualUnits,
-                new List<QuotaDonutSegment>
-                {
-                    new() { Label = QuotaDonutLabelActualNormal,  Units = actualNormalUnits,     BrushKey = QuotaDonutBrushActualNormal     },
-                    new() { Label = QuotaDonutLabelActualPending, Units = actualPendingUnits,    BrushKey = QuotaDonutBrushActualPending    },
-                    new() { Label = QuotaDonutLabelActualLive,    Units = actualLiveStatusUnits, BrushKey = QuotaDonutBrushActualLiveStatus },
-                });
-
-            // Gemini API使用量ドーナツ（クォータ期間 = 太平洋時間0:00リセット）。内訳なしの単一ドーナツ。
-            var geminiKey     = AppConstants.GetQuotaDayKey();
-            var isTodayGemini = appState.TodayGeminiRequestDate == geminiKey;
-            var geminiUnits   = isTodayGemini ? appState.TodayGeminiRequests : 0;
-            QuotaDonutGemini.SetData(
-                QuotaDonutTitleGemini, GeminiConstants.DailyRequestLimit, geminiUnits,
-                new List<QuotaDonutSegment>
-                {
-                    new() { Label = QuotaDonutLabelGeminiRequests, Units = geminiUnits, BrushKey = QuotaDonutBrushGeminiRequests },
-                },
-                unitLabel: QuotaDonutUnitLabelGemini,
-                showBreakdown: false);
-        }
-        catch (Exception ex) { AppLogger.Log(LogMsg.UiUpdateFailed, null, nameof(UpdateQuotaInfo), ex.Message); }
-    }
-
-    private void UpdateIntervalComboBoxItems(List<ChannelInfo> channels, int channelCount)
-    {
-        if (IntervalComboBox == null) return;
-        foreach (System.Windows.Controls.ComboBoxItem item in IntervalComboBox.Items)
-        {
-            if (item.Tag is string tagStr && int.TryParse(tagStr, out int mins))
-            {
-                var cost = ApiQuotaHelper.EstimateDailyUnitsForChannels(mins, channels);
-                var over = cost > ApiQuotaHelper.DailyLimit;
-                item.IsEnabled = !over;
-                item.ToolTip   = over ? $"クォータ超過（{cost:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日）" : $"{cost:N0} ユニット/日";
-                item.Opacity   = over ? 0.4 : 1.0;
-            }
-        }
-
-        // 現在の選択がクォータ超過なら最小有効間隔へ自動調整
-        if (IntervalComboBox.SelectedItem is System.Windows.Controls.ComboBoxItem currentItem && !currentItem.IsEnabled)
-        {
-            var firstEnabled = IntervalComboBox.Items.OfType<System.Windows.Controls.ComboBoxItem>()
-                .FirstOrDefault(i => i.IsEnabled && i.Tag is string t && int.TryParse(t, out _));
-            if (firstEnabled != null && int.TryParse(firstEnabled.Tag?.ToString(), out var newMins))
-            {
-                _loadingSettings = true;
-                IntervalComboBox.SelectedItem = firstEnabled;
-                _loadingSettings = false;
-                SettingsService.Instance.Settings.CheckIntervalMinutes = newMins;
-                SettingsService.Instance.SaveSettings();
-                MonitorService.Instance.ResetNormalChannels(newMins);
-                MonitorService.Instance.RestartWithNewInterval();
-                AppLogger.Log(LogMsg.QuotaAutoIntervalAdjusted, null, newMins);
-            }
         }
     }
 }

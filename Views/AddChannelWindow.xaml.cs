@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -8,7 +7,6 @@ using System.Windows.Media;
 using Brush   = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
-using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using YTNotifier.Constants;
 using YTNotifier.Models;
@@ -33,13 +31,10 @@ public partial class AddChannelWindow : Window
 
     public bool ChannelAdded { get; private set; } = false;
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-    private const int WM_NCLBUTTONDOWN = 0xA1;
-    private const int HTCAPTION        = 2;
-
     /// <summary>プレビューサムネイルのデコード幅（px）</summary>
     private const int PreviewIconDecodeWidth = 76;
+
+    private const string DormantKindMonitoringUnavailableTooltip = "休眠リストでは種別ごとの監視を行わないため設定できません";
 
     private const double KindToggleCornerRadius   = 4;   // 種別トグルの角丸
     private const double KindToggleBorderThickness = 1;  // 種別トグルの枠線
@@ -55,7 +50,7 @@ public partial class AddChannelWindow : Window
     public AddChannelWindow(Action? onChannelAdded = null, bool isDormant = false)
     {
         InitializeComponent();
-        Loaded         += (_, _) => WindowCornerHelper.Apply(this);
+        WindowCornerHelper.ApplyOnLoaded(this);
         _onChannelAdded = onChannelAdded;
         _isDormant      = isDormant;
 
@@ -88,7 +83,7 @@ public partial class AddChannelWindow : Window
         {
             Content = "（未設定）", Tag = null
         });
-        var categories = _isDormant ? svc.DormantCategories : svc.Categories;
+        var categories = _isDormant ? svc.Channels.DormantCategories : svc.Channels.Categories;
         foreach (var cat in categories.OrderBy(c => c.SortOrder))
         {
             CategoryComboBox.Items.Add(new System.Windows.Controls.ComboBoxItem
@@ -135,7 +130,7 @@ public partial class AddChannelWindow : Window
         if (string.IsNullOrEmpty(name)) return;
 
         var svc = SettingsService.Instance;
-        var cat = _isDormant ? svc.AddDormantCategory(name) : svc.AddCategory(name);
+        var cat = _isDormant ? svc.Channels.AddDormantCategory(name) : svc.Channels.AddCategory(name);
         AppLogger.Log(LogMsg.CategoryAdded, null, name);
         NewCategoryPanel.Visibility = Visibility.Collapsed;
         NewCategoryInput.Text       = "";
@@ -148,10 +143,7 @@ public partial class AddChannelWindow : Window
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ButtonState == MouseButtonState.Pressed)
-            SendMessage(new WindowInteropHelper(this).Handle, WM_NCLBUTTONDOWN, new IntPtr(HTCAPTION), IntPtr.Zero);
-    }
+        => WindowTitleBarHelper.CaptionDragOnPress(this, e);
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
@@ -188,7 +180,7 @@ public partial class AddChannelWindow : Window
         var enabled = ContinuousAddCheckBox.IsChecked == true;
         SettingsService.Instance.Settings.ContinuousAddMode = enabled;
         SettingsService.Instance.MarkDirty();
-        AppLogger.Log(LogMsg.ContinuousAddModeChanged, null, enabled ? "ON" : "OFF");
+        AppLogger.Log(LogMsg.ContinuousAddModeChanged, null, AppLogger.OnOffText(enabled));
     }
 
     private async void PreviewChannel_Click(object sender, RoutedEventArgs e)
@@ -233,10 +225,10 @@ public partial class AddChannelWindow : Window
                     PreviewThumbnail.Visibility  = Visibility.Visible;
                     PreviewEmptyState.Visibility = Visibility.Collapsed;
                 }
-                catch { }
+                catch (Exception ex) { AppLogger.Log(LogMsg.AddChannelPreviewIconFailed, null, ex.Message); }
             }
 
-            bool exists = SettingsService.Instance.Channels.Any(c => c.ChannelId == _previewChannel.ChannelId);
+            bool exists = SettingsService.Instance.Channels.GetChannelsSnapshot().Any(c => c.ChannelId == _previewChannel.ChannelId);
             PreviewStatusText.Text = exists
                 ? "⚠ このチャンネルは既に追加されています。"
                 : "✅ 見つかりました。";
@@ -260,11 +252,11 @@ public partial class AddChannelWindow : Window
 
                 CheckTargetPanel.IsEnabled = !_isDormant;
                 CheckTargetPanel.Opacity   = _isDormant ? DimmedOpacity : 1.0;
-                CheckTargetPanel.ToolTip   = _isDormant ? "休眠リストでは種別ごとの監視を行わないため設定できません" : null;
+                CheckTargetPanel.ToolTip   = _isDormant ? DormantKindMonitoringUnavailableTooltip : null;
 
                 DetailExpander.IsEnabled = !_isDormant;
                 DetailExpander.Opacity   = _isDormant ? DimmedOpacity : 1.0;
-                DetailExpander.ToolTip   = _isDormant ? "休眠リストでは種別ごとの監視を行わないため設定できません" : null;
+                DetailExpander.ToolTip   = _isDormant ? DormantKindMonitoringUnavailableTooltip : null;
             }
         }
         catch (Exception ex)
@@ -325,7 +317,7 @@ public partial class AddChannelWindow : Window
         if (!_isDormant)
         {
             var settings    = SettingsService.Instance.Settings;
-            var allChannels = SettingsService.Instance.Channels.ToList();
+            var allChannels = SettingsService.Instance.Channels.GetChannelsSnapshot();
             allChannels.Add(_previewChannel);
 
             var daily = ApiQuotaHelper.EstimateDailyUnitsForChannels(settings.CheckIntervalMinutes, allChannels);
@@ -354,13 +346,13 @@ public partial class AddChannelWindow : Window
         // UploadsPlaylistIdをAPIから取得（トピックチャンネル対応）
         try
         {
-            var pid = await new YouTubeApiClient().GetUploadsPlaylistIdAsync(_previewChannel.ChannelId);
-            if (!string.IsNullOrEmpty(pid))
-                _previewChannel.UploadsPlaylistId = pid;
+            var uploadsPlaylistId = await _youtubeClient.GetUploadsPlaylistIdAsync(_previewChannel.ChannelId);
+            if (!string.IsNullOrEmpty(uploadsPlaylistId))
+                _previewChannel.State.UploadsPlaylistId = uploadsPlaylistId;
         }
         catch { /* 取得失敗時はUC→UU変換でフォールバック */ }
 
-        SettingsService.Instance.AddChannel(_previewChannel);
+        SettingsService.Instance.Channels.AddChannel(_previewChannel);
         AppLogger.Log(LogMsg.ChannelAdded, _previewChannel.ChannelName);
         ChannelAdded = true;
         _onChannelAdded?.Invoke();
@@ -392,20 +384,20 @@ public partial class AddChannelWindow : Window
     private void BuildKindToggles()
     {
         KindToggleRow.Children.Clear();
-        for (int i = 0; i < AppConstants.KindSlotCount; i++)
+        for (int kindSlotIndex = 0; kindSlotIndex < AppConstants.KindSlotCount; kindSlotIndex++)
         {
-            int capturedIdx = i;
+            int capturedIdx = kindSlotIndex;
             var border = new Border
             {
                 CornerRadius    = new CornerRadius(KindToggleCornerRadius),
                 Padding         = KindTogglePadding,
                 Cursor          = System.Windows.Input.Cursors.Hand,
                 BorderThickness = new Thickness(KindToggleBorderThickness),
-                ToolTip         = AppConstants.KindSlotLabels[i]
+                ToolTip         = AppConstants.KindSlotLabels[kindSlotIndex]
             };
             border.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
-            _kindToggleBorders[i] = border;
-            RefreshKindToggleIcon(i);
+            _kindToggleBorders[kindSlotIndex] = border;
+            RefreshKindToggleIcon(kindSlotIndex);
             border.MouseLeftButtonDown += (_, _) =>
             {
                 SetKindToggleValue(capturedIdx, !GetKindToggleValue(capturedIdx));
@@ -413,7 +405,7 @@ public partial class AddChannelWindow : Window
 
             var lbl = new TextBlock
             {
-                Text              = AppConstants.KindSlotLabels[i],
+                Text              = AppConstants.KindSlotLabels[kindSlotIndex],
                 FontSize          = KindToggleLabelFontSize,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin            = KindToggleLabelMargin
@@ -480,35 +472,35 @@ public partial class AddChannelWindow : Window
 
         bool[] kindEnabled = { _notifyVideo, _notifyShort, _notifyLive };
 
-        for (int i = 0; i < AppConstants.KindSlotCount; i++)
+        for (int kindSlotIndex = 0; kindSlotIndex < AppConstants.KindSlotCount; kindSlotIndex++)
         {
             var slot = new FocusSlot
             {
-                NotifyKind = AppConstants.KindSlotKinds[i],
+                NotifyKind = AppConstants.KindSlotKinds[kindSlotIndex],
                 SlotMode   = MonitorMode.Normal,
-                IsEnabled  = kindEnabled[i]
+                IsEnabled  = kindEnabled[kindSlotIndex]
             };
             var panel = new FocusTabPanel(new List<FocusSlot> { slot });
-            panel.FixedKind = AppConstants.KindSlotKinds[i];
+            panel.FixedKind = AppConstants.KindSlotKinds[kindSlotIndex];
             _detailTabPanels.Add(panel);
 
             // 「この設定を有効にする」→ トグルアイコンに同期
-            int capturedIdx = i;
+            int capturedIdx = kindSlotIndex;
             panel.OnEnabledChanged = () =>
             {
                 SetKindToggleValue(capturedIdx, _detailTabPanels[capturedIdx].IsEnabled);
                 SetDetailTabBorderStyle(_detailTabPanels[capturedIdx], capturedIdx == _selectedDetailTab);
             };
 
-            int idx    = i;
-            var lbl    = new TextBlock { Text = AppConstants.KindSlotLabels[i], FontSize = DetailTabLabelFontSize, VerticalAlignment = VerticalAlignment.Center };
+            int idx    = kindSlotIndex;
+            var lbl    = new TextBlock { Text = AppConstants.KindSlotLabels[kindSlotIndex], FontSize = DetailTabLabelFontSize, VerticalAlignment = VerticalAlignment.Center };
             var border = new Border
             {
                 Padding         = DetailTabPadding,
                 Cursor          = System.Windows.Input.Cursors.Hand,
                 Background      = Brushes.Transparent,
                 BorderThickness = DetailTabUnderline,
-                Tag             = i,
+                Tag             = kindSlotIndex,
                 Child           = lbl
             };
             border.MouseLeftButtonUp += (_, _) => SelectDetailTab(idx);
@@ -522,8 +514,8 @@ public partial class AddChannelWindow : Window
     private void SelectDetailTab(int idx)
     {
         _selectedDetailTab = idx;
-        for (int i = 0; i < _detailTabPanels.Count; i++)
-            SetDetailTabBorderStyle(_detailTabPanels[i], i == idx);
+        for (int tabIndex = 0; tabIndex < _detailTabPanels.Count; tabIndex++)
+            SetDetailTabBorderStyle(_detailTabPanels[tabIndex], tabIndex == idx);
 
         DetailFocusTabContent.Children.Clear();
         _detailTabPanels[idx].ResetContent();

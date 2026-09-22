@@ -72,9 +72,6 @@ public partial class MainWindow : System.Windows.Window
     private bool _preMuteNotificationSound   = false;
     private bool _preMuteFlashTaskbar        = false;
 
-    // APIキー
-    private string _actualApiKey = "";
-
     // ナビゲーション状態
     private string     _currentNav = "Watch";
 
@@ -84,7 +81,6 @@ public partial class MainWindow : System.Windows.Window
     // MonitorService イベントハンドラ（解除用に保持）
     private Action<bool>? _onStatusChanged;
     private Action?       _onChannelUpdated;
-    private Action?       _onQuotaUpdated;
     private Action?       _onNetworkCheckRequested;
 
     // ===== アイコンキャッシュ =====
@@ -140,11 +136,9 @@ public partial class MainWindow : System.Windows.Window
         StateChanged += MainWindow_StateChanged;
         _onStatusChanged  = isRunning => Dispatcher.Invoke(() => UpdateMonitorStatus(isRunning));
         _onChannelUpdated = ()        => Dispatcher.Invoke(RefreshChannelList);
-        _onQuotaUpdated   = ()        => Dispatcher.Invoke(UpdateQuotaInfo);
         _onNetworkCheckRequested = () => Dispatcher.InvokeAsync(() => CheckNetworkState());
         MonitorService.Instance.StatusChanged         += _onStatusChanged;
         MonitorService.Instance.ChannelUpdated        += _onChannelUpdated;
-        MonitorService.Instance.QuotaUpdated          += _onQuotaUpdated;
         MonitorService.Instance.NetworkCheckRequested += _onNetworkCheckRequested;
         NotificationService.OpenVideoFromToast = OpenChannelLatestVideoFromToastAsync;
     }
@@ -169,22 +163,21 @@ public partial class MainWindow : System.Windows.Window
         _networkCheckTimer.Start();
         CheckNetworkState(); // 初回即時チェック
 
-        // 開発者ツールDLLが存在する場合のみボタンを表示
-        if (MainWindow.IsDebugDllAvailable() &&
-            FindName("OpenDebugWindowBtn") is System.Windows.Controls.Button debugBtn)
-            debugBtn.Visibility = Visibility.Visible;
+        // 開発者ツールDLLが存在する場合のみサイドバー項目を表示
+        if (MainWindow.IsDebugDllAvailable())
+            NavDebugTools.Visibility = Visibility.Visible;
 
-        var s = SettingsService.Instance.Settings;
-        if (s.IsMuted)
+        var settings = SettingsService.Instance.Settings;
+        if (settings.IsMuted)
         {
             _isMuted                    = true;
-            _preMuteDesktopNotification = s.PreMuteDesktopNotification;
-            _preMuteNotificationSound   = s.PreMuteNotificationSound;
-            _preMuteFlashTaskbar        = s.PreMuteFlashTaskbar;
+            _preMuteDesktopNotification = settings.PreMuteDesktopNotification;
+            _preMuteNotificationSound   = settings.PreMuteNotificationSound;
+            _preMuteFlashTaskbar        = settings.PreMuteFlashTaskbar;
         }
         UpdateMuteButton(_isMuted);
 
-        if (s.CompactMode) ApplyCompactMode(true, skipRefresh: true, skipSave: true);
+        if (settings.CompactMode) ApplyCompactMode(true, skipRefresh: true, skipSave: true);
         else               UpdateCompactModeButton(false);
 
         // コンパクト・非コンパクト共通：SyncWindowWidth で幅を確定しレイアウトを完走させてから
@@ -204,10 +197,10 @@ public partial class MainWindow : System.Windows.Window
         // SCP.MeasureOverride → Grid.MeasureOverride → 正しい高さ の経路を確保する。
         if (ChannelScrollViewer.Content is System.Windows.Controls.Grid contentGrid &&
             ChannelScrollViewer.Template?.FindName("PART_ScrollContentPresenter", ChannelScrollViewer)
-                is System.Windows.Controls.ScrollContentPresenter scp)
+                is System.Windows.Controls.ScrollContentPresenter scrollContentPresenter)
         {
             contentGrid.InvalidateMeasure();
-            scp.InvalidateMeasure();
+            scrollContentPresenter.InvalidateMeasure();
             ChannelScrollViewer.InvalidateMeasure();
             ChannelScrollViewer.UpdateLayout();
         }
@@ -218,9 +211,7 @@ public partial class MainWindow : System.Windows.Window
         UpdateTitleBar(NavWatch, logSwitch: false);
         InitMonitor();
 
-        // ABOUTページのバージョン表示を設定し、起動時アップデート確認を実行
-        if (FindName("AboutVersionText") is TextBlock versionText)
-            versionText.Text = $"v{AppConstants.AppVersion}";
+        // 起動時アップデート確認を実行
         _ = CheckForUpdateAsync();
         _ = CheckPostUpdateReleaseNotesAsync();
     }
@@ -332,13 +323,6 @@ public partial class MainWindow : System.Windows.Window
                 return;
             }
 
-            if (ConfirmDialog.Show(this, "アップデートの適用",
-                    $"新しいバージョン {assetInfo.Tag} を適用して再起動します。よろしいですか？", "適用する") != true)
-            {
-                try { File.Delete(verifiedPath); } catch { }
-                return;
-            }
-
             SelfUpdateService.ApplyAndRestart(verifiedPath); // 成功時はここでプロセスが終了する
         }
         catch (Exception ex)
@@ -422,7 +406,6 @@ public partial class MainWindow : System.Windows.Window
         {
             MonitorService.Instance.StatusChanged         -= _onStatusChanged;
             MonitorService.Instance.ChannelUpdated        -= _onChannelUpdated;
-            MonitorService.Instance.QuotaUpdated          -= _onQuotaUpdated;
             MonitorService.Instance.NetworkCheckRequested -= _onNetworkCheckRequested;
             MonitorService.Instance.Stop();
             Application.Current.Shutdown();
@@ -431,27 +414,27 @@ public partial class MainWindow : System.Windows.Window
 
     private void RestoreWindowBounds()
     {
-        var s = SettingsService.Instance.Settings;
-        Width  = s.WindowWidth  > 0 ? s.WindowWidth  : CollapsedTotalWidth;
-        Height = s.WindowHeight > 0 ? s.WindowHeight : Height;
+        var settings = SettingsService.Instance.Settings;
+        Width  = settings.WindowWidth  > 0 ? settings.WindowWidth  : CollapsedTotalWidth;
+        Height = settings.WindowHeight > 0 ? settings.WindowHeight : Height;
 
-        if (s.WindowLeft >= 0 && s.WindowTop >= 0 &&
-            s.WindowLeft + Width  <= SystemParameters.VirtualScreenWidth  + 100 &&
-            s.WindowTop  + Height <= SystemParameters.VirtualScreenHeight + 100)
+        if (settings.WindowLeft >= 0 && settings.WindowTop >= 0 &&
+            settings.WindowLeft + Width  <= SystemParameters.VirtualScreenWidth  + 100 &&
+            settings.WindowTop  + Height <= SystemParameters.VirtualScreenHeight + 100)
         {
-            Left = s.WindowLeft;
-            Top  = s.WindowTop;
+            Left = settings.WindowLeft;
+            Top  = settings.WindowTop;
         }
     }
 
     private void SaveWindowBounds()
     {
-        var s = SettingsService.Instance.Settings;
-        var b = new Rect(Left, Top, Width, Height);
-        if (b.Width > 0 && b.Height > 0)
+        var settings = SettingsService.Instance.Settings;
+        var windowBounds = new Rect(Left, Top, Width, Height);
+        if (windowBounds.Width > 0 && windowBounds.Height > 0)
         {
-            s.WindowWidth = b.Width; s.WindowHeight = b.Height;
-            s.WindowLeft  = b.Left;  s.WindowTop    = b.Top;
+            settings.WindowWidth = windowBounds.Width; settings.WindowHeight = windowBounds.Height;
+            settings.WindowLeft  = windowBounds.Left;  settings.WindowTop    = windowBounds.Top;
         }
         SettingsService.Instance.SaveSettingsSilent();
     }
@@ -459,46 +442,10 @@ public partial class MainWindow : System.Windows.Window
     // ===== 設定読み込み =====
     private void LoadSettings()
     {
-        var s = SettingsService.Instance.Settings;
-        InitApiKeySlotComboBox();
-        InitNotificationSoundSetComboBox();
-        _actualApiKey                     = s.ApiKey;
-        ApiKeyBox.Text                    = _actualApiKey;
-        UpdateApiKeyState(!string.IsNullOrEmpty(_actualApiKey));
-        _loadingSettings = true;
-        foreach (ComboBoxItem item in WindowColorComboBox.Items)
-            if (item.Tag?.ToString() == s.Theme.ToString())
-            { WindowColorComboBox.SelectedItem = item; break; }
-        BuildAccentColorSwatches();
-        NoCategoryModeToggle.IsChecked         = s.NoCategoryMode;
-        NotificationToggle.IsChecked           = s.ShowDesktopNotification;
-        TrayToggle.IsChecked                   = s.MinimizeToTray;
-        StartupToggle.IsChecked                = s.StartWithWindows;
-        AlwaysOnTopToggle.IsChecked            = s.AlwaysOnTop;
-        Topmost                                = s.AlwaysOnTop;
-        NotificationSoundToggle.IsChecked      = s.NotificationSound;
-        FlashTaskbarToggle.IsChecked           = s.FlashTaskbar;
-        CompactModeToggle.IsChecked            = s.CompactMode;
-        // 通知スタイル（_loadingSettings内で設定しないとSelectionChangedで上書きされる）
-        foreach (ComboBoxItem item in ToastStyleComboBox.Items)
-            if (item.Tag?.ToString() == s.ToastStyle.ToString())
-            { ToastStyleComboBox.SelectedItem = item; break; }
-        if (ToastStyleComboBox.SelectedItem == null) ToastStyleComboBox.SelectedIndex = 0;
-        ToastStyleComboBox.IsEnabled           = s.ShowDesktopNotification;
-        ToastStyleComboBox.Opacity             = s.ShowDesktopNotification ? 1.0 : AppConstants.DisabledControlOpacity;
-        NotificationSoundSetComboBox.IsEnabled = s.NotificationSound;
-        NotificationSoundSetComboBox.Opacity   = s.NotificationSound ? 1.0 : AppConstants.DisabledControlOpacity;
-        _loadingSettings = false;
-        UpdatePinButton(s.AlwaysOnTop);
-
-        _loadingSettings = true;
-        var items = IntervalComboBox.Items.Cast<ComboBoxItem>().ToList();
-        IntervalComboBox.SelectedItem = items.FirstOrDefault(
-            i => i.Tag?.ToString() == s.CheckIntervalMinutes.ToString()) ?? items[1];
-        _loadingSettings = false;
+        var settings = SettingsService.Instance.Settings;
 
         // サイドバー状態を設定から復元
-        if (s.SidebarCollapsed)
+        if (settings.SidebarCollapsed)
         {
             CollapseSidebar(skipSave: true);
         }
@@ -509,30 +456,24 @@ public partial class MainWindow : System.Windows.Window
         UpdateMinWidth();
         SyncWindowWidth();
 
-        UpdateQuotaInfo();
-
         _loadingSettings = true;
-        AutoCleanLogsToggle.IsChecked = s.AutoCleanLogs;
-        TraceLogToggle.IsChecked = s.TraceLogEnabled;
+        Topmost                     = settings.AlwaysOnTop;
+        AlwaysOnTopToggle.IsChecked = settings.AlwaysOnTop;
+        CompactModeToggle.IsChecked = settings.CompactMode;
         _loadingSettings = false;
-        _loadingSettings = true;
-        var retItems = LogRetentionComboBox.Items.Cast<ComboBoxItem>().ToList();
-        LogRetentionComboBox.SelectedItem =
-            retItems.FirstOrDefault(i => i.Tag?.ToString() == s.LogRetentionDays.ToString())
-            ?? retItems[2];
-        _loadingSettings = false;
-        RefreshLogStats();
+        UpdatePinButton(settings.AlwaysOnTop);
 
-        if (s.AutoCleanLogs && s.LogRetentionDays != -1)
+        // ログ自動削除の起動時処理（UIとは無関係な起動時メンテナンス。設定ウィンドウの有無に関わらず必ず実行する）
+        if (settings.AutoCleanLogs && settings.LogRetentionDays != -1)
         {
-            var (deleted, _) = LoggerService.Instance.CleanOldLogs(s.LogRetentionDays);
+            var (deleted, _) = LoggerService.Instance.CleanOldLogs(settings.LogRetentionDays);
             if (deleted > 0) AppLogger.Log(LogMsg.AutoLogDeleted, null, deleted);
         }
     }
 
     // ===== 汎用ヘルパー =====
-    private static void SetDynamicBrush(FrameworkElement el, DependencyProperty dp, string key)
-        => el.SetResourceReference(dp, key);
+    internal static void SetDynamicBrush(FrameworkElement targetElement, DependencyProperty targetProperty, string key)
+        => targetElement.SetResourceReference(targetProperty, key);
 
     private static string KindLabel(VideoKind kind) => kind switch
     {
@@ -545,10 +486,10 @@ public partial class MainWindow : System.Windows.Window
     private static IEnumerable<T> FindVisualChildren<T>(System.Windows.DependencyObject parent)
         where T : System.Windows.DependencyObject
     {
-        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        for (int childIndex = 0; childIndex < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); childIndex++)
         {
-            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
-            if (child is T t) yield return t;
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, childIndex);
+            if (child is T typedChild) yield return typedChild;
             foreach (var sub in FindVisualChildren<T>(child)) yield return sub;
         }
     }

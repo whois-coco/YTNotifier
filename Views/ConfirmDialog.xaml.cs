@@ -8,7 +8,7 @@ public partial class ConfirmDialog : Window
                          string okLabel = "OK", string cancelLabel = "キャンセル")
     {
         InitializeComponent();
-        Loaded         += (_, _) => WindowCornerHelper.Apply(this);
+        WindowCornerHelper.ApplyOnLoaded(this);
         Owner          = owner;
         TitleText.Text = title;
         MessageText.Text = message;
@@ -27,9 +27,7 @@ public partial class ConfirmDialog : Window
     }
 
     private void TitleBar_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) DragMove();
-    }
+        => WindowTitleBarHelper.DragMoveOnPress(this, e);
 
     private void Ok_Click(object sender, RoutedEventArgs e)     { DialogResult = true;  Close(); }
     private void Cancel_Click(object sender, RoutedEventArgs e) { DialogResult = false; Close(); }

@@ -29,8 +29,19 @@
                 <Border.Background><DynamicResource ResourceKey="SidebarBrush"/></Border.Background>
                 <Grid Margin="16,0,12,0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="🚫" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource TextMutedBrush}"/>
+                        <Viewbox Width="14" Height="14" Margin="0,0,8,0" VerticalAlignment="Center">
+                            <Canvas Width="24" Height="24">
+                                <Path Data="M11 3h5a2 2 0 0 1 2 2v5L8 20 2 14z"
+                                      Stroke="{DynamicResource TextMutedBrush}"
+                                      StrokeThickness="2" StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent"/>
+                                <Ellipse Canvas.Left="13.7" Canvas.Top="6.7" Width="2.6" Height="2.6"
+                                         Fill="{DynamicResource TextMutedBrush}"/>
+                                <Path Data="M4 5L20 21"
+                                      Stroke="{DynamicResource TextMutedBrush}"
+                                      StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            </Canvas>
+                        </Viewbox>
                         <TextBlock Text="NGワード設定" FontSize="13" FontWeight="SemiBold"
                                    VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextPrimaryBrush}"/>

@@ -148,11 +148,11 @@ public partial class MainWindow : System.Windows.Window
 
     private Border CreateUncategorizedRow(int unreadCount, bool isCollapsed)
     {
-        var row = CreateGroupHeaderRow("未分類", unreadCount, isCollapsed, UncategorizedRowTag);
+        var row = CreateGroupHeaderRow(AppConstants.UncategorizedLabel, unreadCount, isCollapsed, UncategorizedRowTag);
         row.MouseLeftButtonUp += (_, _) =>
         {
             if (_categoryToggleAnimating) return;
-            AppLogger.Log(LogMsg.CategoryCollapsed, null, "未分類", !_uncategorizedCollapsed ? "折り畳み" : "展開");
+            AppLogger.Log(LogMsg.CategoryCollapsed, null, AppConstants.UncategorizedLabel, !_uncategorizedCollapsed ? AppConstants.LogCollapsedText : AppConstants.LogExpandedText);
             AnimateCategoryToggle(UncategorizedRowTag, _uncategorizedCollapsed, () =>
             {
                 _uncategorizedCollapsed = !_uncategorizedCollapsed;
@@ -169,22 +169,22 @@ public partial class MainWindow : System.Windows.Window
         var clearNewItem = new MenuItem { Header = "🔔 NEWバッジを全て消す" };
         clearNewItem.Click += (_, _) =>
         {
-            var channels = SettingsService.Instance.Channels
+            var channels = SettingsService.Instance.Channels.GetChannelsSnapshot()
                 .Where(c => string.IsNullOrEmpty(c.CategoryId) && c.HasUnread).ToList();
-            foreach (var c in channels) c.HasUnread = false;
+            foreach (var unreadChannel in channels) unreadChannel.HasUnread = false;
             if (channels.Count > 0)
             {
                 SettingsService.Instance.MarkDirty();
                 RefreshChannelList();
             }
-            AppLogger.Log(LogMsg.CategoryContextClearNew, null, "未分類");
+            AppLogger.Log(LogMsg.CategoryContextClearNew, null, AppConstants.UncategorizedLabel);
         };
 
         menu.Items.Add(clearNewItem);
 
         menu.Opened += (_, _) =>
         {
-            var hasUnread = SettingsService.Instance.Channels
+            var hasUnread = SettingsService.Instance.Channels.GetChannelsSnapshot()
                 .Any(c => string.IsNullOrEmpty(c.CategoryId) && c.HasUnread);
             clearNewItem.IsEnabled = hasUnread;
             clearNewItem.Opacity   = hasUnread ? 1.0 : CategoryDimmedOpacity;
@@ -202,7 +202,7 @@ public partial class MainWindow : System.Windows.Window
         {
             if (_categoryToggleAnimating) return;
             // ログは従来どおり「変更後の状態」を出す（従来は反転後に評価していたため !cat.IsCollapsed と等価）
-            AppLogger.Log(LogMsg.CategoryCollapsed, null, cat.CategoryName, !cat.IsCollapsed ? "折り畳み" : "展開");
+            AppLogger.Log(LogMsg.CategoryCollapsed, null, cat.CategoryName, !cat.IsCollapsed ? AppConstants.LogCollapsedText : AppConstants.LogExpandedText);
             AnimateCategoryToggle(cat, cat.IsCollapsed, () =>
             {
                 cat.IsCollapsed = !cat.IsCollapsed;
@@ -210,22 +210,7 @@ public partial class MainWindow : System.Windows.Window
             });
         };
 
-        System.Windows.Point catDragStart = default;
-        bool catDragReady = false;
-
-        row.PreviewMouseLeftButtonDown += (_, e) => { if (_editMode) { catDragStart = e.GetPosition(ChannelList); catDragReady = true; } };
-        row.PreviewMouseMove += (s, e) =>
-        {
-            if (!_editMode || !catDragReady) return;
-            if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) { catDragReady = false; return; }
-            var diff = e.GetPosition(ChannelList) - catDragStart;
-            if (Math.Abs(diff.X) < SystemParameters.MinimumHorizontalDragDistance &&
-                Math.Abs(diff.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-            catDragReady = false;
-            CacheCategoryBoundariesCore(MainCategoryDnd);
-            if (s is Border b) DragDrop.DoDragDrop(b, new DataObject(CategoryDragFormat, cat.CategoryId), DragDropEffects.Move);
-        };
-        row.PreviewMouseLeftButtonUp += (_, _) => { catDragReady = false; };
+        AttachCategoryRowDragEvents(row, cat, MainCategoryDnd);
 
         return row;
     }
@@ -241,13 +226,15 @@ public partial class MainWindow : System.Windows.Window
             WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = this, ShowInTaskbar = false,
         };
 
+        WindowCornerHelper.ApplyOnLoaded(dialog);
+
         var root = new Border { CornerRadius = new CornerRadius(CategoryDialogCornerRadius), BorderThickness = new Thickness(CategoryDialogBorderThickness) };
         SetDynamicBrush(root, Border.BackgroundProperty,  "SurfaceBrush");
         SetDynamicBrush(root, Border.BorderBrushProperty, "BorderBrush");
 
-        var titleBar = new Border { Height = CategoryDialogTitleBarHeight, Cursor = Cursors.SizeAll };
+        var titleBar = new Border { Height = CategoryDialogTitleBarHeight };
         SetDynamicBrush(titleBar, Border.BackgroundProperty, "SidebarBrush");
-        titleBar.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) dialog.DragMove(); };
+        titleBar.MouseLeftButtonDown += (_, mouseArgs) => WindowTitleBarHelper.DragMoveOnPress(dialog, mouseArgs);
         var titleText = new TextBlock { Text = title, FontSize = CategoryDialogTitleFontSize, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = CategoryDialogTitleMargin };
         SetDynamicBrush(titleText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
         titleBar.Child = titleText;
@@ -293,9 +280,9 @@ public partial class MainWindow : System.Windows.Window
         var clearNewItem = new MenuItem { Header = "🔔 NEWバッジを全て消す" };
         clearNewItem.Click += (_, _) =>
         {
-            var channels = SettingsService.Instance.Channels
+            var channels = SettingsService.Instance.Channels.GetChannelsSnapshot()
                 .Where(c => c.CategoryId == cat.CategoryId && c.HasUnread).ToList();
-            foreach (var c in channels) c.HasUnread = false;
+            foreach (var unreadChannel in channels) unreadChannel.HasUnread = false;
             if (channels.Count > 0)
             {
                 SettingsService.Instance.MarkDirty();
@@ -307,7 +294,7 @@ public partial class MainWindow : System.Windows.Window
         var expandAllItem = new MenuItem { Header = "▼ 全てのカテゴリを展開" };
         expandAllItem.Click += (_, _) =>
         {
-            foreach (var c in SettingsService.Instance.Categories) c.IsCollapsed = false;
+            foreach (var category in SettingsService.Instance.Channels.Categories) category.IsCollapsed = false;
             _uncategorizedCollapsed = false;
             SettingsService.Instance.MarkDirty();
             AppLogger.Log(LogMsg.CategoryContextExpandAll);
@@ -317,7 +304,7 @@ public partial class MainWindow : System.Windows.Window
         var collapseAllItem = new MenuItem { Header = "▶ 全てのカテゴリを閉じる" };
         collapseAllItem.Click += (_, _) =>
         {
-            foreach (var c in SettingsService.Instance.Categories) c.IsCollapsed = true;
+            foreach (var category in SettingsService.Instance.Channels.Categories) category.IsCollapsed = true;
             _uncategorizedCollapsed = true;
             SettingsService.Instance.MarkDirty();
             AppLogger.Log(LogMsg.CategoryContextCollapseAll);
@@ -328,7 +315,7 @@ public partial class MainWindow : System.Windows.Window
         renameItem.Click += (_, _) =>
         {
             var newName = ShowCategoryNameDialog("カテゴリ名を変更", cat.CategoryName);
-            if (newName != null) { AppLogger.Log(LogMsg.CategoryRenamed, null, cat.CategoryName, newName); SettingsService.Instance.RenameCategory(cat.CategoryId, newName); RefreshChannelList(); }
+            if (newName != null) { AppLogger.Log(LogMsg.CategoryRenamed, null, cat.CategoryName, newName); SettingsService.Instance.Channels.RenameCategory(cat.CategoryId, newName); RefreshChannelList(); }
         };
 
         var deleteItem = new MenuItem { Header = "🗑 カテゴリを削除" };
@@ -337,7 +324,7 @@ public partial class MainWindow : System.Windows.Window
             if (ConfirmDialog.Show(Application.Current.MainWindow as Window ?? this, "カテゴリ削除", $"「{cat.CategoryName}」を削除しますか？\nチャンネルは未分類に移動されます。", "削除") == true)
             {
                 AppLogger.Log(LogMsg.CategoryDeleted, null, cat.CategoryName);
-                SettingsService.Instance.RemoveCategory(cat.CategoryId);
+                SettingsService.Instance.Channels.RemoveCategory(cat.CategoryId);
                 RefreshChannelList();
             }
         };
@@ -353,7 +340,7 @@ public partial class MainWindow : System.Windows.Window
 
         menu.Opened += (_, _) =>
         {
-            var hasUnread = SettingsService.Instance.Channels
+            var hasUnread = SettingsService.Instance.Channels.GetChannelsSnapshot()
                 .Any(c => c.CategoryId == cat.CategoryId && c.HasUnread);
             clearNewItem.IsEnabled = hasUnread; clearNewItem.Opacity = hasUnread ? 1.0 : CategoryDimmedOpacity;
             expandAllItem.IsEnabled   = true; expandAllItem.Opacity   = 1.0;
@@ -361,9 +348,9 @@ public partial class MainWindow : System.Windows.Window
             renameItem.Visibility  = _editMode ? Visibility.Visible : Visibility.Collapsed;
             deleteItem.Visibility  = _editMode ? Visibility.Visible : Visibility.Collapsed;
             // 1つ目のセパレータは常に表示、残りは編集モードのみ
-            var seps = menu.Items.OfType<Separator>().ToList();
-            for (int i = 0; i < seps.Count; i++)
-                seps[i].Visibility = (i == 0 || _editMode) ? Visibility.Visible : Visibility.Collapsed;
+            var separators = menu.Items.OfType<Separator>().ToList();
+            for (int separatorIndex = 0; separatorIndex < separators.Count; separatorIndex++)
+                separators[separatorIndex].Visibility = (separatorIndex == 0 || _editMode) ? Visibility.Visible : Visibility.Collapsed;
         };
         return menu;
     }
@@ -391,13 +378,13 @@ public partial class MainWindow : System.Windows.Window
 
             RunCategoryRowsAnimation(rows, expand: true, onCompleted: () =>
             {
-                foreach (var r in rows)
+                foreach (var channelRow in rows)
                 {
-                    r.BeginAnimation(FrameworkElement.HeightProperty, null);
-                    r.BeginAnimation(UIElement.OpacityProperty, null);
-                    r.Height        = GetChannelRowTargetHeight();
-                    r.Opacity       = 1.0;
-                    r.ClipToBounds  = false;
+                    channelRow.BeginAnimation(FrameworkElement.HeightProperty, null);
+                    channelRow.BeginAnimation(UIElement.OpacityProperty, null);
+                    channelRow.Height        = GetChannelRowTargetHeight();
+                    channelRow.Opacity       = 1.0;
+                    channelRow.ClipToBounds  = false;
                 }
                 _categoryToggleAnimating = false;
             });
@@ -417,10 +404,10 @@ public partial class MainWindow : System.Windows.Window
             RunCategoryRowsAnimation(rows, expand: false, onCompleted: () =>
             {
                 // アニメーションのクロックが Border を参照し続けないよう停止してから破棄
-                foreach (var r in rows)
+                foreach (var channelRow in rows)
                 {
-                    r.BeginAnimation(FrameworkElement.HeightProperty, null);
-                    r.BeginAnimation(UIElement.OpacityProperty, null);
+                    channelRow.BeginAnimation(FrameworkElement.HeightProperty, null);
+                    channelRow.BeginAnimation(UIElement.OpacityProperty, null);
                 }
                 applyNewState();
                 RefreshChannelList();
@@ -434,16 +421,16 @@ public partial class MainWindow : System.Windows.Window
     {
         var result = new List<Border>();
         int headerIdx = -1;
-        for (int i = 0; i < ChannelList.Children.Count; i++)
+        for (int childIndex = 0; childIndex < ChannelList.Children.Count; childIndex++)
         {
-            if (ChannelList.Children[i] is Border b && Equals(b.Tag, headerTag)) { headerIdx = i; break; }
+            if (ChannelList.Children[childIndex] is Border childBorder && Equals(childBorder.Tag, headerTag)) { headerIdx = childIndex; break; }
         }
         if (headerIdx < 0) return result;
 
-        for (int i = headerIdx + 1; i < ChannelList.Children.Count; i++)
+        for (int childIndex = headerIdx + 1; childIndex < ChannelList.Children.Count; childIndex++)
         {
-            if (ChannelList.Children[i] is not Border b) break;
-            if (b.Tag is ChannelInfo) result.Add(b);
+            if (ChannelList.Children[childIndex] is not Border childBorder) break;
+            if (childBorder.Tag is ChannelInfo) result.Add(childBorder);
             else break;   // 次のカテゴリ見出し / 未分類見出しに到達
         }
         return result;
@@ -462,26 +449,26 @@ public partial class MainWindow : System.Windows.Window
         var duration = TimeSpan.FromMilliseconds(CategoryToggleAnimDurationMs);
         var ease     = new CubicEase { EasingMode = EasingMode.EaseOut };
 
-        for (int i = 0; i < rows.Count; i++)
+        for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
-            var r = rows[i];
-            r.ClipToBounds = true;
+            var channelRow = rows[rowIndex];
+            channelRow.ClipToBounds = true;
 
-            double fromH = expand ? 0.0    : target;
-            double toH   = expand ? target : 0.0;
-            double fromO = expand ? 0.0    : 1.0;
-            double toO   = expand ? 1.0    : 0.0;
+            double fromHeight  = expand ? 0.0    : target;
+            double toHeight    = expand ? target : 0.0;
+            double fromOpacity = expand ? 0.0    : 1.0;
+            double toOpacity   = expand ? 1.0    : 0.0;
 
-            if (expand) { r.Height = 0.0; r.Opacity = 0.0; }
+            if (expand) { channelRow.Height = 0.0; channelRow.Opacity = 0.0; }
 
-            var heightAnim = new DoubleAnimation(fromH, toH, duration) { EasingFunction = ease };
-            var opacityAnim = new DoubleAnimation(fromO, toO, duration) { EasingFunction = ease };
+            var heightAnim = new DoubleAnimation(fromHeight, toHeight, duration) { EasingFunction = ease };
+            var opacityAnim = new DoubleAnimation(fromOpacity, toOpacity, duration) { EasingFunction = ease };
 
-            if (i == rows.Count - 1)
+            if (rowIndex == rows.Count - 1)
                 heightAnim.Completed += (_, _) => onCompleted();
 
-            r.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
-            r.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
+            channelRow.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
+            channelRow.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
         }
     }
 }

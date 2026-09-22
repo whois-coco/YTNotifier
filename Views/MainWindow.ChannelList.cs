@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -94,10 +93,10 @@ public partial class MainWindow : System.Windows.Window
         var contentGrid = outerGrid.Children.OfType<Grid>().FirstOrDefault();
         if (contentGrid == null) return;
 
-        foreach (var el in contentGrid.Children.OfType<Border>().Where(b => b.Tag is string s && s == "IconBorder"))
+        foreach (var iconBorder in contentGrid.Children.OfType<Border>().Where(b => b.Tag is string s && s == "IconBorder"))
         {
-            el.IsHitTestVisible = enabled;
-            el.Opacity          = enabled ? 1.0 : 0.5;
+            iconBorder.IsHitTestVisible = enabled;
+            iconBorder.Opacity          = enabled ? 1.0 : 0.5;
         }
 
         // 種別トグルは編集モード中のみ動作するが常にヒットテスト可能
@@ -147,21 +146,21 @@ public partial class MainWindow : System.Windows.Window
 
         // BuildStatusRow の fallback（種別ピル）が表示される条件と同一
         var kindPillShown = !anyStatusShown
-                         && !ch.LatestVideoDeleted
-                         && !string.IsNullOrEmpty(ch.LatestTitle)
-                         && ch.LatestKind.HasValue;
+                         && !ch.State.LatestVideoDeleted
+                         && !string.IsNullOrEmpty(ch.State.LatestTitle)
+                         && ch.State.LatestKind.HasValue;
 
         return filter switch
         {
             ChannelStatusFilter.Favorite => ch.IsFavorite,
-            ChannelStatusFilter.Video    => kindPillShown && ch.LatestKind == VideoKind.Video,
-            ChannelStatusFilter.Short    => kindPillShown && ch.LatestKind == VideoKind.Short,
+            ChannelStatusFilter.Video    => kindPillShown && ch.State.LatestKind == VideoKind.Video,
+            ChannelStatusFilter.Short    => kindPillShown && ch.State.LatestKind == VideoKind.Short,
             ChannelStatusFilter.Live     => cardStatus.ActiveLiveEntries.Count > 0
                                             || cardStatus.PendingLiveDisplay != null
-                                            || (kindPillShown && ch.LatestKind == VideoKind.Live),
+                                            || (kindPillShown && ch.State.LatestKind == VideoKind.Live),
             ChannelStatusFilter.Premiere => cardStatus.ActivePremiereEntries.Count > 0
                                             || cardStatus.PendingPremiereDisplay != null
-                                            || (kindPillShown && ch.LatestKind == VideoKind.Premiere),
+                                            || (kindPillShown && ch.State.LatestKind == VideoKind.Premiere),
             _                            => false,
         };
     }
@@ -196,7 +195,7 @@ public partial class MainWindow : System.Windows.Window
         menu.Opened += (_, _) =>
         {
             foreach (var item in items)
-                item.IsChecked = item.Tag is ChannelStatusFilter f && _channelStatusFilter == f;
+                item.IsChecked = item.Tag is ChannelStatusFilter itemFilter && _channelStatusFilter == itemFilter;
             clearItem.IsEnabled = _channelStatusFilter.HasValue;
             clearItem.Opacity   = _channelStatusFilter.HasValue ? 1.0 : 0.4;
         };
@@ -249,8 +248,8 @@ public partial class MainWindow : System.Windows.Window
     internal void RefreshChannelList()
     {
         var settings   = SettingsService.Instance.Settings;
-        var channels   = SettingsService.Instance.Channels;
-        var categories = SettingsService.Instance.Categories.OrderBy(c => c.SortOrder);
+        var channels   = SettingsService.Instance.Channels.GetChannelsSnapshot();
+        var categories = SettingsService.Instance.Channels.Categories.OrderBy(c => c.SortOrder);
 
         ChannelList.Children.Clear();
         var activeCount  = channels.Count(c => !c.IsDormant);
@@ -267,7 +266,6 @@ public partial class MainWindow : System.Windows.Window
             EmptyState.Visibility = matched.Count == 0 && channels.Count > 0
                 ? Visibility.Visible : Visibility.Collapsed;
             foreach (var ch in matched) ChannelList.Children.Add(CreateChannelRow(ch));
-            UpdateQuotaInfo();
             return;
         }
 
@@ -280,7 +278,6 @@ public partial class MainWindow : System.Windows.Window
             EmptyState.Visibility = matched.Count == 0 && channels.Count > 0
                 ? Visibility.Visible : Visibility.Collapsed;
             foreach (var ch in matched) ChannelList.Children.Add(CreateChannelRow(ch));
-            UpdateQuotaInfo();
             return;
         }
 
@@ -316,13 +313,12 @@ public partial class MainWindow : System.Windows.Window
                 SetDeleteButtonVisibility(child, true);
             }
 
-        UpdateQuotaInfo();
         UpdateNavWatchBadge();
     }
 
     internal void UpdateNavWatchBadge()
     {
-        var count = SettingsService.Instance.Channels.Count(c => c.HasUnread);
+        var count = SettingsService.Instance.Channels.GetChannelsSnapshot().Count(c => c.HasUnread);
         if (_navWatchUnreadText   != null) _navWatchUnreadText.Text   = count.ToString();
         if (_navWatchCompactText  != null) _navWatchCompactText.Text  = count.ToString();
         if (_navWatchUnreadBadge  != null)
@@ -346,14 +342,14 @@ public partial class MainWindow : System.Windows.Window
         if (ch.HasUnread)
         {
             ch.HasUnread = false;
-            SettingsService.Instance.UpdateChannelSilent(ch);
+            SettingsService.Instance.Channels.UpdateChannelSilent(ch);
             SettingsService.Instance.MarkDirty();
             Application.Current.Dispatcher.Invoke(() => (Application.Current.MainWindow as MainWindow)?.RefreshChannelList());
         }
 
         if (!ch.NotifyVideo && !ch.NotifyShort && !ch.NotifyLive)
         {
-            OpenUrl(ch.ChannelUrl);
+            BrowserLaunchHelper.OpenUrl(ch.ChannelUrl);
             AppLogger.Log(LogMsg.OpenChannelPage, ch.ChannelName);
             return Task.CompletedTask;
         }
@@ -361,7 +357,7 @@ public partial class MainWindow : System.Windows.Window
         // toast に埋め込まれた URL（通知対象の動画）を直接開く
         if (!string.IsNullOrEmpty(toastUrl))
         {
-            OpenUrl(toastUrl);
+            BrowserLaunchHelper.OpenUrl(toastUrl);
             AppLogger.Log(LogMsg.OpenLatestVideo, ch.ChannelName, "通知動画");
             return Task.CompletedTask;
         }
@@ -380,16 +376,8 @@ public partial class MainWindow : System.Windows.Window
             AppLogger.Log(LogMsg.OpenChannelPage, ch.ChannelName);
         }
 
-        OpenUrl(url);
+        BrowserLaunchHelper.OpenUrl(url);
         return Task.CompletedTask;
-    }
-
-    private static void OpenUrl(string url)
-    {
-        if (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
-            !url.StartsWith("http://",  StringComparison.OrdinalIgnoreCase))
-            return;
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
     private void ShowRenameDialog(ChannelInfo ch)
@@ -397,7 +385,7 @@ public partial class MainWindow : System.Windows.Window
         var name = ShowCategoryNameDialog("名称を変更", ch.ChannelName);
         if (name == null) return;
         ch.ChannelName = name;
-        SettingsService.Instance.UpdateChannel(ch);
+        SettingsService.Instance.Channels.UpdateChannel(ch);
         AppLogger.Log(LogMsg.ChannelRenamed, null, name);
         RefreshChannelList();
     }
@@ -407,7 +395,7 @@ public partial class MainWindow : System.Windows.Window
         if (ConfirmDialog.Show(this, "チャンネルを削除", $"「{ch.ChannelName}」を削除しますか？", "削除") != true) return;
         var oldCategoryId = ch.CategoryId;
         var oldIsDormant  = ch.IsDormant;
-        SettingsService.Instance.RemoveChannel(ch.ChannelId);
+        SettingsService.Instance.Channels.RemoveChannel(ch.ChannelId);
         AppLogger.Log(LogMsg.ChannelRemoved, ch.ChannelName);
         RefreshChannelList();
         RefreshDormantChannelList();
@@ -419,17 +407,17 @@ public partial class MainWindow : System.Windows.Window
     private void CheckCategoryAutoDelete(string? categoryId, bool isDormant)
     {
         if (string.IsNullOrEmpty(categoryId)) return;
-        if (SettingsService.Instance.Channels.Any(c => c.CategoryId == categoryId && c.IsDormant == isDormant)) return;
+        if (SettingsService.Instance.Channels.GetChannelsSnapshot().Any(c => c.CategoryId == categoryId && c.IsDormant == isDormant)) return;
 
-        var categories = isDormant ? SettingsService.Instance.DormantCategories : SettingsService.Instance.Categories;
+        var categories = isDormant ? SettingsService.Instance.Channels.DormantCategories : SettingsService.Instance.Channels.Categories;
         var cat = categories.FirstOrDefault(c => c.CategoryId == categoryId);
         if (cat == null) return;
 
         if (ConfirmDialog.Show(this, "カテゴリ削除の確認", $"「{cat.CategoryName}」にはチャンネルがなくなりました。カテゴリを削除しますか？", "削除") != true) return;
 
         AppLogger.Log(LogMsg.CategoryDeleted, null, cat.CategoryName);
-        if (isDormant) SettingsService.Instance.RemoveDormantCategory(cat.CategoryId);
-        else           SettingsService.Instance.RemoveCategory(cat.CategoryId);
+        if (isDormant) SettingsService.Instance.Channels.RemoveDormantCategory(cat.CategoryId);
+        else           SettingsService.Instance.Channels.RemoveCategory(cat.CategoryId);
 
         if (isDormant) RefreshDormantChannelList();
         else           RefreshChannelList();
@@ -464,7 +452,6 @@ public partial class MainWindow : System.Windows.Window
             var dlg = new AddChannelWindow(onChannelAdded: () =>
             {
                 Dispatcher.Invoke(RefreshChannelList);
-                Dispatcher.Invoke(UpdateQuotaInfo);
             })
             { Owner = this };
             dlg.ShowDialog();

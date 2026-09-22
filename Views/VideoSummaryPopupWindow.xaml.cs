@@ -24,7 +24,7 @@ public partial class VideoSummaryPopupWindow : Window
         string? thumbnailUrl = null, DateTime? publishedAt = null)
     {
         InitializeComponent();
-        Loaded += (_, _) => WindowCornerHelper.Apply(this);
+        WindowCornerHelper.ApplyOnLoaded(this);
         MaxWidth               = WindowMaxWidthExpanded;
         LeftColumnPanel.MaxWidth = LeftColumnMaxWidth;
         SidePanelBorder.Width    = SidePanelWidth;
@@ -102,7 +102,7 @@ public partial class VideoSummaryPopupWindow : Window
 
         // 動画固有のサムネイルURLが指定されていればそちらを使う。未指定の場合は従来通り
         // チャンネルの現在の最新動画のサムネイルにフォールバックする。
-        var url = thumbnailUrl ?? channel.LatestThumbnailUrl;
+        var url = thumbnailUrl ?? channel.State.LatestThumbnailUrl;
         if (string.IsNullOrEmpty(url)) return;
 
         Task.Run(async () =>
@@ -123,7 +123,7 @@ public partial class VideoSummaryPopupWindow : Window
         {
             VideoKind.Video    => ("動画",  "KindPillVideoBgBrush",    "KindPillVideoFgBrush"),
             VideoKind.Short    => ("Short", "KindPillShortBgBrush",    "KindPillShortFgBrush"),
-            VideoKind.Live     => (isPending ? "配信予定" : (_channel.ActiveLives.Count == 0 ? "アーカイブ" : "ライブ"),
+            VideoKind.Live     => (isPending ? "配信予定" : (_channel.State.ActiveLives.Count == 0 ? "アーカイブ" : "ライブ"),
                                    "KindPillLiveBgBrush",     "KindPillLiveFgBrush"),
             VideoKind.Premiere => ("プレミア", "KindPillPremiereBgBrush", "KindPillPremiereFgBrush"),
             _                  => (string.Empty, "KindPillVideoBgBrush", "KindPillVideoFgBrush"),
@@ -183,9 +183,7 @@ public partial class VideoSummaryPopupWindow : Window
     }
 
     private void TitleBar_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) DragMove();
-    }
+        => WindowTitleBarHelper.DragMoveOnPress(this, e);
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }
