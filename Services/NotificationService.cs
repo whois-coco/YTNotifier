@@ -26,6 +26,12 @@ public static class NotificationService
     /// <summary>トースト通知用アイコン一時ファイルの拡張子</summary>
     private const string ToastIconTempExtension = ".png";
 
+    /// <summary>トースト通知のクリック処理で使うチャンネルIDの引数名（表示済みトーストとの互換のため値を変えない）</summary>
+    private const string ToastArgChannelId = "channelId";
+
+    /// <summary>チャンネル復旧通知の本文</summary>
+    private const string ChannelRecoveredMessage = "チャンネルが再び利用可能になりました。";
+
     /// <summary>トースト通知用一時画像ファイルの削除待機時間（ミリ秒）。通知プラットフォームの画像読込猶予</summary>
     private const int ToastTempImageCleanupDelayMs = 10000;
 
@@ -68,19 +74,38 @@ public static class NotificationService
         });
     }
 
+    /// <summary>
+    /// 一時画像フォルダの中身をすべて削除する。起動時に1回呼び、削除失敗や終了前の未削除で残った画像を回収する。
+    /// 起動時点では表示途中の通知がないため、日時では絞り込まない。失敗は握り潰して続行する。
+    /// </summary>
+    public static void CleanupTempImages()
+    {
+        try
+        {
+            if (!Directory.Exists(ToastTempImageDir)) return;
+
+            foreach (var path in Directory.EnumerateFiles(ToastTempImageDir))
+            {
+                try { File.Delete(path); }
+                catch { }
+            }
+        }
+        catch { }
+    }
+
     /// <summary>埋め込みリソースの app.png を一時フォルダへ書き出し、そのパスを返す。失敗時は null。</summary>
     private static string? ExtractEmbeddedAppIconToTempFile()
     {
         try
         {
             var uri = new Uri("pack://application:,,,/Resources/app.png");
-            var sri = System.Windows.Application.GetResourceStream(uri);
-            if (sri == null) return null;
+            var resourceStreamInfo = System.Windows.Application.GetResourceStream(uri);
+            if (resourceStreamInfo == null) return null;
 
             Directory.CreateDirectory(ToastTempImageDir);
             var path = Path.Combine(ToastTempImageDir, $"{Guid.NewGuid():N}{ToastIconTempExtension}");
             using (var fs = File.Create(path))
-                sri.Stream.CopyTo(fs);
+                resourceStreamInfo.Stream.CopyTo(fs);
 
             ScheduleTempFileCleanup(path);
             return path;
@@ -140,21 +165,21 @@ public static class NotificationService
     private static void OnToastActivated(ToastNotificationActivatedEventArgsCompat e)
     {
         var args = ToastArguments.Parse(e.Argument);
-        if (!args.TryGetValue("channelId", out var channelId) || string.IsNullOrEmpty(channelId))
+        if (!args.TryGetValue(ToastArgChannelId, out var channelId) || string.IsNullOrEmpty(channelId))
             return;
 
         System.Windows.Application.Current?.Dispatcher.InvokeAsync(async () =>
         {
             try
             {
-                var ch = SettingsService.Instance.Channels
+                var ch = SettingsService.Instance.Channels.GetChannelsSnapshot()
                     .FirstOrDefault(c => c.ChannelId == channelId);
                 if (ch == null) return;
 
                 if (ch.HasUnread)
                 {
                     ch.HasUnread = false;
-                    SettingsService.Instance.UpdateChannelSilent(ch);
+                    SettingsService.Instance.Channels.UpdateChannelSilent(ch);
                     MonitorService.Instance.InvokeChannelUpdated();
                 }
 
@@ -192,7 +217,7 @@ public static class NotificationService
 
             var builder = new ToastContentBuilder()
                 .AddArgument("videoId", videoId)
-                .AddArgument("channelId", channelId);
+                .AddArgument(ToastArgChannelId, channelId);
 
             if (settings.ToastStyle == ToastStyle.Thumbnail)
             {
@@ -253,6 +278,8 @@ public static class NotificationService
             builder.AddAudio(null, silent: true);
             builder.Show();
 
+            SettingsService.Instance.UsageStats.AddNotificationCount();
+
             if (settings.NotificationSound)
                 PlaySound(kind);
 
@@ -291,6 +318,26 @@ public static class NotificationService
         }
     }
 
+    /// <summary>チャンネル復旧（BAN解除）通知を表示する（テキストのみ・無音）</summary>
+    public static void ShowChannelRecoveredNotification(string channelName, string channelId)
+    {
+        try
+        {
+            new ToastContentBuilder()
+                .AddArgument(ToastArgChannelId, channelId)
+                .AddText(channelName)
+                .AddText(ChannelRecoveredMessage)
+                .AddAudio(null, silent: true)
+                .Show();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log(LogMsg.NotifyFailed, null, ex.Message);
+        }
+    }
+
+    private const string TestNotificationBodyText = "通知テスト：正常に動作しています";
+
     /// <summary>テスト通知を表示する（通知スタイルに従う）</summary>
     public static void ShowTestNotification()
     {
@@ -315,7 +362,7 @@ public static class NotificationService
                     }
                     builder.AddAttributionText(AppConstants.AppName);
                     builder.AddText("[テスト]");
-                    builder.AddText("通知テスト：正常に動作しています");
+                    builder.AddText(TestNotificationBodyText);
                 }
                 else
                 {
@@ -324,7 +371,7 @@ public static class NotificationService
                             new Uri(ToFileUri(iconPath)),
                             ToastGenericAppLogoCrop.Circle);
                     builder.AddText($"{AppConstants.AppName}  [テスト]");
-                    builder.AddText("通知テスト：正常に動作しています");
+                    builder.AddText(TestNotificationBodyText);
                 }
 
                 builder.AddAudio(null, silent: true);

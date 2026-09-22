@@ -1,3 +1,4 @@
+using YTNotifier.Constants;
 using YTNotifier.Models;
 
 namespace YTNotifier.Services;
@@ -28,7 +29,6 @@ public enum LogMsg
     NoVideosDetected             = 2015,
     NoVideosRecovered            = 2016,
     // APIキー
-    ApiKeyMigrated            = 2002,
     ApiKeySaved               = 2003,
     // ネットワーク
     NetworkRestored           = 2004,
@@ -48,6 +48,8 @@ public enum LogMsg
     QuotaExceeded             = 3007,  // {0}=resumeTime
     QuotaResumed              = 3008,
     QuotaStillSuspended       = 3009,  // {0}=resumeTime
+    // 通知
+    NotifiedRecordLoadFailed  = 3010,  // {0}=message
     // その他
     AutoRestored              = 3001,  // {0}=reason
     InvalidChannelId          = 3006,  // {0}=channelId
@@ -70,7 +72,7 @@ public enum LogMsg
     // プラグイン
     PluginJobFailed            = 4025,  // {0}=仕事の名前 {1}=message
     PluginHostStartFailed      = 4026,  // {0}=message
-    PluginHostExited           = 4027,  // {0}=再起動回数 {1}=上限回数
+    PluginHostExited           = 4027,
     PluginHostVersionMismatch  = 4028,  // {0}=本体バージョン {1}=ホストバージョン
     PluginManifestInvalid      = 4029,  // {0}=フォルダ名 {1}=理由
     PluginJobTimeout           = 4030,  // {0}=フォルダ名 {1}=全体／無音
@@ -89,10 +91,18 @@ public enum LogMsg
     IconLoadFailed            = 4005,  // {0}=path
     IconDownloadFailed        = 4006,  // {0}=message
     TrayIconInitFailed        = 4007,  // {0}=message
+    // Windowsスタートアップ登録
+    StartupRegistrationFailed = 4031,  // {0}=message
+    // state.json バックアップ
+    StateBackupSaveFailed     = 4032,  // {0}=message
+    StateBackupRestoreFailed  = 4033,  // {0}=message
+    // チャンネル追加プレビュー
+    AddChannelPreviewIconFailed = 4034,  // {0}=message
 
     // ── DEBUG (5xxx) ─────────────────────────────────────────────
     // 監視・通知
     NotificationSent          = 5076,  // {0}=title
+    NotifyDuplicateSkipped    = 5152,  // {0}=title
     // 監視フロー
     NoNew                     = 5008,
     GracePeriodStarted        = 5009,  // {0}=videoId
@@ -237,6 +247,7 @@ public enum LogMsg
     NgWordRemovedCommon                = 5146,  // {0}=word
     NgWordAddedChannel                 = 5147,  // {0}=word
     NgWordRemovedChannel               = 5148,  // {0}=word
+    ChannelContextBanRecheck           = 5149,  // {0}=channelName
     // APIキーウィンドウ
     ApiKeyEditStarted          = 5067,
     ApiKeyChanged              = 5068,
@@ -251,6 +262,8 @@ public enum LogMsg
     ActivityLogCleared         = 5063,
     LogFolderOpened            = 5064,
     ActivityLogSavedToFile     = 5128,  // {0}=count
+    ActivityLogDayRolledSaved     = 5150,  // {0}=count
+    ActivityLogDayRolledSaveFailed = 5151,  // {0}=message
     // デバッグ・開発
     DebugWindowNotFound       = 5012,
     DevToolError              = 5013,  // {0}=message
@@ -315,6 +328,8 @@ public static class AppLogger
         [LogMsg.QuotaAutoIntervalAdjusted]  = new(LogLevel.Warning, LogCategory.Quota,        "クォータ超過のためチェック間隔を自動調整: {0}分"),
         [LogMsg.QuotaWarningOnSave]        = new(LogLevel.Warning, LogCategory.ChannelDetailWindow, "詳細設定保存: クォータ使用量警告 {1}%（チャンネル: {0}）"),
         [LogMsg.QuotaExceededOnSave]       = new(LogLevel.Warning, LogCategory.ChannelDetailWindow, "詳細設定保存: クォータ超過 {1}%（チャンネル: {0}）"),
+        // 通知
+        [LogMsg.NotifiedRecordLoadFailed]  = new(LogLevel.Warning, LogCategory.Notification, "通知済み記録の読み込みに失敗しました: {0}"),
         // その他
         [LogMsg.AutoRestored]              = new(LogLevel.Warning, LogCategory.Backup,       "自動復元を実行しました（理由: {0}）"),
         [LogMsg.InvalidChannelId]          = new(LogLevel.Warning, LogCategory.Channel,       "不正なチャンネルID: '{0}'"),
@@ -340,7 +355,7 @@ public static class AppLogger
         // プラグイン
         [LogMsg.PluginJobFailed]            = new(LogLevel.Debug,  LogCategory.VideoSummaryPopup, "プラグイン処理に失敗しました({0}): {1}"),
         [LogMsg.PluginHostStartFailed]      = new(LogLevel.Error,  LogCategory.Startup,           "プラグインホストの起動に失敗しました: {0}"),
-        [LogMsg.PluginHostExited]           = new(LogLevel.Error,  LogCategory.Startup,           "プラグインホストが終了しました（再起動 {0}回目/{1}回まで）"),
+        [LogMsg.PluginHostExited]           = new(LogLevel.Error,  LogCategory.Startup,           "プラグインホストが終了しました"),
         [LogMsg.PluginHostVersionMismatch]  = new(LogLevel.Error,  LogCategory.Startup,           "PluginHost.exe が本体と一致しないため使用しません（本体 {0} / ホスト {1}）"),
         [LogMsg.PluginManifestInvalid]      = new(LogLevel.Error,  LogCategory.Startup,           "plugin.json を読み込めませんでした: {0}（{1}）"),
         [LogMsg.PluginJobTimeout]           = new(LogLevel.Error,  LogCategory.VideoSummaryPopup, "プラグイン処理が時間切れになりました: {0}（{1}）"),
@@ -359,10 +374,18 @@ public static class AppLogger
         [LogMsg.IconLoadFailed]            = new(LogLevel.Error,   LogCategory.Ui,           "アイコン読込失敗: {0}"),
         [LogMsg.IconDownloadFailed]        = new(LogLevel.Error,   LogCategory.Ui,           "アイコンDL失敗: {0}"),
         [LogMsg.TrayIconInitFailed]        = new(LogLevel.Error,   LogCategory.Ui,           "トレイアイコン初期化失敗: {0}"),
+        // Windowsスタートアップ登録
+        [LogMsg.StartupRegistrationFailed]  = new(LogLevel.Error, LogCategory.Settings,         "スタートアップ登録の変更に失敗しました: {0}"),
+        // state.json バックアップ
+        [LogMsg.StateBackupSaveFailed]       = new(LogLevel.Error, LogCategory.Backup,           "監視状態のバックアップ作成に失敗しました: {0}"),
+        [LogMsg.StateBackupRestoreFailed]    = new(LogLevel.Error, LogCategory.Backup,           "監視状態のバックアップ復元に失敗しました: {0}"),
+        // チャンネル追加プレビュー
+        [LogMsg.AddChannelPreviewIconFailed] = new(LogLevel.Error, LogCategory.AddChannelWindow, "プレビュー画像の読込に失敗しました: {0}"),
 
         // DEBUG ───────────────────────────────────────────────────────
         // 監視・通知
         [LogMsg.NotificationSent]          = new(LogLevel.Debug,   LogCategory.Notification, "通知送信: {0}"),
+        [LogMsg.NotifyDuplicateSkipped]    = new(LogLevel.Debug,   LogCategory.Notification, "通知済みのため送信を省略しました（{0}）"),
         // 監視フロー
         [LogMsg.NoNew]                     = new(LogLevel.Debug,   LogCategory.Monitor,      "新着なし"),
         [LogMsg.GracePeriodStarted]        = new(LogLevel.Debug,   LogCategory.Monitor,      "猶予開始（残{1}回）: {0}"),
@@ -396,8 +419,6 @@ public static class AppLogger
         [LogMsg.OpenLatestVideo]           = new(LogLevel.Debug,   LogCategory.Monitor,      "最新{0}を開きます"),
         // 通知テスト
         [LogMsg.TestNotifySent]            = new(LogLevel.Debug,   LogCategory.Notification, "テスト通知を送信しました"),
-        // APIキー
-        [LogMsg.ApiKeyMigrated]            = new(LogLevel.Debug,   LogCategory.ApiKeyWindow, "APIキーを api_key.dat へ移行しました"),
         // バックアップ
         [LogMsg.BackupSaved]               = new(LogLevel.Debug,   LogCategory.Backup,       "自動バックアップを保存しました"),
         // 設定変更
@@ -432,6 +453,7 @@ public static class AppLogger
         [LogMsg.ChannelContextClearNew]     = new(LogLevel.Debug,   LogCategory.ChannelListUi, "NEWバッジ消去: {0}"),
         [LogMsg.ChannelContextOpenDetail]   = new(LogLevel.Debug,   LogCategory.ChannelListUi, "詳細設定を開く: {0}"),
         [LogMsg.ChannelContextManualCheck]  = new(LogLevel.Debug,   LogCategory.ChannelListUi, "最新情報を取得: {0}"),
+        [LogMsg.ChannelContextBanRecheck]   = new(LogLevel.Debug,   LogCategory.ChannelListUi, "BAN状態を再確認: {0}"),
         [LogMsg.ChannelMovedToCategory]     = new(LogLevel.Debug,   LogCategory.ChannelListUi, "カテゴリ移動: {0} → {1}"),
         [LogMsg.NgWordAddedChannel]         = new(LogLevel.Debug,   LogCategory.ChannelListUi, "NGワード追加: {0}"),
         [LogMsg.NgWordRemovedChannel]       = new(LogLevel.Debug,   LogCategory.ChannelListUi, "NGワード削除: {0}"),
@@ -511,12 +533,17 @@ public static class AppLogger
         [LogMsg.ActivityLogCleared]         = new(LogLevel.Debug,   LogCategory.Log,          "アクティビティログをクリアしました"),
         [LogMsg.LogFolderOpened]            = new(LogLevel.Debug,   LogCategory.Log,          "ログフォルダを開きました"),
         [LogMsg.ActivityLogSavedToFile]     = new(LogLevel.System,  LogCategory.Log,          "ログをファイルへ保存しました: {0}件"),
+        [LogMsg.ActivityLogDayRolledSaved]     = new(LogLevel.Info,    LogCategory.Log,          "前日のログをファイルへ自動保存しました: {0}件"),
+        [LogMsg.ActivityLogDayRolledSaveFailed] = new(LogLevel.Warning, LogCategory.Log,          "前日のログの自動保存に失敗しました: {0}"),
         // デバッグ・開発
         [LogMsg.DebugWindowNotFound]       = new(LogLevel.Debug,   LogCategory.Debug,        "DebugWindow 型が見つかりません"),
         [LogMsg.DevToolError]              = new(LogLevel.Debug,   LogCategory.Debug,        "開発者ツール起動エラー: {0}"),
         [LogMsg.DebugDllFailed]            = new(LogLevel.Debug,   LogCategory.Debug,        "Debug DLL 読み込み失敗: {0}"),
         [LogMsg.UiUpdateFailed]            = new(LogLevel.Debug,   LogCategory.Ui,           "UI更新エラー ({0}): {1}"),
     };
+
+    /// <summary>ログ引数用に、有効・無効を ON／OFF の表記へ変換する</summary>
+    public static string OnOffText(bool isOn) => isOn ? AppConstants.LogOnText : AppConstants.LogOffText;
 
     public static void Log(LogMsg id, string? channelName = null, params object[] args)
     {

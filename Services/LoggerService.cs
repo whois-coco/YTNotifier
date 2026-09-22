@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
+using System.Windows.Threading;
 using Application = System.Windows.Application;
 using YTNotifier.Constants;
 using YTNotifier.Models;
@@ -27,6 +28,20 @@ public class LoggerService
     private const int MinLogLineLength = 20;
     private DateTime _currentLogDate = DateTime.Today;
 
+    /// <summary>動作ログファイル名に使う日付書式</summary>
+    private const string LogFileDateFormat = "yyyy-MM-dd";
+
+    /// <summary>動作ログファイルの拡張子</summary>
+    private const string LogFileExtension = ".log";
+
+    /// <summary>0時ちょうどの発火を避けるための余裕（秒）。日付が確実に切り替わった後に発火させる</summary>
+    private const int DayRollMarginSeconds = 1;
+
+    /// <summary>TodayEntries の末尾から数えて、まだファイルへ出力していない件数（UIスレッドでのみ更新する）</summary>
+    private int _unsavedEntryCount;
+
+    private DispatcherTimer? _dayRollTimer;
+
     private LoggerService()
     {
         _logDir = Path.Combine(SettingsService.Instance.AppDataDir, AppConstants.DirLogs);
@@ -38,17 +53,23 @@ public class LoggerService
     {
         try
         {
-            var path = Path.Combine(_logDir, $"{DateTime.Today:yyyy-MM-dd}.log");
+            var path = BuildLogFilePath(DateTime.Today);
             if (!File.Exists(path)) return;
             var lines = File.ReadAllLines(path);
             var start = Math.Max(0, lines.Length - MaxTodayEntries);
-            for (var i = start; i < lines.Length; i++)
+            for (var lineIndex = start; lineIndex < lines.Length; lineIndex++)
             {
-                var entry = ParseLogLine(lines[i], DateTime.Today);
+                var entry = ParseLogLine(lines[lineIndex], DateTime.Today);
                 if (entry != null) TodayEntries.Add(entry);
             }
         }
         catch { }
+    }
+
+    /// <summary>指定日付の動作ログファイル（.log）のパスを返す</summary>
+    private string BuildLogFilePath(DateTime date)
+    {
+        return Path.Combine(_logDir, date.ToString(LogFileDateFormat) + LogFileExtension);
     }
 
     private static LogEntry? ParseLogLine(string line, DateTime date)
@@ -105,13 +126,13 @@ public class LoggerService
             // 中間リスト不要：逆順インデックスで直接削除
             if (!string.IsNullOrEmpty(channelName))
             {
-                for (int i = Entries.Count - 1; i >= 0; i--)
-                    if (Entries[i].ChannelName == channelName) Entries.RemoveAt(i);
+                for (int entryIndex = Entries.Count - 1; entryIndex >= 0; entryIndex--)
+                    if (Entries[entryIndex].ChannelName == channelName) Entries.RemoveAt(entryIndex);
             }
             else
             {
-                for (int i = Entries.Count - 1; i >= 0; i--)
-                    if (string.IsNullOrEmpty(Entries[i].ChannelName) && Entries[i].Message == message) Entries.RemoveAt(i);
+                for (int entryIndex = Entries.Count - 1; entryIndex >= 0; entryIndex--)
+                    if (string.IsNullOrEmpty(Entries[entryIndex].ChannelName) && Entries[entryIndex].Message == message) Entries.RemoveAt(entryIndex);
             }
 
             Entries.Add(entry);
@@ -120,12 +141,9 @@ public class LoggerService
                 Entries.RemoveAt(0);
 
             // 当日ログ（全件・重複削除なし・上限付き）
-            if (entry.Timestamp.Date != _currentLogDate)
-            {
-                TodayEntries.Clear();
-                _currentLogDate = entry.Timestamp.Date;
-            }
+            RollLogDateIfAdvanced(entry.Timestamp);
             TodayEntries.Add(entry);
+            _unsavedEntryCount++;
             while (TodayEntries.Count > MaxTodayEntries)
                 TodayEntries.RemoveAt(0);
         });
@@ -156,18 +174,95 @@ public class LoggerService
         return line;
     }
 
-    /// <summary>動作ログウィンドウの「ファイルへ保存」ボタンから呼ばれる。当日ログ全件でその日の.logファイルを上書きする</summary>
-    public int SaveTodayLogToFile()
+    /// <summary>
+    /// 指定日付の.logファイルへ、まだ出力していない分だけを末尾へ追記する（ファイルがなければ新規作成）。
+    /// 追記した件数を返す。未出力が0件なら何もせず0を返す。失敗時は例外を伝え、未出力件数は変えない。
+    /// UIスレッドから呼ぶこと（終了時出力のみ例外）。
+    /// </summary>
+    private int AppendUnsavedEntriesToFile(DateTime logDate)
     {
-        var fileName = $"{DateTime.Today:yyyy-MM-dd}.log";
-        var path     = Path.Combine(_logDir, fileName);
-        var lines    = TodayEntries.Select(FormatLogLine).ToList();
+        var appendCount = Math.Min(_unsavedEntryCount, TodayEntries.Count);
+        if (appendCount == 0) return 0;
+
+        var lines = TodayEntries.Skip(TodayEntries.Count - appendCount).Select(FormatLogLine).ToList();
 
         lock (_fileLock)
         {
-            File.WriteAllLines(path, lines);
+            File.AppendAllLines(BuildLogFilePath(logDate), lines);
         }
-        return lines.Count;
+        _unsavedEntryCount = 0;
+        return appendCount;
+    }
+
+    /// <summary>
+    /// 引数の日時の日付が保持中の日付より後なら、保持中の日付のファイルへ未出力分を追記してから当日ログを切り替える。
+    /// UIスレッドからのみ呼ぶこと。
+    /// </summary>
+    private void RollLogDateIfAdvanced(DateTime now)
+    {
+        var newLogDate = now.Date;
+        if (newLogDate <= _currentLogDate) return;
+
+        var rolledCount    = 0;
+        string? failMessage = null;
+        try
+        {
+            rolledCount = AppendUnsavedEntriesToFile(_currentLogDate);
+        }
+        catch (Exception ex)
+        {
+            failMessage = ex.Message;
+        }
+
+        // 追記の成否にかかわらず切り替える
+        TodayEntries.Clear();
+        _unsavedEntryCount = 0;
+        _currentLogDate    = newLogDate;
+
+        // 記録は日付更新の後に行い、新しい日のログの先頭に載せる
+        if (failMessage != null)
+            AppLogger.Log(LogMsg.ActivityLogDayRolledSaveFailed, null, failMessage);
+        else if (rolledCount > 0)
+            AppLogger.Log(LogMsg.ActivityLogDayRolledSaved, null, rolledCount);
+    }
+
+    /// <summary>日付切り替え（0時）の監視を開始する。UIスレッドから呼ぶこと</summary>
+    public void StartDayRollWatch()
+    {
+        if (_dayRollTimer != null) return;
+
+        var dayRollTimer = new DispatcherTimer();
+        dayRollTimer.Tick += (_, _) =>
+        {
+            dayRollTimer.Stop();
+            RollLogDateIfAdvanced(DateTime.Now);
+            ScheduleNextDayRoll();
+        };
+        _dayRollTimer = dayRollTimer;
+        ScheduleNextDayRoll();
+    }
+
+    /// <summary>次のローカル0時 + 余裕の時刻に発火するようタイマーを張り直す</summary>
+    private void ScheduleNextDayRoll()
+    {
+        if (_dayRollTimer == null) return;
+
+        var nextFireTime = DateTime.Today.AddDays(1).AddSeconds(DayRollMarginSeconds);
+        _dayRollTimer.Interval = nextFireTime - DateTime.Now;
+        _dayRollTimer.Start();
+    }
+
+    /// <summary>アプリ終了時に呼ぶ。保持中の日付のファイルへ未出力分を追記する（日付切り替えは行わない）</summary>
+    public void SaveUnsavedTodayLogOnExit()
+    {
+        AppendUnsavedEntriesToFile(_currentLogDate);
+    }
+
+    /// <summary>動作ログウィンドウの「ファイルへ保存」ボタンから呼ばれる。未出力分だけをその日の.logファイルの末尾へ追記し、追記した件数を返す</summary>
+    public int SaveTodayLogToFile()
+    {
+        RollLogDateIfAdvanced(DateTime.Now);
+        return AppendUnsavedEntriesToFile(_currentLogDate);
     }
 
     public void ClearUiLog()
@@ -178,7 +273,11 @@ public class LoggerService
     /// <summary>動作ログウィンドウの当日ログ表示をクリアする（ログファイルは削除しない）</summary>
     public void ClearTodayLog()
     {
-        Application.Current?.Dispatcher.Invoke(() => TodayEntries.Clear());
+        Application.Current?.Dispatcher.Invoke(() =>
+        {
+            TodayEntries.Clear();
+            _unsavedEntryCount = 0;
+        });
     }
 
     // ===== ログメンテナンス =====

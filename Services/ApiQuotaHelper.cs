@@ -125,14 +125,14 @@ public static class ApiQuotaHelper
             switch (slot.SlotMode)
             {
                 case YTNotifier.Models.MonitorMode.Normal:
-                    var ni = slot.SlotNormalIntervalMinutes > 0
+                    var normalIntervalMinutes = slot.SlotNormalIntervalMinutes > 0
                         ? slot.SlotNormalIntervalMinutes
                         : Math.Max(1, globalIntervalMinutes);
-                    if (ni < baseInterval) baseInterval = ni;
+                    if (normalIntervalMinutes < baseInterval) baseInterval = normalIntervalMinutes;
                     break;
                 case YTNotifier.Models.MonitorMode.LowFreq:
-                    var li = Math.Max(1, slot.SlotLowFreqIntervalMinutes);
-                    if (li < baseInterval) baseInterval = li;
+                    var lowFrequencyIntervalMinutes = Math.Max(1, slot.SlotLowFreqIntervalMinutes);
+                    if (lowFrequencyIntervalMinutes < baseInterval) baseInterval = lowFrequencyIntervalMinutes;
                     break;
             }
         }
@@ -175,11 +175,11 @@ public static class ApiQuotaHelper
     private static double ToIntervalMinutes(int intervalMinutes)
         => intervalMinutes == 0 ? FocusSlotFastIntervalMinutes : Math.Max(1, intervalMinutes);
 
-    private static int CountBits(int v)
+    private static int CountBits(int bitMask)
     {
-        int c = 0;
-        for (int i = 0; i < DaysPerWeek; i++) if ((v & (1 << i)) != 0) c++;
-        return c;
+        int bitCount = 0;
+        for (int bitIndex = 0; bitIndex < DaysPerWeek; bitIndex++) if ((bitMask & (1 << bitIndex)) != 0) bitCount++;
+        return bitCount;
     }
 
     /// <summary>全チャンネルの監視モードを考慮した1日の推定消費ユニット数を計算する</summary>
@@ -222,23 +222,23 @@ public static class ApiQuotaHelper
             switch (slot.SlotMode)
             {
                 case YTNotifier.Models.MonitorMode.Normal:
-                    var ni = slot.SlotNormalIntervalMinutes > 0
+                    var normalIntervalMinutes = slot.SlotNormalIntervalMinutes > 0
                         ? slot.SlotNormalIntervalMinutes
                         : globalInterval;
-                    checks  = MinutesPerDay / Math.Max(1, ni);
+                    checks  = MinutesPerDay / Math.Max(1, normalIntervalMinutes);
                     normal += checks + UnitsPerDetectedUpload * Math.Min(checks, DailyUploadLimitPerChannel);
                     break;
 
                 case YTNotifier.Models.MonitorMode.LowFreq:
-                    var li = Math.Max(1, slot.SlotLowFreqIntervalMinutes);
-                    checks   = MinutesPerDay / li;
+                    var lowFrequencyIntervalMinutes = Math.Max(1, slot.SlotLowFreqIntervalMinutes);
+                    checks   = MinutesPerDay / lowFrequencyIntervalMinutes;
                     lowFreq += checks + UnitsPerDetectedUpload * Math.Min(checks, DailyUploadLimitPerChannel);
                     break;
 
                 case YTNotifier.Models.MonitorMode.Focus:
-                    var fi         = ToIntervalMinutes(slot.IntervalMinutes);
-                    int activeDays = slot.Days == 0 ? DaysPerWeek : CountBits(slot.Days);
-                    checks  = (int)Math.Round((slot.WindowMinutes / (double)fi) * activeDays / (double)DaysPerWeek);
+                    var focusIntervalMinutes = ToIntervalMinutes(slot.IntervalMinutes);
+                    int activeDays           = slot.Days == 0 ? DaysPerWeek : CountBits(slot.Days);
+                    checks  = (int)Math.Round((slot.WindowMinutes / (double)focusIntervalMinutes) * activeDays / (double)DaysPerWeek);
                     focus  += checks + UnitsPerDetectedUpload * Math.Min(checks, DailyUploadLimitPerChannel);
                     break;
             }
@@ -259,10 +259,10 @@ public static class ApiQuotaHelper
         int normal = 0, lowFreq = 0, focus = 0;
         foreach (var ch in channels.Where(c => c.IsEnabled && !c.IsDormant))
         {
-            var (n, l, f) = EstimateDailyUnitsByModeForSlots(ch.FocusSlots, globalIntervalMinutes);
-            normal  += n;
-            lowFreq += l;
-            focus   += f;
+            var (channelNormalUnits, channelLowFreqUnits, channelFocusUnits) = EstimateDailyUnitsByModeForSlots(ch.FocusSlots, globalIntervalMinutes);
+            normal  += channelNormalUnits;
+            lowFreq += channelLowFreqUnits;
+            focus   += channelFocusUnits;
         }
         return (normal, lowFreq, focus);
     }

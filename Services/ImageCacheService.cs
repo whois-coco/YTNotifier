@@ -91,7 +91,19 @@ public static class ImageCacheService
             .Where(kv => (now - kv.Value.CachedAt).TotalDays >= CacheExpiryDays)
             .Select(kv => kv.Key)
             .ToList();
-        foreach (var k in expiredKeys) cache.Remove(k);
+        foreach (var expiredKey in expiredKeys) cache.Remove(expiredKey);
+    }
+
+    /// <summary>
+    /// 件数が上限（CacheMaxEntries）以上なら、格納時刻（CachedAt）が最も古いエントリを1件削除する。
+    /// 呼び出し側で _lock を保持していること。
+    /// </summary>
+    private static void EvictOldestIfFull(Dictionary<string, CacheEntry> cache)
+    {
+        if (cache.Count < CacheMaxEntries) return;
+
+        var oldestKey = cache.MinBy(kv => kv.Value.CachedAt).Key;
+        cache.Remove(oldestKey);
     }
 
     /// <summary>チャンネルアイコンのキャッシュを参照する（ダウンロードは行わない）</summary>
@@ -115,8 +127,8 @@ public static class ImageCacheService
 
             lock (_lock)
             {
-                if (_iconCache.Count >= CacheMaxEntries)
-                    _iconCache.Remove(_iconCache.Keys.First());
+                PurgeExpired(_iconCache);
+                EvictOldestIfFull(_iconCache);
                 _iconCache[url] = new CacheEntry { Bitmap = bmp, CachedAt = DateTime.Now };
             }
             return bmp;
@@ -139,8 +151,7 @@ public static class ImageCacheService
             lock (_lock)
             {
                 PurgeExpired(_thumbnailCache);
-                if (_thumbnailCache.Count >= CacheMaxEntries)
-                    _thumbnailCache.Remove(_thumbnailCache.Keys.First());
+                EvictOldestIfFull(_thumbnailCache);
                 _thumbnailCache[key] = new CacheEntry { Bitmap = bmp, CachedAt = DateTime.Now };
             }
             return bmp;

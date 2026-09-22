@@ -1,14 +1,8 @@
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Serialization;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
-using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text;
-using YTNotifier.Constants;
 using YTNotifier.Plugin;
 
 namespace YTNotifier.Services;
@@ -18,55 +12,24 @@ namespace YTNotifier.Services;
 /// <c>PluginHost.exe</c> に任せる。本体は名前付きパイプのサーバーとなり、通信（HTTP）と
 /// ログ出力を代行する。要約用APIキーはこのプロセスから外へ出ない。
 /// </summary>
-public sealed class PluginBridge
+public sealed partial class PluginBridge
 {
     private static readonly Lazy<PluginBridge> _lazy = new(() => new PluginBridge());
     public static PluginBridge Instance => _lazy.Value;
 
-    private const string PluginsDirName        = "Plugins";
-    private const string HostFileName          = "PluginHost.exe";
-    private const string ManifestFileName      = "plugin.json";
-    private const string PipeNamePrefix        = "YTNotifier.Plugin.";
-    private const int    MaxRestartCount       = 3;
+    private const int    HostStartupWaitSeconds = 10;
     private const int    ShutdownWaitSeconds   = 5;
     private const int    PluginOverallTimeoutMinutes = 5;
     private const int    PluginIdleTimeoutSeconds = 30;
 
-    /// <summary>HTTP呼び出し中のハートビート間隔を無音タイムアウトの何分の1にするかの係数。無音タイムアウト値を変更してもハートビート間隔が自動追随する。</summary>
-    private const int    HttpHeartbeatIntervalDivisor = 3;
+    /// <summary>依頼結果の Output が空だったときの失敗理由（PluginJobFailed の {1}）。</summary>
+    private const string EmptyResultReason = "結果が空でした";
 
-    /// <summary>プラグインごとの有効・優先順の記録ファイル（<c>conf\</c> 直下・バックアップ対象外）</summary>
-    private const string PluginConfigFileName = "plugins.json";
+    /// <summary>ホストを起動できなかった、または待ち時間内に接続が完了しなかったときの依頼結果。</summary>
+    private static readonly PluginInvokeResult HostUnavailableResult = new(Output: null, HostUnavailable: true);
 
-    /// <summary>待ち時間の上限の判定結果をログへ載せるときの表記（PluginJobTimeout の {1}）</summary>
-    private const string TimeoutKindOverall = "全体";
-    private const string TimeoutKindIdle    = "無音";
-
-    /// <summary>有効・無効切り替えログ（PluginEnabledChanged の {1}）の表記。XAML の CheckBox Content="有効" に合わせる。</summary>
-    private const string EnabledLabelOn  = "有効";
-    private const string EnabledLabelOff = "無効";
-
-    private const string NewLineForPipe = "\n";
-
-    private static readonly JsonSerializerSettings MessageSettings = new()
-    {
-        ContractResolver = new DefaultContractResolver
-        {
-            NamingStrategy = new CamelCaseNamingStrategy(processDictionaryKeys: false, overrideSpecifiedNames: true),
-        },
-        NullValueHandling = NullValueHandling.Ignore,
-        Formatting = Formatting.None,
-    };
-
-    /// <summary>
-    /// 監視の判断に口を出す仕事の名前。ここに載る仕事を持つプラグインは、
-    /// 新規発見時の既定が「無効」になる（設定画面で明示的に有効化するまで動かない）。
-    /// 第2弾時点で該当する仕事は無い（機構のみ整備。要約 summary は「結果を見せるだけ」側）。
-    /// </summary>
-    private static readonly HashSet<string> MonitorInfluencingJobs = new(StringComparer.Ordinal);
-
-    private static readonly string ExeDir =
-        Path.GetDirectoryName(Environment.ProcessPath ?? Assembly.GetExecutingAssembly().Location) ?? string.Empty;
+    /// <summary>ホストは使えたが、プラグイン側の処理が失敗した（または停止処理中の）ときの依頼結果。</summary>
+    private static readonly PluginInvokeResult InvokeFailedResult = new(Output: null, HostUnavailable: false);
 
     private readonly object _sync = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -86,8 +49,10 @@ public sealed class PluginBridge
     private bool _connected;
     private bool _disabled;
     private bool _stopping;
-    private int  _restartCount;
     private int  _nextInvokeId;
+
+    /// <summary>直近のホスト起動について、プラグイン一覧の受信完了（true）／やりとりの版の不一致（false）を知らせる待ち合わせ。起動のたびに作り直す。</summary>
+    private TaskCompletionSource<bool>? _startupCompletion;
 
     private IReadOnlyList<PluginDescriptor> _plugins = Array.Empty<PluginDescriptor>();
 
@@ -99,12 +64,11 @@ public sealed class PluginBridge
         get { lock (_sync) return _plugins; }
     }
 
-    // ── 起動・停止 ──────────────────────────────────────────────────────────
-
     /// <summary>
     /// <c>PluginHost.exe</c> が実行ファイルと同じフォルダにあり、かつ <c>Plugins\</c> に
     /// プラグインフォルダが1つ以上あるとき、パイプを用意してホストを起動する。
-    /// どちらか欠ければ何もしない。
+    /// どちらか欠ければ何もしない。本体の起動時に1回だけ呼ぶ（旧形式の設定ファイルの移行もここで1回だけ行う）。
+    /// 依頼時の起動は <see cref="InvokeAsync"/> が <see cref="TryStartHost"/> で行う。
     /// </summary>
     public void Start()
     {
@@ -114,12 +78,7 @@ public sealed class PluginBridge
 
             MigrateLegacyPluginConfigIfNeeded();
 
-            var hostPath   = Path.Combine(ExeDir, HostFileName);
-            var pluginsDir  = Path.Combine(ExeDir, PluginsDirName);
-            if (!File.Exists(hostPath) || !HasAnyPluginFolder(pluginsDir)) return;
-
-            _started = true;
-            StartHost(hostPath, pluginsDir);
+            TryStartHost();
         }
     }
 
@@ -132,8 +91,8 @@ public sealed class PluginBridge
         CancellationTokenSource? cts;
         lock (_sync)
         {
+            _stopping = true;
             if (!_started) return;
-            _stopping    = true;
             hostProcess  = _hostProcess;
             cts          = _cts;
         }
@@ -155,33 +114,52 @@ public sealed class PluginBridge
         lock (_sync) { Cleanup(); }
     }
 
-    /// <summary>ホストが動いていて、その仕事に対応する有効なプラグインが1つ以上あるか。</summary>
-    public bool IsJobAvailable(string job)
-    {
-        lock (_sync)
-        {
-            if (!_connected || _disabled) return false;
-            return ResolveOrderedEnabled(job).Count > 0;
-        }
-    }
-
     /// <summary>
     /// 優先順に従ってプラグインへ仕事を依頼し、結果の JSON 文字列を返す。
-    /// 全て失敗した場合は <c>null</c> を返す（呼び出し元が「フォールバックすべきサイン」として扱う）。
+    /// ホストが使える状態（通信路が有効でプラグイン一覧を受け取り済み）でなければ、起動してから依頼する。
+    /// 全て失敗した場合は結果の文字列が <c>null</c> になる（呼び出し元が「フォールバックすべきサイン」として扱う）。
+    /// ホストを起動できなかった場合は <see cref="PluginInvokeResult.HostUnavailable"/> が <c>true</c> になる。
     /// 例外は外に投げない。
     /// </summary>
-    public async Task<string?> InvokeAsync(string job, string inputJson)
+    public async Task<PluginInvokeResult> InvokeAsync(string job, string inputJson)
     {
         try
         {
-            List<PluginDescriptor> candidates;
-            bool ready;
+            // ロック内では「起動が必要か」の判定と待ち合わせの取得までを行い、待機はロックを抜けてから行う。
+            Task<bool>? startupWait = null;
             lock (_sync)
             {
-                ready = _connected && !_disabled;
-                candidates = ready ? ResolveOrderedEnabled(job) : new List<PluginDescriptor>();
+                if (_disabled) return HostUnavailableResult;
+                if (_stopping) return InvokeFailedResult;
+
+                if (!IsHostReady())
+                {
+                    if (!_started && !TryStartHost()) return HostUnavailableResult;
+                    startupWait = _startupCompletion?.Task;
+                }
             }
-            if (!ready || candidates.Count == 0) return null;
+
+            if (startupWait != null && !await WaitForStartupAsync(startupWait).ConfigureAwait(false))
+            {
+                // 版の不一致（無効化済み）は停止処理中も同時に立つため、無効化の確認を先に行う
+                lock (_sync)
+                {
+                    if (_disabled) return HostUnavailableResult;
+                    if (_stopping) return InvokeFailedResult;
+                }
+                return HostUnavailableResult;
+            }
+
+            List<PluginDescriptor> candidates;
+            lock (_sync)
+            {
+                if (_disabled) return HostUnavailableResult;
+                if (_stopping) return InvokeFailedResult;
+                if (!IsHostReady()) return HostUnavailableResult;
+
+                candidates = ResolveOrderedEnabled(job);
+            }
+            if (candidates.Count == 0) return InvokeFailedResult;
 
             var apiKey = GeminiApiKeyService.Load(SettingsService.Instance.ConfDir) ?? string.Empty;
             var overallTimeout = TimeSpan.FromMinutes(PluginOverallTimeoutMinutes);
@@ -217,12 +195,12 @@ public sealed class PluginBridge
                     var result = outcome.Result!;
                     if (!result.Ok || string.IsNullOrWhiteSpace(result.Output))
                     {
-                        var reason = string.IsNullOrEmpty(result.Error) ? "結果が空でした" : result.Error;
+                        var reason = string.IsNullOrEmpty(result.Error) ? EmptyResultReason : result.Error;
                         AppLogger.Log(LogMsg.PluginJobFailed, null, job, reason);
                         continue;
                     }
 
-                    return result.Output;
+                    return new PluginInvokeResult(Output: result.Output, HostUnavailable: false);
                 }
                 finally
                 {
@@ -230,507 +208,29 @@ public sealed class PluginBridge
                 }
             }
 
-            return null;
+            return InvokeFailedResult;
         }
         catch (Exception ex)
         {
             AppLogger.Log(LogMsg.PluginInvokeError, null, job, ex.Message);
-            return null;
+            return InvokeFailedResult;
         }
     }
 
-    // ── 設定画面向けの読み書き（conf\plugins.json） ───────────────────────
+    /// <summary>通信路が有効で、プラグイン一覧を受け取り済みか。プロセスが生きているかは見ない。呼び出し側で <see cref="_sync"/> を保持していること。</summary>
+    private bool IsHostReady() => _connected && _pipe != null;
 
-    /// <summary>
-    /// プラグインが有効か。<c>conf\plugins.json</c> に記録が無ければ <c>true</c>
-    /// （記録なし＝有効の既存解決ルールと一致）。
-    /// </summary>
-    public bool IsPluginEnabled(string folder)
-    {
-        lock (_sync)
-        {
-            var config = LoadPluginConfig();
-            return !config.Enabled.TryGetValue(folder, out var isEnabled) || isEnabled;
-        }
-    }
-
-    /// <summary>
-    /// プラグイン全体の表示・優先順（フォルダ名の配列）のコピー。記録が無ければ空リスト。
-    /// 仕事の呼び出し順・画面のボタン表示順の両方にこの1つの順序を使う。
-    /// </summary>
-    public IReadOnlyList<string> GetPluginOrder()
-    {
-        lock (_sync)
-        {
-            var config = LoadPluginConfig();
-            return new List<string>(config.Order);
-        }
-    }
-
-    /// <summary>プラグインの有効・無効を切り替えて <c>conf\plugins.json</c> へ保存する。</summary>
-    public void SetPluginEnabled(string folder, bool enabled)
-    {
-        lock (_sync)
-        {
-            var config = LoadPluginConfig();
-            config.Enabled[folder] = enabled;
-            SavePluginConfig(config);
-
-            var displayName = _plugins.FirstOrDefault(p => string.Equals(p.Folder, folder, StringComparison.Ordinal))?.Name
-                              ?? folder;
-            AppLogger.Log(LogMsg.PluginEnabledChanged, null, displayName, enabled ? EnabledLabelOn : EnabledLabelOff);
-        }
-    }
-
-    /// <summary>プラグイン全体の表示・優先順を差し替えて <c>conf\plugins.json</c> へ保存する。ログ出力は呼び出し側で行う。</summary>
-    public void SetPluginOrder(IReadOnlyList<string> order)
-    {
-        lock (_sync)
-        {
-            var config = LoadPluginConfig();
-            config.Order = new List<string>(order);
-            SavePluginConfig(config);
-        }
-    }
-
-    // ── パイプとホストプロセス ─────────────────────────────────────────────
-
-    private static bool HasAnyPluginFolder(string pluginsDir)
-    {
-        if (!Directory.Exists(pluginsDir)) return false;
-        foreach (var folder in Directory.GetDirectories(pluginsDir))
-            if (File.Exists(Path.Combine(folder, ManifestFileName))) return true;
-        return false;
-    }
-
-    /// <summary>呼び出し側で <see cref="_sync"/> を保持していること。</summary>
-    private void StartHost(string hostPath, string pluginsDir)
+    /// <summary>起動完了の待ち合わせを最大 <see cref="HostStartupWaitSeconds"/> 秒待つ。プラグイン一覧を受け取れたときだけ <c>true</c>。</summary>
+    private static async Task<bool> WaitForStartupAsync(Task<bool> startupWait)
     {
         try
         {
-            var pipeName = PipeNamePrefix + Environment.ProcessId;
-            _cts    = new CancellationTokenSource();
-            _pipe   = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1,
-                PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-
-            var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-            _reader = new StreamReader(_pipe, encoding);
-            _writer = new StreamWriter(_pipe, encoding) { AutoFlush = false, NewLine = NewLineForPipe };
-
-            var sandboxedHost = PluginSandbox.Start(hostPath, pipeName, pluginsDir, ExeDir);
-            _hostProcess = sandboxedHost.Process;
-            _jobHandle   = sandboxedHost.JobHandle;
-
-            var token = _cts.Token;
-            _ = Task.Run(() => RunAsync(token));
+            return await startupWait.WaitAsync(TimeSpan.FromSeconds(HostStartupWaitSeconds)).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (TimeoutException)
         {
-            AppLogger.Log(LogMsg.PluginHostStartFailed, null, ex.Message);
-            Cleanup();
+            return false;
         }
-    }
-
-    private async Task RunAsync(CancellationToken token)
-    {
-        NamedPipeServerStream? pipe;
-        StreamReader? reader;
-        lock (_sync)
-        {
-            pipe   = _pipe;
-            reader = _reader;
-        }
-        if (pipe == null || reader == null) return;
-
-        try
-        {
-            await pipe.WaitForConnectionAsync(token).ConfigureAwait(false);
-        }
-        catch
-        {
-            HandleDisconnect();
-            return;
-        }
-
-        while (!token.IsCancellationRequested)
-        {
-            string? line;
-            try
-            {
-                line = await reader.ReadLineAsync(token).ConfigureAwait(false);
-            }
-            catch
-            {
-                break;
-            }
-            if (line == null) break;
-
-            try { Dispatch(line); }
-            catch { /* 1メッセージの処理失敗で受信ループを止めない */ }
-        }
-
-        HandleDisconnect();
-    }
-
-    private void HandleDisconnect()
-    {
-        lock (_sync)
-        {
-            Cleanup();
-            FailActiveInvokes();
-
-            if (_stopping || _disabled) return;
-
-            _restartCount++;
-            AppLogger.Log(LogMsg.PluginHostExited, null, _restartCount, MaxRestartCount);
-            if (_restartCount > MaxRestartCount) return;
-
-            var hostPath   = Path.Combine(ExeDir, HostFileName);
-            var pluginsDir  = Path.Combine(ExeDir, PluginsDirName);
-            if (!File.Exists(hostPath) || !HasAnyPluginFolder(pluginsDir)) return;
-
-            _connected = false;
-            StartHost(hostPath, pluginsDir);
-        }
-    }
-
-    /// <summary>呼び出し側で <see cref="_sync"/> を保持していること。</summary>
-    private void Cleanup()
-    {
-        try { _writer?.Dispose(); } catch { }
-        try { _reader?.Dispose(); } catch { }
-        try { _pipe?.Dispose(); } catch { }
-        // 枠を閉じると、残っているホストのプロセスも道連れに終了する
-        try { _jobHandle?.Dispose(); } catch { }
-        _writer    = null;
-        _reader    = null;
-        _pipe      = null;
-        _jobHandle = null;
-    }
-
-    private void FailActiveInvokes()
-    {
-        foreach (var context in _activeInvokes.Values) context.Fail();
-    }
-
-    // ── メッセージの処理 ───────────────────────────────────────────────────
-
-    private void Dispatch(string line)
-    {
-        var messageType = JObject.Parse(line).Value<string>(PluginProtocol.TypeField) ?? string.Empty;
-
-        switch (messageType)
-        {
-            case PluginProtocol.MessageTypes.Hello:
-                OnHello(Deserialize<HelloMessage>(line));
-                break;
-            case PluginProtocol.MessageTypes.Plugins:
-                OnPlugins(Deserialize<PluginsMessage>(line));
-                break;
-            case PluginProtocol.MessageTypes.Progress:
-            {
-                var progress = Deserialize<ProgressMessage>(line);
-                if (_activeInvokes.TryGetValue(progress.Id, out var context)) context.MarkActivity();
-                break;
-            }
-            case PluginProtocol.MessageTypes.Result:
-            {
-                var result = Deserialize<ResultMessage>(line);
-                if (_activeInvokes.TryGetValue(result.Id, out var context)) context.Complete(result);
-                break;
-            }
-            case PluginProtocol.MessageTypes.Call:
-            {
-                var call = Deserialize<CallMessage>(line);
-                _ = Task.Run(() => OnCallAsync(call));
-                break;
-            }
-        }
-    }
-
-    private void OnHello(HelloMessage hello)
-    {
-        if (hello.ProtocolVersion != PluginProtocol.ProtocolVersion)
-        {
-            lock (_sync) { _disabled = true; _stopping = true; }
-            AppLogger.Log(LogMsg.PluginHostVersionMismatch, null, AppConstants.AppVersion, hello.HostVersion);
-            _ = SendAsync(new WelcomeMessage
-            {
-                ProtocolVersion = PluginProtocol.ProtocolVersion,
-                Accepted        = false,
-                Reason          = "やりとりの版が一致しません",
-            });
-            return;
-        }
-
-        _ = SendAsync(new WelcomeMessage
-        {
-            ProtocolVersion = PluginProtocol.ProtocolVersion,
-            Accepted        = true,
-        });
-    }
-
-    private void OnPlugins(PluginsMessage message)
-    {
-        foreach (var error in message.Errors)
-            AppLogger.Log(LogMsg.PluginManifestInvalid, null, error.Folder, error.Reason);
-
-        lock (_sync)
-        {
-            _plugins   = message.Items;
-            _connected = true;
-        }
-
-        foreach (var descriptor in message.Items)
-            AppLogger.Log(LogMsg.PluginDetected, null, descriptor.Name, descriptor.Folder);
-
-        RecordDiscoveredPlugins(message.Items);
-
-        AppLogger.Log(LogMsg.PluginHostStarted, null, message.Items.Count);
-    }
-
-    private async Task OnCallAsync(CallMessage call)
-    {
-        var output = string.Empty;
-
-        if (_activeInvokes.TryGetValue(call.Id, out var context))
-        {
-            context.MarkActivity();
-            try
-            {
-                if (call.Api == PluginProtocol.Apis.Http)
-                {
-                    var input = Deserialize<HttpCallInput>(call.Input);
-
-                    // Gemini API応答待ち等、HttpRequest が応答を待っている間は活動時刻の更新が起きないため、
-                    // 定期的に MarkActivity() を呼び続けて無音タイムアウトの誤検知を防ぐ。
-                    var heartbeatInterval = TimeSpan.FromSeconds(PluginIdleTimeoutSeconds) / HttpHeartbeatIntervalDivisor;
-                    var heartbeatTimer = new System.Threading.Timer(_ => context.MarkActivity(), null, heartbeatInterval, heartbeatInterval);
-                    try
-                    {
-                        output = context.HttpGateway.HttpRequest(input.Method, input.Url, input.HeadersJson, input.BodyText);
-                    }
-                    finally
-                    {
-                        heartbeatTimer.Dispose();
-                    }
-                }
-                else if (call.Api == PluginProtocol.Apis.Log)
-                {
-                    var input = Deserialize<LogCallInput>(call.Input);
-                    context.LogGateway.Log(input.Message);
-                }
-            }
-            catch { /* 窓口の失敗は握りつぶし、下で空応答を返す */ }
-            context.MarkActivity();
-        }
-
-        await SendAsync(new CallResultMessage { Id = call.Id, Output = output }).ConfigureAwait(false);
-    }
-
-    private async Task SendAsync(object message)
-    {
-        StreamWriter? writer;
-        lock (_sync) writer = _writer;
-        if (writer == null) return;
-
-        var line = JsonConvert.SerializeObject(message, MessageSettings);
-
-        await _writeLock.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            await writer.WriteLineAsync(line).ConfigureAwait(false);
-            await writer.FlushAsync().ConfigureAwait(false);
-        }
-        catch { /* パイプ断は受信ループ側で検知して後始末する */ }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
-
-    private static T Deserialize<T>(string line) where T : new()
-        => JsonConvert.DeserializeObject<T>(line, MessageSettings) ?? new T();
-
-    // ── 待ち時間の上限 ─────────────────────────────────────────────────────
-
-    private static async Task<InvokeOutcome> AwaitResultAsync(InvokeContext context,
-        TimeSpan overallTimeout, TimeSpan idleTimeout)
-    {
-        var overallDeadline = DateTime.UtcNow + overallTimeout;
-
-        while (true)
-        {
-            var now = DateTime.UtcNow;
-            if (now >= overallDeadline) return InvokeOutcome.Timeout(TimeoutKindOverall);
-
-            var idleDeadline = context.LastActivityUtc + idleTimeout;
-            if (now >= idleDeadline) return InvokeOutcome.Timeout(TimeoutKindIdle);
-
-            var wait = overallDeadline - now < idleDeadline - now ? overallDeadline - now : idleDeadline - now;
-
-            var finished = await Task.WhenAny(context.ResultTask, Task.Delay(wait)).ConfigureAwait(false);
-            if (finished != context.ResultTask) continue;
-
-            try { return InvokeOutcome.Completed(await context.ResultTask.ConfigureAwait(false)); }
-            catch { return InvokeOutcome.Timeout(TimeoutKindOverall); }
-        }
-    }
-
-    // ── conf\plugins.json の読み書き ───────────────────────────────────────
-
-    /// <summary>呼び出し側で <see cref="_sync"/> を保持していること。</summary>
-    private List<PluginDescriptor> ResolveOrderedEnabled(string job)
-    {
-        var matching = _plugins
-            .Where(p => p.Jobs.Contains(job, StringComparer.Ordinal))
-            .ToList();
-        if (matching.Count == 0) return matching;
-
-        var config = LoadPluginConfig();
-
-        var enabled = matching
-            .Where(p => !config.Enabled.TryGetValue(p.Folder, out var isEnabled) || isEnabled)
-            .ToList();
-
-        if (config.Order.Count == 0) return enabled;
-
-        var rankByFolder = new Dictionary<string, int>(StringComparer.Ordinal);
-        for (var i = 0; i < config.Order.Count; i++)
-            if (!rankByFolder.ContainsKey(config.Order[i])) rankByFolder[config.Order[i]] = i;
-
-        return enabled
-            .OrderBy(p => rankByFolder.TryGetValue(p.Folder, out var rank) ? rank : int.MaxValue)
-            .ToList();
-    }
-
-    private static string PluginConfigPath =>
-        Path.Combine(SettingsService.Instance.ConfDir, PluginConfigFileName);
-
-    private static PluginConfig LoadPluginConfig()
-    {
-        try
-        {
-            var path = PluginConfigPath;
-            if (!File.Exists(path)) return new PluginConfig();
-            var text = File.ReadAllText(path);
-
-            try
-            {
-                return JsonConvert.DeserializeObject<PluginConfig>(text) ?? new PluginConfig();
-            }
-            catch (JsonException)
-            {
-                // 旧形式（order/regionOrder が「仕事名・リージョンID → フォルダ配列」のDictionaryだった版）。
-                // 有効・無効の記録だけ引き継ぎ、順序は検出順（空リスト）へリセットする。
-                var legacy = JsonConvert.DeserializeObject<LegacyPluginConfig>(text) ?? new LegacyPluginConfig();
-                return new PluginConfig { Enabled = legacy.Enabled };
-            }
-        }
-        catch
-        {
-            return new PluginConfig();
-        }
-    }
-
-    /// <summary>
-    /// 起動時に一度だけ呼ぶ。旧形式（仕事ごと・リージョンごとの Dictionary 順序）の
-    /// <c>conf\plugins.json</c> を検出したら、有効・無効の記録だけを引き継いだ新形式で上書き保存する。
-    /// 新形式として読める場合・ファイルが無い場合は何もしない。
-    /// </summary>
-    private static void MigrateLegacyPluginConfigIfNeeded()
-    {
-        var path = PluginConfigPath;
-        if (!File.Exists(path)) return;
-
-        string text;
-        try { text = File.ReadAllText(path); }
-        catch { return; }
-
-        try
-        {
-            JsonConvert.DeserializeObject<PluginConfig>(text);
-            return; // 新形式として読めたので移行不要
-        }
-        catch (JsonException)
-        {
-            // 旧形式。下で変換して保存する。
-        }
-        catch
-        {
-            return; // 想定外の読み込み失敗。移行は行わない
-        }
-
-        try
-        {
-            var legacy = JsonConvert.DeserializeObject<LegacyPluginConfig>(text) ?? new LegacyPluginConfig();
-            SavePluginConfig(new PluginConfig { Enabled = legacy.Enabled });
-        }
-        catch { /* 移行に失敗しても起動は継続する */ }
-    }
-
-    private static void SavePluginConfig(PluginConfig config)
-    {
-        try
-        {
-            var json = JsonConvert.SerializeObject(config, Formatting.Indented);
-            File.WriteAllText(PluginConfigPath, json, new UTF8Encoding(false));
-        }
-        catch { /* 記録に失敗しても動作は続行する */ }
-    }
-
-    /// <summary>
-    /// 記録に無いプラグインを <c>enabled=true</c>・順序の末尾として書き足す。
-    /// 記録済みの内容（存在しないフォルダ名を含む）は消さない。
-    /// </summary>
-    private void RecordDiscoveredPlugins(IReadOnlyList<PluginDescriptor> discovered)
-    {
-        var config  = LoadPluginConfig();
-        var changed = false;
-
-        foreach (var descriptor in discovered)
-        {
-            if (!config.Enabled.ContainsKey(descriptor.Folder))
-            {
-                config.Enabled[descriptor.Folder] = !IsMonitorInfluencing(descriptor);
-                changed = true;
-            }
-
-            if (!config.Order.Contains(descriptor.Folder))
-            {
-                config.Order.Add(descriptor.Folder);
-                changed = true;
-            }
-        }
-
-        if (changed) SavePluginConfig(config);
-    }
-
-    /// <summary>この仕事群のいずれかが「監視に口を出す」種類かどうか。</summary>
-    private static bool IsMonitorInfluencing(PluginDescriptor descriptor)
-        => descriptor.Jobs.Any(MonitorInfluencingJobs.Contains);
-
-    // ── 内部型 ────────────────────────────────────────────────────────────
-
-    private sealed class PluginConfig
-    {
-        /// <summary>プラグイン全体の表示・優先順（フォルダ名の配列）。仕事の呼び出し順・画面のボタン表示順の両方にこの1つを使う。</summary>
-        public List<string> Order { get; set; } = new();
-
-        /// <summary>フォルダ名 → 有効かどうか</summary>
-        public Dictionary<string, bool> Enabled { get; set; } = new(StringComparer.Ordinal);
-    }
-
-    /// <summary>
-    /// 旧形式（仕事ごと・リージョンごとに別々の優先順位を持っていた版）の <c>plugins.json</c> を読むための型。
-    /// <see cref="LoadPluginConfig"/> が新形式でのデシリアライズに失敗したときだけ使う。
-    /// </summary>
-    private sealed class LegacyPluginConfig
-    {
-        public Dictionary<string, List<string>> Order { get; set; } = new(StringComparer.Ordinal);
-        public Dictionary<string, bool> Enabled { get; set; } = new(StringComparer.Ordinal);
-        [JsonProperty("regionOrder")]
-        public Dictionary<string, List<string>> RegionOrder { get; set; } = new(StringComparer.Ordinal);
     }
 
     private sealed class InvokeContext
@@ -759,22 +259,5 @@ public sealed class PluginBridge
         public void MarkActivity() => Interlocked.Exchange(ref _lastActivityTicks, DateTime.UtcNow.Ticks);
         public void Complete(ResultMessage result) => _completion.TrySetResult(result);
         public void Fail() => _completion.TrySetCanceled();
-    }
-
-    private readonly struct InvokeOutcome
-    {
-        private InvokeOutcome(bool timedOut, string timeoutKind, ResultMessage? result)
-        {
-            TimedOut    = timedOut;
-            TimeoutKind = timeoutKind;
-            Result      = result;
-        }
-
-        public bool TimedOut { get; }
-        public string TimeoutKind { get; }
-        public ResultMessage? Result { get; }
-
-        public static InvokeOutcome Timeout(string kind)      => new(true, kind, null);
-        public static InvokeOutcome Completed(ResultMessage r) => new(false, string.Empty, r);
     }
 }

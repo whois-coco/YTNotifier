@@ -64,8 +64,8 @@ public static class BackupCryptoService
             // マジックバイト確認
             if (data.Length < Magic.Length + IvSize)
                 return null;
-            for (int i = 0; i < Magic.Length; i++)
-                if (data[i] != Magic[i]) return null;
+            for (int magicIndex = 0; magicIndex < Magic.Length; magicIndex++)
+                if (data[magicIndex] != Magic[magicIndex]) return null;
 
             var iv     = data[Magic.Length..(Magic.Length + IvSize)];
             var cipher = data[(Magic.Length + IvSize)..];

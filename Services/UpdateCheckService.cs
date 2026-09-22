@@ -2,12 +2,13 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using Newtonsoft.Json.Linq;
 using YTNotifier.Constants;
+using YTNotifier.Models;
 
 namespace YTNotifier.Services;
 
 internal static class UpdateCheckService
 {
-    private const string GitHubReleasesApiUrl = "https://api.github.com/repos/whois-coco/YTNotifier/releases/latest";
+    private const string GitHubReleasesApiBaseUrl = "https://api.github.com/repos/whois-coco/YTNotifier/releases";
 
     /// <summary>リリース確認のタイムアウト（秒）</summary>
     private const int ReleaseCheckTimeoutSeconds = 10;
@@ -26,32 +27,41 @@ internal static class UpdateCheckService
     /// </summary>
     public static async Task<string?> CheckAsync()
     {
+        var result = await CheckWithStatusAsync();
+        return result.Status == UpdateCheckStatus.UpdateFound ? result.LatestTag : null;
+    }
+
+    /// <summary>
+    /// GitHub Releases の最新タグを取得し、新バージョンあり／最新版／通信失敗の3状態を区別して返す。
+    /// </summary>
+    public static async Task<UpdateCheckResult> CheckWithStatusAsync()
+    {
         try
         {
-            var json = await _http.GetStringAsync(GitHubReleasesApiUrl);
+            var json = await _http.GetStringAsync($"{GitHubReleasesApiBaseUrl}/latest");
             var tag = JObject.Parse(json)["tag_name"]?.ToString();
-            if (string.IsNullOrEmpty(tag)) return null;
+            if (string.IsNullOrEmpty(tag)) return new UpdateCheckResult(UpdateCheckStatus.Failed, null);
 
             var latest  = ParseVersion(tag.TrimStart('v'));
             var current = ParseVersion(AppConstants.AppVersion);
-            return latest > current ? tag : null;
+            return latest > current
+                ? new UpdateCheckResult(UpdateCheckStatus.UpdateFound, tag)
+                : new UpdateCheckResult(UpdateCheckStatus.UpToDate, null);
         }
         catch
         {
-            return null;
+            return new UpdateCheckResult(UpdateCheckStatus.Failed, null);
         }
     }
 
-    private static Version ParseVersion(string s)
+    private static Version ParseVersion(string versionText)
     {
-        return Version.TryParse(s, out var v) ? v : new Version(0, 0);
+        return Version.TryParse(versionText, out var parsedVersion) ? parsedVersion : new Version(0, 0);
     }
 
     /// <summary>candidate が baseline より新しいバージョンかどうかを判定する（"1.2.3" 形式の文字列を比較）。</summary>
     public static bool IsNewerVersion(string candidate, string baseline) =>
         ParseVersion(candidate) > ParseVersion(baseline);
-
-    internal sealed record ReleaseNotes(string Tag, string? Body);
 
     /// <summary>
     /// 最新リリースのタグと本文（Markdown形式のリリースノート）を取得する。取得失敗時は null。
@@ -60,7 +70,7 @@ internal static class UpdateCheckService
     {
         try
         {
-            var json = await _http.GetStringAsync(GitHubReleasesApiUrl);
+            var json = await _http.GetStringAsync($"{GitHubReleasesApiBaseUrl}/latest");
             var release = JObject.Parse(json);
             var tag = release["tag_name"]?.ToString();
             if (string.IsNullOrEmpty(tag)) return null;
@@ -74,7 +84,26 @@ internal static class UpdateCheckService
         }
     }
 
-    internal sealed record UpdateAssetInfo(string Tag, string DownloadUrl, string? Sha256Digest);
+    /// <summary>
+    /// 指定タグ（例: "v0.9.4"）のリリースのタグと本文（Markdown形式のリリースノート）を取得する。取得失敗時は null。
+    /// </summary>
+    public static async Task<ReleaseNotes?> GetReleaseNotesByTagAsync(string tag)
+    {
+        try
+        {
+            var json = await _http.GetStringAsync($"{GitHubReleasesApiBaseUrl}/tags/{tag}");
+            var release = JObject.Parse(json);
+            var tagName = release["tag_name"]?.ToString();
+            if (string.IsNullOrEmpty(tagName)) return null;
+
+            var body = release["body"]?.ToString();
+            return new ReleaseNotes(tagName, body);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// 最新リリースの情報を取得し、拡張子が .exe の最初のアセットのダウンロードURLと
@@ -84,7 +113,7 @@ internal static class UpdateCheckService
     {
         try
         {
-            var json = await _http.GetStringAsync(GitHubReleasesApiUrl);
+            var json = await _http.GetStringAsync($"{GitHubReleasesApiBaseUrl}/latest");
             var release = JObject.Parse(json);
             var tag = release["tag_name"]?.ToString();
             if (string.IsNullOrEmpty(tag)) return null;

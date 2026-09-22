@@ -8,9 +8,6 @@ namespace YTNotifier.Services;
 /// <summary>Gemini API（gemini-3.5-flash-lite）を使った動画要約サービス</summary>
 public static class GeminiSummaryService
 {
-    /// <summary>Gemini 要約に使用するモデル名</summary>
-    private const string GeminiModelName = "gemini-3.5-flash-lite";
-
     /// <summary>Gemini へ動画を渡す際の固定 mime_type</summary>
     private const string GeminiVideoMimeType = "video/mp4";
 
@@ -80,7 +77,7 @@ public static class GeminiSummaryService
         try
         {
             AppLogger.Log(LogMsg.GeminiSummaryRequested, null, videoId);
-            SettingsService.Instance.AddGeminiRequest();
+            SettingsService.Instance.UsageStats.AddGeminiRequest();
 
             using var client = new Client(apiKey: apiKey, httpOptions: new HttpOptions
             {
@@ -107,7 +104,7 @@ public static class GeminiSummaryService
             };
 
             var textBuilder = new System.Text.StringBuilder();
-            await foreach (var chunk in client.Models.GenerateContentStreamAsync(GeminiModelName, content, config))
+            await foreach (var chunk in client.Models.GenerateContentStreamAsync(AppConstants.GeminiModelName, content, config))
             {
                 if (string.IsNullOrEmpty(chunk.Text)) continue;
                 textBuilder.Append(chunk.Text);

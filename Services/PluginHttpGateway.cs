@@ -30,6 +30,9 @@ public sealed class PluginHttpGateway
     /// <summary>受信量の上限（10MB）。要約結果のテキスト応答に対して十分な余裕を見た値</summary>
     private const long MaxResponseBytes = 10 * 1024 * 1024;
 
+    /// <summary>応答の読み出しに使う一時バッファのサイズ。一般的なストリーム読み出しの既定サイズ（8KB）</summary>
+    private const int ReadChunkBytes = 8192;
+
     /// <summary>
     /// 仕事1回あたりの通信回数の上限。同梱スクリプトが使うのは4回
     /// （訪問者情報・字幕トラック一覧・字幕本文・Gemini）で、その倍の余裕を取った値
@@ -98,7 +101,7 @@ public sealed class PluginHttpGateway
             // 要約用APIキーは Gemini 宛のときだけ付与する（YouTube へは渡さない）
             if (string.Equals(uri.Host, GeminiHost, StringComparison.OrdinalIgnoreCase))
             {
-                SettingsService.Instance.AddGeminiRequest();
+                SettingsService.Instance.UsageStats.AddGeminiRequest();
                 request.Headers.TryAddWithoutValidation(ApiKeyHeaderName, _apiKey);
             }
 
@@ -106,7 +109,7 @@ public sealed class PluginHttpGateway
             using var stream    = response.Content.ReadAsStream();
             using var buffer    = new MemoryStream();
 
-            var chunk = new byte[8192];
+            var chunk = new byte[ReadChunkBytes];
             int read;
             while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
             {

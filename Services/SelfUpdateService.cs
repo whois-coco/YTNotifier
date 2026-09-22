@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using YTNotifier.Constants;
+using YTNotifier.Models;
 
 namespace YTNotifier.Services;
 
@@ -28,7 +29,7 @@ internal static class SelfUpdateService
 
     /// <summary>新バージョンをダウンロードし、SHA256 が digest と一致するか検証する。
     /// 成功時はダウンロード済み一時ファイルのパスを返す。失敗時は一時ファイルを削除し null を返す。</summary>
-    public static async Task<string?> DownloadAndVerifyAsync(UpdateCheckService.UpdateAssetInfo info)
+    public static async Task<string?> DownloadAndVerifyAsync(UpdateAssetInfo info)
     {
         var tempPath = CurrentExePath + DownloadTempFileSuffix;
         try

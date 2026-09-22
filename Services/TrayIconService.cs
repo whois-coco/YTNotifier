@@ -39,8 +39,8 @@ public class TrayIconService : IDisposable
 
     private static System.Drawing.Color ResolveThemeColor(string key, System.Drawing.Color fallback)
     {
-        if (System.Windows.Application.Current?.TryFindResource(key) is System.Windows.Media.Color c)
-            return System.Drawing.Color.FromArgb(c.A, c.R, c.G, c.B);
+        if (System.Windows.Application.Current?.TryFindResource(key) is System.Windows.Media.Color themeColor)
+            return System.Drawing.Color.FromArgb(themeColor.A, themeColor.R, themeColor.G, themeColor.B);
         return fallback;
     }
 
@@ -113,7 +113,7 @@ public class TrayIconService : IDisposable
     private void OnQuotaUpdated()
     {
         if (_checkMenuItem == null) return;
-        var appState    = SettingsService.Instance.AppState;
+        var appState    = SettingsService.Instance.MonitorState.AppState;
         var quotaKey    = AppConstants.GetQuotaDayKey();
         var actualUnits = appState.TodayApiDate == quotaKey ? appState.TodayApiUnits : 0;
         var actualPct   = actualUnits * 100.0 / ApiQuotaHelper.DailyLimit;
@@ -154,11 +154,11 @@ public class TrayIconService : IDisposable
 
     private static void ApplyTrayMenuItemTheme(ToolStripItem item)
     {
-        if (item is ToolStripMenuItem mi)
+        if (item is ToolStripMenuItem menuItem)
         {
-            mi.BackColor = ColorBackground;
-            mi.ForeColor = ColorForeground;
-            mi.Padding   = new Padding(8, 4, 8, 4);
+            menuItem.BackColor = ColorBackground;
+            menuItem.ForeColor = ColorForeground;
+            menuItem.Padding   = new Padding(8, 4, 8, 4);
         }
         else if (item is ToolStripSeparator sep)
         {
@@ -170,8 +170,8 @@ public class TrayIconService : IDisposable
     private static Icon LoadIcon(string fileName)
     {
         var uri = new Uri($"pack://application:,,,/Resources/{fileName}");
-        var sri = System.Windows.Application.GetResourceStream(uri);
-        if (sri != null) return new Icon(sri.Stream);
+        var resourceStreamInfo = System.Windows.Application.GetResourceStream(uri);
+        if (resourceStreamInfo != null) return new Icon(resourceStreamInfo.Stream);
 
         var exeDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "";
         var path   = Path.Combine(exeDir, "Resources", fileName);
@@ -195,10 +195,10 @@ public class TrayIconService : IDisposable
 
         protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
         {
-            var g = e.Graphics;
-            var y = e.Item.Height / 2;
+            var graphics = e.Graphics;
+            var centerY = e.Item.Height / 2;
             using var pen = new System.Drawing.Pen(ColorBorder);
-            g.DrawLine(pen, 8, y, e.Item.Width - 8, y);
+            graphics.DrawLine(pen, 8, centerY, e.Item.Width - 8, centerY);
         }
 
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)

@@ -11,7 +11,13 @@ public sealed class QuotaExceededException : Exception
     public QuotaExceededException() : base("APIクォータ上限に達しました") { }
 }
 
-public partial class YouTubeApiClient : IYouTubeApiClient
+/// <summary>アップロードプレイリストが存在しない（404 playlistNotFound）ことを示す例外</summary>
+public sealed class PlaylistNotFoundException : Exception
+{
+    public PlaylistNotFoundException(Exception inner) : base(inner.Message, inner) { }
+}
+
+public class YouTubeApiClient : IYouTubeApiClient
 {
     private const string ChannelIdPrefix      = "UC";
     private const string UploadPlaylistPrefix = "UU";
@@ -30,10 +36,35 @@ public partial class YouTubeApiClient : IYouTubeApiClient
     /// <summary>YouTube チャンネル ID の固定長（UC + 22文字）</summary>
     private const int ChannelIdLength = 24;
 
+    /// <summary>この秒数を超える動画は無条件で通常動画と判定する（YouTube Shortsの上限尺）</summary>
+    private const int ShortsMaxDurationSeconds = 180;
+
     private const int HttpStatusServerError   = 500;
     private const ulong SubscriberMillion     = 1_000_000;
     private const ulong SubscriberManUnit     = 10_000;
     private const ulong SubscriberThousand    = 1_000;
+
+    /// <summary>外部への問い合わせを同時に走らせる本数の上限</summary>
+    private const int MaxConcurrentRequests = 8;
+
+    /// <summary>問い合わせ全体で共有する同時実行数の制限。
+    /// チャンネル追加ウィンドウ等がこのクラスを別途生成するため static で1つだけ持つ</summary>
+    private static readonly SemaphoreSlim _requestLimiter = new(MaxConcurrentRequests, MaxConcurrentRequests);
+
+    /// <summary>同時実行数の制限を取得したうえで問い合わせを1本実行する。
+    /// 制限を取得したまま別の問い合わせの完了を待つ（入れ子にする）ことは禁止</summary>
+    private static async Task<T> ThrottleAsync<T>(Func<Task<T>> request)
+    {
+        await _requestLimiter.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            return await request().ConfigureAwait(false);
+        }
+        finally
+        {
+            _requestLimiter.Release();
+        }
+    }
 
     private static bool IsQuotaExceededError(Google.GoogleApiException ex)
     {
@@ -68,6 +99,10 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         var apiKey = SettingsService.Instance.Settings.ApiKey;
         if (_ytService == null || _currentApiKey != apiKey)
         {
+            // 差し替え前の通信オブジェクトを破棄する（破棄で例外が出ても新規生成は止めない）
+            try { _ytService?.Dispose(); }
+            catch { }
+
             _ytService = new GoogleYouTubeService(new BaseClientService.Initializer
             {
                 ApiKey = apiKey,
@@ -91,8 +126,8 @@ public partial class YouTubeApiClient : IYouTubeApiClient
             var svc = GetService();
             var req = svc.Channels.List("contentDetails");
             req.Id = channelId;
-            var resp = await req.ExecuteAsync();
-            SettingsService.Instance.AddApiUnits(1); // channels.list = 1unit
+            var resp = await ThrottleAsync(() => req.ExecuteAsync());
+            SettingsService.Instance.UsageStats.AddApiUnits(1); // channels.list = 1unit
             return resp.Items?.FirstOrDefault()?
                 .ContentDetails?.RelatedPlaylists?.Uploads;
         }
@@ -116,15 +151,15 @@ public partial class YouTubeApiClient : IYouTubeApiClient
     {
         try
         {
-            var testService = new GoogleYouTubeService(new BaseClientService.Initializer
+            using var testService = new GoogleYouTubeService(new BaseClientService.Initializer
             {
                 ApiKey = apiKey,
                 ApplicationName = AppConstants.AppName
             });
             var req = testService.Channels.List("id");
             req.Id = channelId;
-            await req.ExecuteAsync();
-            SettingsService.Instance.AddApiUnits(1); // channels.list = 1unit
+            await ThrottleAsync(() => req.ExecuteAsync());
+            SettingsService.Instance.UsageStats.AddApiUnits(1); // channels.list = 1unit
             return ApiKeyTestResult.Valid;
         }
         catch (Google.GoogleApiException)
@@ -153,16 +188,16 @@ public partial class YouTubeApiClient : IYouTubeApiClient
                 var handle = isHandle ? input : "@" + input;
                 var req = svc.Channels.List("snippet,statistics");
                 req.ForHandle = handle;
-                var resp = await req.ExecuteAsync();
-                SettingsService.Instance.AddApiUnits(1); // channels.list = 1unit
+                var resp = await ThrottleAsync(() => req.ExecuteAsync());
+                SettingsService.Instance.UsageStats.AddApiUnits(1); // channels.list = 1unit
                 if (resp.Items?.Count > 0) return MapChannel(resp.Items[0]);
             }
             if (isChannelId)
             {
                 var req = svc.Channels.List("snippet,statistics");
                 req.Id = input;
-                var resp = await req.ExecuteAsync();
-                SettingsService.Instance.AddApiUnits(1); // channels.list = 1unit
+                var resp = await ThrottleAsync(() => req.ExecuteAsync());
+                SettingsService.Instance.UsageStats.AddApiUnits(1); // channels.list = 1unit
                 if (resp.Items?.Count > 0) return MapChannel(resp.Items[0]);
             }
             if (isUrl)
@@ -188,14 +223,14 @@ public partial class YouTubeApiClient : IYouTubeApiClient
     {
         if (ch.Snippet == null) return null;   // snippet 欠落の異常応答は取得失敗（=見つからない）として扱う
 
-        var subs = ch.Statistics?.SubscriberCount;
+        var subscriberCount = ch.Statistics?.SubscriberCount;
         return new ChannelInfo
         {
             ChannelId       = ch.Id,
             ChannelName     = ch.Snippet.Title,
             ChannelHandle   = ch.Snippet.CustomUrl ?? string.Empty,
             ThumbnailUrl    = ch.Snippet.Thumbnails?.Default__?.Url ?? string.Empty,
-            SubscriberCount = subs.HasValue ? FormatSubscribers(subs.Value) : "非公開",
+            SubscriberCount = subscriberCount.HasValue ? FormatSubscribers(subscriberCount.Value) : "非公開",
         };
     }
 
@@ -214,9 +249,9 @@ public partial class YouTubeApiClient : IYouTubeApiClient
             var uri = new Uri(url);
             foreach (var seg in uri.Segments)
             {
-                var s = seg.TrimEnd('/');
-                if (s.StartsWith("@")) return s;
-                if (s.StartsWith(ChannelIdPrefix) && s.Length == ChannelIdLength) return s;
+                var segmentText = seg.TrimEnd('/');
+                if (segmentText.StartsWith("@")) return segmentText;
+                if (segmentText.StartsWith(ChannelIdPrefix) && segmentText.Length == ChannelIdLength) return segmentText;
             }
         }
         catch { }
@@ -236,8 +271,8 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         {
             var req  = svc.Videos.List("snippet,contentDetails,liveStreamingDetails,status");
             req.Id   = string.Join(",", idList);
-            var resp = await req.ExecuteAsync();
-            SettingsService.Instance.AddApiUnits(1);
+            var resp = await ThrottleAsync(() => req.ExecuteAsync());
+            SettingsService.Instance.UsageStats.AddApiUnits(1);
             if (resp.Items == null) return result;
 
             var tasks = resp.Items.Select(async v =>
@@ -286,14 +321,14 @@ public partial class YouTubeApiClient : IYouTubeApiClient
     /// フェーズ4: 無条件でUUプレイリストへの存在確認
     /// </summary>
     private static async Task<VideoKind> ClassifyVideoAsync(
-        Google.Apis.YouTube.v3.Data.Video v,
+        Google.Apis.YouTube.v3.Data.Video video,
         GoogleYouTubeService svc,
         System.Collections.Concurrent.ConcurrentDictionary<string, VideoKind>? videoKindCache = null)
     {
-        var (kind, complete) = ClassifyVideoPhase123(v);
+        var (kind, complete) = ClassifyVideoPhase123(video);
         if (complete) return kind!.Value;
 
-        var videoId = v.Id;
+        var videoId = video.Id;
 
         // フェーズ4は動画1本につき1ユニットを消費する。種別は一度確定すれば変わらないため、
         // 確定済みの結果があれば問い合わせを省略する
@@ -302,7 +337,7 @@ public partial class YouTubeApiClient : IYouTubeApiClient
 
         // 投稿直後はUUSHプレイリストへの反映が遅れることがあり、ショートを通常動画と誤判定しうる。
         // 一定時間が経過するまでは判定結果を確定させない（毎回判定し直して自己修復させる）
-        var videoPublishedAt = v.Snippet?.PublishedAtDateTimeOffset;
+        var videoPublishedAt = video.Snippet?.PublishedAtDateTimeOffset;
         var isKindCacheable  = videoKindCache != null
                                && videoPublishedAt.HasValue
                                && videoPublishedAt.Value <= DateTimeOffset.UtcNow.AddHours(-VideoKindCacheMinAgeHours);
@@ -310,16 +345,16 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         // ── UUSH（Short専用）プレイリストへの存在確認 ─────────────────
         try
         {
-            var channelId = v.Snippet?.ChannelId ?? "";
-            if (channelId.Length > 2)
+            var channelId = video.Snippet?.ChannelId ?? "";
+            if (channelId.Length > ChannelIdPrefix.Length)
             {
-                var shortsId = ShortsPlaylistPrefix + channelId[2..];
+                var shortsId = ShortsPlaylistPrefix + channelId[ChannelIdPrefix.Length..];
                 var plReq    = svc.PlaylistItems.List("id");
                 plReq.PlaylistId = shortsId;
                 plReq.MaxResults  = ShortsCheckMaxResults;
                 plReq.VideoId     = videoId;
-                var plResp = await plReq.ExecuteAsync();
-                SettingsService.Instance.AddApiUnits(1);
+                var plResp = await ThrottleAsync(() => plReq.ExecuteAsync());
+                SettingsService.Instance.UsageStats.AddApiUnits(1);
                 var resolvedKind = plResp.Items?.Count > 0 ? VideoKind.Short : VideoKind.Video;
                 if (isKindCacheable) videoKindCache![videoId] = resolvedKind;
                 return resolvedKind;
@@ -329,18 +364,18 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         {
             if (gex.Error?.Errors?.FirstOrDefault()?.Reason == ReasonPlaylistNotFound)
             {
-                SettingsService.Instance.AddApiUnits(1);
+                SettingsService.Instance.UsageStats.AddApiUnits(1);
                 if (isKindCacheable) videoKindCache![videoId] = VideoKind.Video;
                 return VideoKind.Video;
             }
             AppLogger.Log(LogMsg.UushFallbackFailed, null, videoId, ClassifyApiException(gex));
-            SettingsService.Instance.AddApiUnits(1);
+            SettingsService.Instance.UsageStats.AddApiUnits(1);
             return VideoKind.Video;
         }
         catch (Exception ex)
         {
             AppLogger.Log(LogMsg.UushFallbackFailed, null, videoId, ClassifyNetworkException(ex));
-            SettingsService.Instance.AddApiUnits(1);
+            SettingsService.Instance.UsageStats.AddApiUnits(1);
             return VideoKind.Video;
         }
 
@@ -352,15 +387,15 @@ public partial class YouTubeApiClient : IYouTubeApiClient
     /// Phase4 が必要な場合は complete=false / kind=null を返す。
     /// </summary>
     public static (VideoKind? kind, bool complete) ClassifyVideoPhase123(
-        Google.Apis.YouTube.v3.Data.Video v)
+        Google.Apis.YouTube.v3.Data.Video video)
     {
-        var lbc = v.Snippet?.LiveBroadcastContent;
-        var lsd = v.LiveStreamingDetails;
+        var liveBroadcastContent = video.Snippet?.LiveBroadcastContent;
+        var liveStreamingDetails = video.LiveStreamingDetails;
 
         // ── フェーズ1: リアルタイム・予定 ──────────────────────────
-        if (lbc == LbcLive || lbc == LbcUpcoming)
+        if (liveBroadcastContent == LbcLive || liveBroadcastContent == LbcUpcoming)
         {
-            var kind = v.Status?.UploadStatus == StatusProcessed
+            var kind = video.Status?.UploadStatus == StatusProcessed
                 ? VideoKind.Premiere
                 : VideoKind.Live;
             return (kind, true);
@@ -369,16 +404,16 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         // ── フェーズ2: アーカイブ判定 ────────────────────────────────
         // ライブ: 配信終了後にYouTubeが処理してから公開 → publishedAt > actualEndTime
         // プレミア: 事前アップロード済みでプレミア開始と同時に公開 → publishedAt ≈ actualStartTime
-        if (lsd != null)
+        if (liveStreamingDetails != null)
         {
-            if (lsd.ScheduledEndTimeDateTimeOffset.HasValue)
+            if (liveStreamingDetails.ScheduledEndTimeDateTimeOffset.HasValue)
                 return (VideoKind.Live, true);
 
-            if (v.Status?.UploadStatus == StatusUploaded)
+            if (video.Status?.UploadStatus == StatusUploaded)
                 return (VideoKind.Live, true);
 
-            var published  = v.Snippet?.PublishedAtDateTimeOffset;
-            var actualEnd  = lsd.ActualEndTimeDateTimeOffset;
+            var published  = video.Snippet?.PublishedAtDateTimeOffset;
+            var actualEnd  = liveStreamingDetails.ActualEndTimeDateTimeOffset;
             if (published.HasValue && actualEnd.HasValue && published.Value > actualEnd.Value)
                 return (VideoKind.Live, true);
 
@@ -386,7 +421,7 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         }
 
         // ── フェーズ3: duration > 180秒 → 通常動画 ─────────────────
-        if (ParseDurationSeconds(v.ContentDetails?.Duration ?? "") > 180)
+        if (ParseDurationSeconds(video.ContentDetails?.Duration ?? "") > ShortsMaxDurationSeconds)
             return (VideoKind.Video, true);
 
         return (null, false); // フェーズ4 が必要
@@ -405,9 +440,9 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         var result = new List<VideoInfo>();
         foreach (var item in items)
         {
-            var vid = item.ContentDetails?.VideoId;
-            if (vid == null) continue;
-            if (vid == lastVideoId) break;
+            var videoId = item.ContentDetails?.VideoId;
+            if (videoId == null) continue;
+            if (videoId == lastVideoId) break;
 
             var publishedAt = item.Snippet?.PublishedAtDateTimeOffset?.DateTime;
             // カーソルの動画自体が削除・非公開等でプレイリストから消えている場合、
@@ -416,14 +451,14 @@ public partial class YouTubeApiClient : IYouTubeApiClient
             if (lastVideoPublishedAt.HasValue && publishedAt.HasValue && publishedAt.Value <= lastVideoPublishedAt.Value)
                 break;
 
-            var (kind, isUpcoming, isCurrentlyLive, scheduledStart, actualStart, duration) = kindMap.TryGetValue(vid, out var kv)
-                ? kv : (VideoKind.Video, false, false, (DateTime?)null, (DateTime?)null, (TimeSpan?)null);
+            var (kind, isUpcoming, isCurrentlyLive, scheduledStart, actualStart, duration) = kindMap.TryGetValue(videoId, out var kindEntry)
+                ? kindEntry : (VideoKind.Video, false, false, (DateTime?)null, (DateTime?)null, (TimeSpan?)null);
             var thumb = item.Snippet?.Thumbnails?.Medium?.Url
                         ?? item.Snippet?.Thumbnails?.Default__?.Url;
 
             result.Add(new VideoInfo
             {
-                VideoId            = vid,
+                VideoId            = videoId,
                 Title              = item.Snippet?.Title ?? string.Empty,
                 ThumbnailUrl       = thumb,
                 Kind               = kind,
@@ -459,11 +494,11 @@ public partial class YouTubeApiClient : IYouTubeApiClient
     public static string? FormatDurationHms(TimeSpan? duration)
     {
         if (duration == null) return null;
-        var d = duration.Value;
-        var totalHours = (int)d.TotalHours;
+        var durationValue = duration.Value;
+        var totalHours = (int)durationValue.TotalHours;
         return totalHours > 0
-            ? $"{totalHours:D2}:{d.Minutes:D2}:{d.Seconds:D2}"
-            : $"{d.Minutes:D2}:{d.Seconds:D2}";
+            ? $"{totalHours:D2}:{durationValue.Minutes:D2}:{durationValue.Seconds:D2}"
+            : $"{durationValue.Minutes:D2}:{durationValue.Seconds:D2}";
     }
 
     /// <summary>投稿日時の表示書式（ローカル時刻へ変換して "yyyy/MM/dd HH:mm:ss"）</summary>
@@ -481,20 +516,19 @@ public partial class YouTubeApiClient : IYouTubeApiClient
     /// 新着動画を複数件返す（通知フィルタ対応のため最大件数まで走査）
     /// lastVideoId より新しい動画を新着順で返す
     /// </summary>
-    public async Task<(List<VideoInfo> Videos, List<VideoInfo> PendingTransitioned, List<VideoInfo> AllScanned, List<VideoInfo> AllScannedBasic, bool PlaylistEmpty)> CheckLatestVideosAsync(
+    public async Task<ChannelScanResult> CheckLatestVideosAsync(
         string channelId, string lastVideoId,
         string uploadsPlaylistId = "", IReadOnlyList<string>? pendingUpcomingVideoIds = null,
         int maxResults = 50, DateTime? lastVideoPublishedAt = null,
         System.Collections.Concurrent.ConcurrentDictionary<string, VideoKind>? videoKindCache = null)
     {
-        var empty = (new List<VideoInfo>(), new List<VideoInfo>(), new List<VideoInfo>(), new List<VideoInfo>(), false);
-        if (string.IsNullOrEmpty(channelId) || channelId.Length < 2)
+        if (string.IsNullOrEmpty(channelId) || channelId.Length < ChannelIdPrefix.Length)
         {
             AppLogger.Log(LogMsg.InvalidChannelId, null, channelId);
-            return empty;
+            return ChannelScanResult.CreateEmpty();
         }
         var playlistId = !string.IsNullOrEmpty(uploadsPlaylistId)
-            ? uploadsPlaylistId : UploadPlaylistPrefix + channelId[2..];
+            ? uploadsPlaylistId : UploadPlaylistPrefix + channelId[ChannelIdPrefix.Length..];
 
         Google.Apis.YouTube.v3.Data.PlaylistItemListResponse? plResp = null;
         var svc = GetService();
@@ -503,13 +537,15 @@ public partial class YouTubeApiClient : IYouTubeApiClient
             var plReq = svc.PlaylistItems.List("snippet,contentDetails");
             plReq.PlaylistId = playlistId;
             plReq.MaxResults  = maxResults;
-            plResp = await plReq.ExecuteAsync();
-            SettingsService.Instance.AddApiUnits(1);
+            plResp = await ThrottleAsync(() => plReq.ExecuteAsync());
+            SettingsService.Instance.UsageStats.AddApiUnits(1);
         }
         catch (Google.GoogleApiException gex)
         {
             if (IsQuotaExceededError(gex)) throw new QuotaExceededException();
             AppLogger.Log(LogMsg.PlaylistFailed, null, playlistId, ClassifyApiException(gex));
+            if (gex.Error?.Errors?.FirstOrDefault()?.Reason == ReasonPlaylistNotFound)
+                throw new PlaylistNotFoundException(gex);
             throw;
         }
         catch (Exception ex)
@@ -518,13 +554,13 @@ public partial class YouTubeApiClient : IYouTubeApiClient
             throw;
         }
 
-        if (plResp?.Items == null || plResp.Items.Count == 0) return (new List<VideoInfo>(), new List<VideoInfo>(), new List<VideoInfo>(), new List<VideoInfo>(), true);
+        if (plResp?.Items == null || plResp.Items.Count == 0) return ChannelScanResult.CreateEmpty(playlistEmpty: true);
 
         var items = plResp.Items
             .Where(i => i.ContentDetails?.VideoId != null)
             .ToList();
 
-        if (items.Count == 0) return empty;
+        if (items.Count == 0) return ChannelScanResult.CreateEmpty();
 
         var allScannedBasic = items.Select(i => new VideoInfo
         {
@@ -540,7 +576,7 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         // 新着なし & pending もない → videos/pendingTransitioned/allScanned は空のまま即リターン。
         // allScannedBasic のみ削除・非公開判定/復帰判定用に返す（追加API呼び出しなし）
         if (firstId == lastVideoId && !hasPending)
-            return (new List<VideoInfo>(), new List<VideoInfo>(), new List<VideoInfo>(), allScannedBasic, false);
+            return new ChannelScanResult(new List<VideoInfo>(), new List<VideoInfo>(), new List<VideoInfo>(), allScannedBasic, PlaylistEmpty: false);
 
         var kindMap = await GetVideoKindsAsync(svc, items.Select(i => i.ContentDetails!.VideoId), videoKindCache);
 
@@ -549,8 +585,8 @@ public partial class YouTubeApiClient : IYouTubeApiClient
         {
             var missing = pendingUpcomingVideoIds!.Where(p => !kindMap.ContainsKey(p)).ToList();
             if (missing.Count > 0)
-                foreach (var (k, v) in await GetVideoKindsAsync(svc, missing, videoKindCache))
-                    kindMap[k] = v;
+                foreach (var (kindVideoId, kindInfo) in await GetVideoKindsAsync(svc, missing, videoKindCache))
+                    kindMap[kindVideoId] = kindInfo;
         }
 
         // スキャン全件リスト（allScanned: kindMap が確定した全アイテム）
@@ -558,19 +594,19 @@ public partial class YouTubeApiClient : IYouTubeApiClient
             .Where(i => kindMap.ContainsKey(i.ContentDetails!.VideoId!))
             .Select(i =>
             {
-                var vid = i.ContentDetails!.VideoId!;
-                var kv  = kindMap[vid];
+                var videoId = i.ContentDetails!.VideoId!;
+                var kindEntry = kindMap[videoId];
                 return new VideoInfo
                 {
-                    VideoId            = vid,
+                    VideoId            = videoId,
                     Title              = i.Snippet?.Title ?? string.Empty,
                     ThumbnailUrl       = i.Snippet?.Thumbnails?.Medium?.Url ?? i.Snippet?.Thumbnails?.Default__?.Url,
-                    Kind               = kv.Kind,
-                    IsCurrentlyLive    = kv.IsCurrentlyLive,
-                    IsUpcoming         = kv.IsUpcoming,
-                    ScheduledStartTime = kv.ScheduledStartTime,
-                    ActualStartTime    = kv.ActualStartTime,
-                    Duration           = kv.Duration,
+                    Kind               = kindEntry.Kind,
+                    IsCurrentlyLive    = kindEntry.IsCurrentlyLive,
+                    IsUpcoming         = kindEntry.IsUpcoming,
+                    ScheduledStartTime = kindEntry.ScheduledStartTime,
+                    ActualStartTime    = kindEntry.ActualStartTime,
+                    Duration           = kindEntry.Duration,
                     PublishedAt         = i.Snippet?.PublishedAtDateTimeOffset?.DateTime
                 };
             })
@@ -589,25 +625,25 @@ public partial class YouTubeApiClient : IYouTubeApiClient
             foreach (var pendingId in pendingUpcomingVideoIds!)
             {
                 if (videos.Any(v => v.VideoId == pendingId)) continue; // 新着に含まれている
-                if (!kindMap.TryGetValue(pendingId, out var kv) || kv.IsUpcoming) continue;
-                if (!itemMap.TryGetValue(pendingId, out var pi)) continue; // 取得範囲外
-                var thumb = pi.Snippet?.Thumbnails?.Medium?.Url ?? pi.Snippet?.Thumbnails?.Default__?.Url;
+                if (!kindMap.TryGetValue(pendingId, out var kindEntry) || kindEntry.IsUpcoming) continue;
+                if (!itemMap.TryGetValue(pendingId, out var pendingItem)) continue; // 取得範囲外
+                var thumb = pendingItem.Snippet?.Thumbnails?.Medium?.Url ?? pendingItem.Snippet?.Thumbnails?.Default__?.Url;
                 pendingTransitioned.Add(new VideoInfo
                 {
                     VideoId            = pendingId,
-                    Title              = pi.Snippet?.Title ?? string.Empty,
+                    Title              = pendingItem.Snippet?.Title ?? string.Empty,
                     ThumbnailUrl       = thumb,
-                    Kind               = kv.Kind,
+                    Kind               = kindEntry.Kind,
                     IsUpcoming         = false,
-                    IsCurrentlyLive    = kv.IsCurrentlyLive,
-                    ScheduledStartTime = kv.ScheduledStartTime,
-                    ActualStartTime    = kv.ActualStartTime,
-                    Duration           = kv.Duration
+                    IsCurrentlyLive    = kindEntry.IsCurrentlyLive,
+                    ScheduledStartTime = kindEntry.ScheduledStartTime,
+                    ActualStartTime    = kindEntry.ActualStartTime,
+                    Duration           = kindEntry.Duration
                 });
             }
         }
 
-        return (videos, pendingTransitioned, allScanned, allScannedBasic, false);
+        return new ChannelScanResult(videos, pendingTransitioned, allScanned, allScannedBasic, PlaylistEmpty: false);
     }
 
     // ===== チャンネルBAN／自主削除判定 =====
@@ -627,8 +663,8 @@ public partial class YouTubeApiClient : IYouTubeApiClient
                 var svc = GetService();
                 var req = svc.Channels.List("id");
                 req.Id = string.Join(",", chunk);
-                var resp = await req.ExecuteAsync();
-                SettingsService.Instance.AddApiUnits(1); // channels.list = 1unit（複数ID一括指定でも1ユニット）
+                var resp = await ThrottleAsync(() => req.ExecuteAsync());
+                SettingsService.Instance.UsageStats.AddApiUnits(1); // channels.list = 1unit（複数ID一括指定でも1ユニット）
 
                 var aliveIds = new HashSet<string>(resp.Items?.Select(i => i.Id) ?? Enumerable.Empty<string>());
                 foreach (var id in chunk)
