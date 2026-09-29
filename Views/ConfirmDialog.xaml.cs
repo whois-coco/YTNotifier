@@ -1,4 +1,5 @@
 using System.Windows;
+using YTNotifier.Services;
 
 namespace YTNotifier.Views;
 
@@ -8,6 +9,7 @@ public partial class ConfirmDialog : Window
                          string okLabel = "OK", string cancelLabel = "キャンセル")
     {
         InitializeComponent();
+        WindowScaleService.ApplyToNewWindow(this);
         WindowCornerHelper.ApplyOnLoaded(this);
         Owner          = owner;
         TitleText.Text = title;

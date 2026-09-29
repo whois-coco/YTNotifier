@@ -5,26 +5,29 @@
         AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         SizeToContent="WidthAndHeight" MinWidth="360" MaxWidth="480"
-        FontFamily="Noto Sans JP">
+        FontFamily="Noto Sans JP"
+        KeyDown="VideoListPopupWindow_KeyDown">
 
     <Border Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
-            BorderThickness="1" CornerRadius="6">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.3" Direction="270"/>
-        </Border.Effect>
+            BorderThickness="1" CornerRadius="{StaticResource DialogCornerRadius}"
+            Effect="{StaticResource DialogShadow}">
         <StackPanel>
             <!-- タイトルバー -->
-            <Border x:Name="TitleBar" Height="38" CornerRadius="6,6,0,0"
+            <Border x:Name="TitleBar" Height="{StaticResource TitleBarHeight}" CornerRadius="{StaticResource DialogTitleBarCornerRadius}"
                     Background="{DynamicResource SidebarBrush}"
                     MouseLeftButtonDown="TitleBar_MouseDown">
                 <Grid>
-                    <TextBlock x:Name="HeaderText" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{DynamicResource SidebarTextBrush}"
-                               VerticalAlignment="Center" Margin="16,0"/>
+                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TitleBarContentMargin}" VerticalAlignment="Center">
+                        <Viewbox Style="{StaticResource TitleBarIconBox}">
+                            <Canvas Width="24" Height="24">
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="M3 6h.01 M3 12h.01 M3 18h.01 M8 6h13 M8 12h13 M8 18h13"/>
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock x:Name="HeaderText" Style="{StaticResource TitleBarTitleText}"/>
+                    </StackPanel>
                     <Button x:Name="CloseButton" Content="✕" HorizontalAlignment="Right"
-                            Width="38" Height="38" Background="Transparent" BorderThickness="0"
-                            Foreground="{DynamicResource SidebarTextBrush}" Cursor="Hand"
+                            Style="{StaticResource TitleBarCloseButton}"
                             Click="Close_Click"/>
                 </Grid>
             </Border>

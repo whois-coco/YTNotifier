@@ -63,6 +63,13 @@ public partial class MainWindow : System.Windows.Window
     private bool _loadingSettings       = false;
     private System.Windows.Threading.DispatcherTimer? _networkCheckTimer;
 
+    // 拡大率（アプリ内蔵。OSのディスプレイスケーリングとは独立）
+    private readonly ScaleTransform _scaleTransform;
+    private double _appliedScaleFactor;
+
+    /// <summary>Left/Topの画面範囲チェックの許容誤差（マルチモニタ構成での端数ずれ吸収用）</summary>
+    private const int ScreenBoundsTolerance = 100;
+
     // アイコンダウンロード中フラグ（多重ダウンロード防止）。コレクション操作は全て UI スレッドに集約しスレッド安全を担保
     private static readonly HashSet<string> _iconDownloading = new();
 
@@ -141,6 +148,11 @@ public partial class MainWindow : System.Windows.Window
         MonitorService.Instance.ChannelUpdated        += _onChannelUpdated;
         MonitorService.Instance.NetworkCheckRequested += _onNetworkCheckRequested;
         NotificationService.OpenVideoFromToast = OpenChannelLatestVideoFromToastAsync;
+
+        _appliedScaleFactor = WindowScaleService.GetScaleFactor();
+        _scaleTransform      = new ScaleTransform(_appliedScaleFactor, _appliedScaleFactor);
+        ((FrameworkElement)Content).LayoutTransform = _scaleTransform;
+        WindowScaleService.ApplyPopupScaling(this, _scaleTransform);
     }
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -281,7 +293,7 @@ public partial class MainWindow : System.Windows.Window
             {
                 var notes = await UpdateCheckService.GetLatestReleaseNotesAsync();
                 if (notes != null && !string.IsNullOrEmpty(notes.Body))
-                    new ReleaseNotesWindow(this, notes.Tag, notes.Body).Show();
+                    new ReleaseNotesWindow(this, notes.Tag, notes.Body).ShowDialog();
                 else
                     System.Windows.MessageBox.Show(this, "リリースノートの取得に失敗しました。",
                         "アップデート", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -418,13 +430,43 @@ public partial class MainWindow : System.Windows.Window
         Width  = settings.WindowWidth  > 0 ? settings.WindowWidth  : CollapsedTotalWidth;
         Height = settings.WindowHeight > 0 ? settings.WindowHeight : Height;
 
-        if (settings.WindowLeft >= 0 && settings.WindowTop >= 0 &&
-            settings.WindowLeft + Width  <= SystemParameters.VirtualScreenWidth  + 100 &&
-            settings.WindowTop  + Height <= SystemParameters.VirtualScreenHeight + 100)
+        if (IsWithinScreenBounds(settings.WindowLeft, settings.WindowTop, Width, Height))
         {
             Left = settings.WindowLeft;
             Top  = settings.WindowTop;
         }
+    }
+
+    /// <summary>指定した位置・サイズが（許容誤差込みで）画面の表示範囲に収まっているかどうか。</summary>
+    private static bool IsWithinScreenBounds(double left, double top, double width, double height)
+    {
+        return left >= 0 && top >= 0 &&
+               left + width  <= SystemParameters.VirtualScreenWidth  + ScreenBoundsTolerance &&
+               top  + height <= SystemParameters.VirtualScreenHeight + ScreenBoundsTolerance;
+    }
+
+    /// <summary>
+    /// 設定画面を閉じた時に拡大率が変わっていた場合、メイン画面へ反映する。
+    /// 高さは倍率の変化比をそのまま掛けて追従させ、幅は SyncWindowWidth に任せる。
+    /// 反映後に画面外へはみ出す場合は Left/Top を画面内へ補正する。
+    /// </summary>
+    internal void ApplyWindowScaleChange()
+    {
+        var newScaleFactor = WindowScaleService.GetScaleFactor();
+        if (newScaleFactor == _appliedScaleFactor) return;
+
+        Height *= newScaleFactor / _appliedScaleFactor;
+        _scaleTransform.ScaleX = _scaleTransform.ScaleY = newScaleFactor;
+        UpdateMinWidth();
+        SyncWindowWidth();
+
+        if (!IsWithinScreenBounds(Left, Top, Width, Height))
+        {
+            Left = Math.Max(0, Math.Min(Left, SystemParameters.VirtualScreenWidth  - Width));
+            Top  = Math.Max(0, Math.Min(Top,  SystemParameters.VirtualScreenHeight - Height));
+        }
+
+        _appliedScaleFactor = newScaleFactor;
     }
 
     private void SaveWindowBounds()

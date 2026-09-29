@@ -75,7 +75,7 @@ public partial class MainWindow : System.Windows.Window
                 Dispatcher.Invoke(() =>
                 {
                     ContentColumn.Width = new GridLength(ContentWidthCompact); ContentColumn.MinWidth = ContentWidthCompact;
-                    MaxWidth = MinWidth = Width = CompactTotalWidth;
+                    MaxWidth = MinWidth = Width = CompactTotalWidth * WindowScaleService.GetScaleFactor();
                 }, System.Windows.Threading.DispatcherPriority.Render);
             }
             else

@@ -309,8 +309,8 @@
                                            Foreground="{DynamicResource TextPrimaryBrush}"/>
                                 <Button x:Name="UpdateNotifyCloseBtn" Grid.Column="1" Content="✕"
                                         Width="20" Height="20" Padding="0" Margin="6,0,0,0"
-                                        Background="Transparent" BorderThickness="0"
-                                        Foreground="{DynamicResource TextMutedBrush}" Cursor="Hand"
+                                        Style="{StaticResource IconButton}"
+                                        Foreground="{DynamicResource TextMutedBrush}"
                                         Click="UpdateNotifyCloseBtn_Click"/>
                             </Grid>
                         </Border>
@@ -962,16 +962,16 @@
                                 </Canvas>
                             </Viewbox>
                         </Button>
-                        <!-- 左側：NGワード設定 -->
-                        <Button x:Name="NgWordButton"
+                        <!-- 左側：ミュートワード設定 -->
+                        <Button x:Name="MuteWordButton"
                                 DockPanel.Dock="Left"
                                 Style="{StaticResource IconButton}"
                                 Width="36" Height="36"
                                 Margin="4,0,0,0"
                                 VerticalAlignment="Center"
                                 Foreground="{DynamicResource TextSecondaryBrush}"
-                                ToolTip="NGワード設定"
-                                Click="NgWordButton_Click">
+                                ToolTip="ミュートワード設定"
+                                Click="MuteWordButton_Click">
                             <Viewbox Width="16" Height="16">
                                 <Canvas Width="24" Height="24">
                                     <Path Data="M11 3h5a2 2 0 0 1 2 2v5L8 20 2 14z"
@@ -1368,7 +1368,7 @@
                             BorderThickness="1" CornerRadius="4"
                             Padding="10,8" Margin="0,8,0,0">
                         <StackPanel>
-                            <TextBlock Text="API使用量（本日）" FontSize="11"
+                            <TextBlock Text="API使用量(本日)" FontSize="11"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        Margin="0,0,0,6"/>
                             <Grid>
@@ -1396,7 +1396,7 @@
                             BorderThickness="1" CornerRadius="4"
                             Padding="10,8" Margin="0,8,0,0">
                         <StackPanel>
-                            <TextBlock Text="API使用量の推移（直近7日）" FontSize="11"
+                            <TextBlock Text="API使用量の推移(直近7日)" FontSize="11"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        Margin="0,0,0,6"/>
                             <controls:ApiUsageBarChart x:Name="ReportApiUsageChart"/>
@@ -1412,7 +1412,7 @@
                             <TextBlock Text="投稿時間帯" FontSize="11"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        Margin="0,0,0,2"/>
-                            <TextBlock Text="監視中チャンネルの最新の投稿（1チャンネルあたり最大50件程度）を集計。休眠チャンネルは含みません"
+                            <TextBlock Text="監視中チャンネルの最新の投稿(1チャンネルあたり最大50件程度)を集計。休眠チャンネルは含みません"
                                        FontSize="10" TextWrapping="Wrap"
                                        Foreground="{DynamicResource TextSecondaryBrush}"/>
                             <TextBlock x:Name="ReportHeatmapCountText" Text="集計対象: 0 件"

@@ -59,9 +59,9 @@ public partial class MainWindow : System.Windows.Window
         RefreshDormantChannelList();
     }
 
-    private void NgWordButton_Click(object sender, RoutedEventArgs e)
+    private void MuteWordButton_Click(object sender, RoutedEventArgs e)
     {
-        new NgWordSettingsWindow(this).ShowDialog();
+        new MuteWordSettingsWindow(this).ShowDialog();
     }
 
     private static void SetDeleteButtonVisibility(Border row, bool visible)
@@ -176,6 +176,7 @@ public partial class MainWindow : System.Windows.Window
     private ContextMenu BuildChannelFilterMenu()
     {
         var menu  = new ContextMenu();
+        WindowScaleService.ApplyScaleToContextMenu(menu, _scaleTransform);
         var items = new List<MenuItem>();
 
         foreach (ChannelStatusFilter filter in Enum.GetValues<ChannelStatusFilter>())
@@ -281,29 +282,27 @@ public partial class MainWindow : System.Windows.Window
             return;
         }
 
-        if (settings.NoCategoryMode)
-        {
-            // カテゴリなし表示: ヘッダーを省略して全チャンネルをフラットに並べる
-            foreach (var ch in channels.Where(c => !c.IsDormant)) ChannelList.Children.Add(CreateChannelRow(ch));
-        }
-        else
-        {
-            foreach (var cat in categories)
-            {
-                var catChannels = channels.Where(c => !c.IsDormant && c.CategoryId == cat.CategoryId).ToList();
-                ChannelList.Children.Add(CreateCategoryRow(cat, catChannels.Count(c => c.HasUnread)));
-                if (!cat.IsCollapsed)
-                    foreach (var ch in catChannels) ChannelList.Children.Add(CreateChannelRow(ch));
-            }
+        // カテゴリなし表示（NoCategoryMode）では、見出し行を出さず折りたたみ状態も無視して、
+        // カテゴリ表示と同じ並び（カテゴリ順 → カテゴリ内はリスト順 → 未分類）ですべて表示する
+        var noCategoryMode = settings.NoCategoryMode;
 
-            var monCatIds     = new HashSet<string>(categories.Select(c => c.CategoryId));
-            var uncategorized = channels.Where(c => !c.IsDormant && (string.IsNullOrEmpty(c.CategoryId) || !monCatIds.Contains(c.CategoryId))).ToList();
-            if (uncategorized.Count > 0)
-            {
+        foreach (var cat in categories)
+        {
+            var catChannels = channels.Where(c => !c.IsDormant && c.CategoryId == cat.CategoryId).ToList();
+            if (!noCategoryMode)
+                ChannelList.Children.Add(CreateCategoryRow(cat, catChannels.Count(c => c.HasUnread)));
+            if (noCategoryMode || !cat.IsCollapsed)
+                foreach (var ch in catChannels) ChannelList.Children.Add(CreateChannelRow(ch));
+        }
+
+        var monCatIds     = new HashSet<string>(categories.Select(c => c.CategoryId));
+        var uncategorized = channels.Where(c => !c.IsDormant && (string.IsNullOrEmpty(c.CategoryId) || !monCatIds.Contains(c.CategoryId))).ToList();
+        if (noCategoryMode || uncategorized.Count > 0)
+        {
+            if (!noCategoryMode)
                 ChannelList.Children.Add(CreateUncategorizedRow(uncategorized.Count(c => c.HasUnread), _uncategorizedCollapsed));
-                if (!_uncategorizedCollapsed)
-                    foreach (var ch in uncategorized) ChannelList.Children.Add(CreateChannelRow(ch));
-            }
+            if (noCategoryMode || !_uncategorizedCollapsed)
+                foreach (var ch in uncategorized) ChannelList.Children.Add(CreateChannelRow(ch));
         }
 
         if (_editMode)
@@ -328,10 +327,6 @@ public partial class MainWindow : System.Windows.Window
             _navWatchCompactBadge.Visibility = (_sidebarCollapsed && count > 0)
                 ? Visibility.Visible : Visibility.Collapsed;
     }
-
-    // カテゴリなし表示モードかどうか
-    private static bool IsNoCategoryMode
-        => SettingsService.Instance.Settings.NoCategoryMode;
 
     // ===== チャンネル操作 =====
     public static async Task OpenChannelLatestVideoFromToastAsync(ChannelInfo ch, string? toastUrl = null)

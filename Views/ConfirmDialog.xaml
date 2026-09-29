@@ -9,18 +9,22 @@
 
     <Border Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
-            BorderThickness="1" CornerRadius="6">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.3" Direction="270"/>
-        </Border.Effect>
+            BorderThickness="1" CornerRadius="{StaticResource DialogCornerRadius}"
+            Effect="{StaticResource DialogShadow}">
         <StackPanel>
             <!-- タイトルバー -->
-            <Border x:Name="TitleBar" Height="38" CornerRadius="6,6,0,0"
+            <Border x:Name="TitleBar" Height="{StaticResource TitleBarHeight}" CornerRadius="{StaticResource DialogTitleBarCornerRadius}"
                     Background="{DynamicResource SidebarBrush}"
                     MouseLeftButtonDown="TitleBar_MouseDown">
-                <TextBlock x:Name="TitleText" FontSize="12" FontWeight="SemiBold"
-                           Foreground="{DynamicResource SidebarTextBrush}"
-                           VerticalAlignment="Center" Margin="16,0"/>
+                <StackPanel Orientation="Horizontal" Margin="{StaticResource TitleBarContentMargin}" VerticalAlignment="Center">
+                    <Viewbox Style="{StaticResource TitleBarIconBox}">
+                        <Canvas Width="24" Height="24">
+                            <Path Style="{StaticResource TitleBarIconPath}" Data="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0"/>
+                            <Path Style="{StaticResource TitleBarIconPath}" Data="M12 8v4 M12 16h.01"/>
+                        </Canvas>
+                    </Viewbox>
+                    <TextBlock x:Name="TitleText" Style="{StaticResource TitleBarTitleText}"/>
+                </StackPanel>
             </Border>
 
             <!-- メッセージ -->
@@ -33,11 +37,11 @@
                         Margin="20,16,20,16">
                 <Button x:Name="CancelButton" Content="キャンセル"
                         Style="{StaticResource SecondaryButton}"
-                        Padding="14,7" Margin="0,0,8,0"
+                        Margin="0,0,8,0"
                         Click="Cancel_Click"/>
                 <Button x:Name="OkButton" Content="OK"
                         Style="{StaticResource PrimaryButton}"
-                        Padding="14,7" Click="Ok_Click"/>
+                        Click="Ok_Click"/>
             </StackPanel>
         </StackPanel>
     </Border>

@@ -31,8 +31,8 @@ public partial class SettingsWindow : Window
     private const string PluginJobsLabel        = "対応する仕事";
     // 「動画詳細ポップアップに「チャプター」ボタンを追加（仕事: chapters）」を組み立てる区切り
     private const string PluginContributionSepOpen  = "に「";
-    private const string PluginContributionSepMid   = "」ボタンを追加（仕事: ";
-    private const string PluginContributionSepClose = "）";
+    private const string PluginContributionSepMid   = "」ボタンを追加(仕事: ";
+    private const string PluginContributionSepClose = ")";
     private const string PluginDetailToggleGlyphCollapsed = "▼";
     private const string PluginDetailToggleGlyphExpanded  = "▲";
     private const string PluginDetailToggleTipShow = "詳細を表示";

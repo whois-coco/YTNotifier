@@ -61,19 +61,19 @@ public partial class MainWindow : System.Windows.Window
     // カテゴリ名入力ダイアログ
     private const double CategoryDialogWidth        = 360;
     private const double CategoryDialogHeight       = 160;
-    private const double CategoryDialogCornerRadius = 6;
     private const double CategoryDialogBorderThickness = 1;
-    private const double CategoryDialogTitleBarHeight  = 38;
-    private const double CategoryDialogTitleFontSize   = 13;
+    /// <summary>タイトルアイコンの描画座標系（24×24）の1辺</summary>
+    private const double CategoryDialogTitleIconCanvasSize = 24;
+    /// <summary>タイトルアイコン（フォルダ）の線画</summary>
+    private const string CategoryDialogTitleIconData = "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z";
 
     private static readonly Thickness CategoryHeaderMargin     = new(0, 3, 0, 1);
     private static readonly Thickness CategoryArrowMargin      = new(0, 0, 6, 0);
     private static readonly Thickness CategoryBadgePadding     = new(5, 0, 5, 0);
     private static readonly Thickness CategoryBadgeMargin      = new(6, 0, 0, 0);
     private static readonly Thickness CategoryHeaderPadding    = new(8, 0, 8, 0);
-    private static readonly Thickness CategoryDialogTitleMargin = new(16, 0, 0, 0);
     private static readonly Thickness CategoryDialogInputMargin = new(0, 0, 0, 12);
-    private static readonly Thickness CategoryDialogButtonPadding = new(14, 7, 14, 7);
+    private static readonly Thickness CategoryDialogInputPadding = new(10, 4, 10, 4);
     private static readonly Thickness CategoryDialogCancelMargin  = new(0, 0, 8, 0);
     private static readonly Thickness CategoryDialogContentMargin = new(16, 12, 16, 16);
 
@@ -165,6 +165,7 @@ public partial class MainWindow : System.Windows.Window
     private ContextMenu BuildUncategorizedContextMenu()
     {
         var menu = new ContextMenu();
+        WindowScaleService.ApplyScaleToContextMenu(menu, _scaleTransform);
 
         var clearNewItem = new MenuItem { Header = "🔔 NEWバッジを全て消す" };
         clearNewItem.Click += (_, _) =>
@@ -228,18 +229,29 @@ public partial class MainWindow : System.Windows.Window
 
         WindowCornerHelper.ApplyOnLoaded(dialog);
 
-        var root = new Border { CornerRadius = new CornerRadius(CategoryDialogCornerRadius), BorderThickness = new Thickness(CategoryDialogBorderThickness) };
+        var root = new Border { CornerRadius = (CornerRadius)Application.Current.Resources["DialogCornerRadius"], BorderThickness = new Thickness(CategoryDialogBorderThickness) };
+        root.Effect = (System.Windows.Media.Effects.Effect)Application.Current.Resources["DialogShadow"];
         SetDynamicBrush(root, Border.BackgroundProperty,  "SurfaceBrush");
         SetDynamicBrush(root, Border.BorderBrushProperty, "BorderBrush");
 
-        var titleBar = new Border { Height = CategoryDialogTitleBarHeight };
+        var titleBar = new Border { Height = (double)Application.Current.Resources["TitleBarHeight"], CornerRadius = (CornerRadius)Application.Current.Resources["DialogTitleBarCornerRadius"] };
         SetDynamicBrush(titleBar, Border.BackgroundProperty, "SidebarBrush");
         titleBar.MouseLeftButtonDown += (_, mouseArgs) => WindowTitleBarHelper.DragMoveOnPress(dialog, mouseArgs);
-        var titleText = new TextBlock { Text = title, FontSize = CategoryDialogTitleFontSize, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = CategoryDialogTitleMargin };
-        SetDynamicBrush(titleText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-        titleBar.Child = titleText;
+        var titleText = new TextBlock { Text = title, Style = (Style)Application.Current.Resources["TitleBarTitleText"] };
 
-        var inputBox = new TextBox { Text = defaultValue, Margin = CategoryDialogInputMargin };
+        var titleIconPath = new Path { Data = Geometry.Parse(CategoryDialogTitleIconData), Style = (Style)Application.Current.Resources["TitleBarIconPath"] };
+        var titleIconCanvas = new Canvas { Width = CategoryDialogTitleIconCanvasSize, Height = CategoryDialogTitleIconCanvasSize, Children = { titleIconPath } };
+        var titleIcon = new Viewbox { Style = (Style)Application.Current.Resources["TitleBarIconBox"], Child = titleIconCanvas };
+
+        titleBar.Child = new StackPanel
+        {
+            Orientation       = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin            = (Thickness)Application.Current.Resources["TitleBarContentMargin"],
+            Children          = { titleIcon, titleText }
+        };
+
+        var inputBox = new TextBox { Text = defaultValue, Margin = CategoryDialogInputMargin, Padding = CategoryDialogInputPadding };
         inputBox.Style = (Style)Application.Current.Resources["ModernTextBox"];
 
         var btnRow = new Grid();
@@ -247,12 +259,12 @@ public partial class MainWindow : System.Windows.Window
         btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var cancelBtn = new Button { Content = "キャンセル", Padding = CategoryDialogButtonPadding, Margin = CategoryDialogCancelMargin };
+        var cancelBtn = new Button { Content = "キャンセル", Margin = CategoryDialogCancelMargin };
         cancelBtn.Style = (Style)Application.Current.Resources["SecondaryButton"];
         cancelBtn.Click += (_, _) => { dialog.DialogResult = false; dialog.Close(); };
         Grid.SetColumn(cancelBtn, 1);
 
-        var okBtn = new Button { Content = "OK", Padding = CategoryDialogButtonPadding };
+        var okBtn = new Button { Content = "OK" };
         okBtn.Style = (Style)Application.Current.Resources["PrimaryButton"];
         okBtn.Click += (_, _) => { dialog.DialogResult = true; dialog.Close(); };
         Grid.SetColumn(okBtn, 2);
@@ -276,6 +288,7 @@ public partial class MainWindow : System.Windows.Window
     private ContextMenu BuildCategoryContextMenu(CategoryInfo cat)
     {
         var menu = new ContextMenu();
+        WindowScaleService.ApplyScaleToContextMenu(menu, _scaleTransform);
 
         var clearNewItem = new MenuItem { Header = "🔔 NEWバッジを全て消す" };
         clearNewItem.Click += (_, _) =>

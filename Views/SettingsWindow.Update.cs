@@ -16,7 +16,7 @@ public partial class SettingsWindow : Window
             var tag = AppConstants.AppVersion;
             var notes = await UpdateCheckService.GetReleaseNotesByTagAsync(tag);
             if (notes != null && !string.IsNullOrEmpty(notes.Body))
-                new ReleaseNotesWindow(this, notes.Tag, notes.Body).Show();
+                new ReleaseNotesWindow(this, notes.Tag, notes.Body).ShowDialog();
             else
                 System.Windows.MessageBox.Show(this, "リリースノートの取得に失敗しました。",
                     "リリースノート", MessageBoxButton.OK, MessageBoxImage.Warning);

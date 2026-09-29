@@ -47,7 +47,7 @@ public partial class SettingsWindow : Window
         var (deleted, freed) = LoggerService.Instance.CleanOldLogs(days);
         var freedMegabytes = freed / 1024.0 / 1024.0;
         var sizeStr = freedMegabytes >= 1 ? $"{freedMegabytes:F1} MB" : $"{freed / 1024.0:F0} KB";
-        LogCleanResultText.Text = deleted > 0 ? $"✅ {deleted} 件削除（{sizeStr} 解放）" : "削除対象のログファイルはありませんでした";
+        LogCleanResultText.Text = deleted > 0 ? $"✅ {deleted} 件削除({sizeStr} 解放)" : "削除対象のログファイルはありませんでした";
         AppLogger.Log(LogMsg.LogManualDeleted, null, deleted, sizeStr);
         RefreshLogStats();
     }

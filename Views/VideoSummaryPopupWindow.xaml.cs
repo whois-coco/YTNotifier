@@ -1,14 +1,23 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using YTNotifier.Models;
 using YTNotifier.Services;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace YTNotifier.Views;
 
 public partial class VideoSummaryPopupWindow : Window
 {
     private const string PublishedAtLabelPrefix = "投稿日時：";
+
+    // ── Gemini要約（右サイドパネル表示・このファイルでのみ参照） ──────────
+    private const string SidePanelSummaryHeaderText = "要約";
+    private const string SummaryStatusRunningText    = "要約中...";
+    private const string SummaryFailedFallbackText   = "要約に失敗しました";
+    private const string ErrorBrushKey               = "ErrorBrush";
 
     private readonly ChannelInfo _channel;
     private readonly string      _videoId;
@@ -19,13 +28,17 @@ public partial class VideoSummaryPopupWindow : Window
     /// <summary>プラグインへ渡す種別文字列。終了済みのライブアーカイブ・公開済みプレミアは <c>video</c> に正規化。</summary>
     private readonly string      _contributionKind;
 
+    /// <summary>拡大率の LayoutTransform。ContextMenu（PluginActions 側）にも同じインスタンスを使い回す。</summary>
+    private readonly ScaleTransform _scaleTransform;
+
     public VideoSummaryPopupWindow(Window owner, ChannelInfo channel, VideoKind kind, string title,
         string videoId, TimeSpan? duration = null, bool allowSummary = true, bool isPending = false,
         string? thumbnailUrl = null, DateTime? publishedAt = null)
     {
         InitializeComponent();
+        _scaleTransform = WindowScaleService.ApplyToNewWindow(this);
         WindowCornerHelper.ApplyOnLoaded(this);
-        MaxWidth               = WindowMaxWidthExpanded;
+        MaxWidth               = WindowMaxWidthExpanded * WindowScaleService.GetScaleFactor();
         LeftColumnPanel.MaxWidth = LeftColumnMaxWidth;
         SidePanelBorder.Width    = SidePanelWidth;
         Owner    = owner;
@@ -141,18 +154,38 @@ public partial class VideoSummaryPopupWindow : Window
         var apiKey = GeminiApiKeyService.Load(SettingsService.Instance.ConfDir);
         if (string.IsNullOrEmpty(apiKey)) return;
 
-        SummaryPanel.Visibility  = Visibility.Visible;
         SummaryButton.Visibility = Visibility.Visible;
     }
 
     private void ShowSummaryResult(string headline, string detail)
     {
-        SummaryButton.Visibility        = Visibility.Collapsed;
-        SummaryStatusText.Visibility    = Visibility.Collapsed;
-        SummaryErrorText.Visibility     = Visibility.Collapsed;
-        SummaryHeadlineText.Text        = headline;
-        SummaryDetailText.Text          = detail;
-        SummaryResultPanel.Visibility   = Visibility.Visible;
+        SummaryButton.IsEnabled = true;
+
+        var headlineBlock = new TextBlock
+        {
+            Text         = headline,
+            FontSize     = ResultHeadlineFontSize,
+            FontWeight   = FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        headlineBlock.SetResourceReference(TextBlock.ForegroundProperty, TextPrimaryBrushKey);
+
+        var detailBlock = new TextBlock
+        {
+            Text         = detail,
+            FontSize     = ResultDetailFontSize,
+            Margin       = ResultDetailMargin,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        detailBlock.SetResourceReference(TextBlock.ForegroundProperty, TextPrimaryBrushKey);
+
+        SidePanelResultPanel.Children.Clear();
+        SidePanelResultPanel.Children.Add(headlineBlock);
+        SidePanelResultPanel.Children.Add(detailBlock);
+
+        SidePanelStatusText.Visibility  = Visibility.Collapsed;
+        SidePanelResultPanel.Visibility = Visibility.Visible;
+        SidePanelBorder.Visibility      = Visibility.Visible;
     }
 
     private async void SummaryButton_Click(object sender, RoutedEventArgs e)
@@ -160,14 +193,14 @@ public partial class VideoSummaryPopupWindow : Window
         var apiKey = GeminiApiKeyService.Load(SettingsService.Instance.ConfDir);
         if (string.IsNullOrEmpty(apiKey)) return;
 
-        SummaryButton.IsEnabled      = false;
-        SummaryErrorText.Visibility  = Visibility.Collapsed;
-        SummaryStatusText.Text       = "要約中...";
-        SummaryStatusText.Visibility = Visibility.Visible;
+        SummaryButton.IsEnabled = false;
+        OpenSidePanel(SidePanelSummaryHeaderText);
+        SidePanelStatusText.Text       = SummaryStatusRunningText;
+        SidePanelStatusText.Visibility = Visibility.Visible;
 
         // 要約は Gemini 直渡しのみ。プラグインの要約は video.detail.actions のプラグインボタン経由で提供する。
         var result = await GeminiSummaryService.SummarizeVideoAsync(apiKey, _videoId,
-            onChunk: partialText => SummaryStatusText.Text = "要約中...\n" + partialText);
+            onChunk: partialText => SidePanelStatusText.Text = SummaryStatusRunningText + "\n" + partialText);
 
         if (result.Success && result.Headline != null && result.Detail != null)
         {
@@ -175,10 +208,9 @@ public partial class VideoSummaryPopupWindow : Window
         }
         else
         {
-            SummaryStatusText.Visibility = Visibility.Collapsed;
-            SummaryErrorText.Text        = result.ErrorMessage ?? "要約に失敗しました";
-            SummaryErrorText.Visibility  = Visibility.Visible;
-            SummaryButton.IsEnabled      = true;
+            SidePanelStatusText.Text = result.ErrorMessage ?? SummaryFailedFallbackText;
+            SidePanelStatusText.SetResourceReference(TextBlock.ForegroundProperty, ErrorBrushKey);
+            SummaryButton.IsEnabled  = true;
         }
     }
 
@@ -186,4 +218,9 @@ public partial class VideoSummaryPopupWindow : Window
         => WindowTitleBarHelper.DragMoveOnPress(this, e);
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void VideoSummaryPopupWindow_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape) Close();
+    }
 }

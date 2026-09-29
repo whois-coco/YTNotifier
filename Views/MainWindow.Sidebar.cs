@@ -77,7 +77,7 @@ public partial class MainWindow : System.Windows.Window
         // クォータ停止中はボタンを無効化してトグル操作を封じる
         StatusBadge.IsEnabled = !quotaSuspend && !_isOffline;
         StatusBadge.ToolTip   = _isOffline   ? "オフライン"
-            : quotaSuspend ? $"クォータ超過のため停止中（{quotaUntil!.Value:HH:mm} に再開）"
+            : quotaSuspend ? $"クォータ超過のため停止中({quotaUntil!.Value:HH:mm} に再開)"
             : effectiveRunning ? "クリックして監視を停止" : "クリックして監視を開始";
 
         if (_sidebarCollapsed) UpdateToggleIconColor(effectiveRunning);
@@ -126,20 +126,22 @@ public partial class MainWindow : System.Windows.Window
         else                   { AppLogger.Log(LogMsg.SidebarToggled, null, AppConstants.LogCollapsedText); CollapseSidebar(); }
     }
 
-    private void UpdateMinWidth() { MinHeight = WindowMinHeight; }
+    private void UpdateMinWidth() { MinHeight = WindowMinHeight * WindowScaleService.GetScaleFactor(); }
 
     private void SyncWindowWidth()
     {
+        var scaleFactor = WindowScaleService.GetScaleFactor();
+
         if (SettingsService.Instance.Settings.CompactMode)
         {
             ContentColumn.Width    = new GridLength(ContentWidthCompact);
             ContentColumn.MinWidth = ContentWidthCompact;
-            MaxWidth = MinWidth = Width = CompactTotalWidth;
+            MaxWidth = MinWidth = Width = CompactTotalWidth * scaleFactor;
             return;
         }
-        var target = _sidebarCollapsed ? CollapsedTotalWidth : ExpandedTotalWidth;
+        var target = (_sidebarCollapsed ? CollapsedTotalWidth : ExpandedTotalWidth) * scaleFactor;
         MaxWidth = MinWidth = target;
-        if ((int)Width != target) Width = target;
+        if ((int)Width != (int)target) Width = target; // target は拡大率適用後の double のため整数丸めで比較する
     }
 
     private void UpdateToggleIcon(string direction)
@@ -204,7 +206,7 @@ public partial class MainWindow : System.Windows.Window
     {
         UpdateTitleBar(sender);
 
-        // NavSettings はページ遷移ボタンではなく、NGワード設定ボタン等と同種の単発起動ボタン
+        // NavSettings はページ遷移ボタンではなく、ミュートワード設定ボタン等と同種の単発起動ボタン
         // （設定ウィンドウをモーダル表示するだけで、メイン画面のページ切り替えは行わない）
         if (sender == NavSettings)
         {
@@ -285,6 +287,7 @@ public partial class MainWindow : System.Windows.Window
         clearItem.Opacity   = hasUnread ? 1.0 : 0.4;
 
         var menu = new ContextMenu();
+        WindowScaleService.ApplyScaleToContextMenu(menu, _scaleTransform);
         menu.Items.Add(clearItem);
         menu.IsOpen = true;
     }
@@ -356,7 +359,7 @@ public partial class MainWindow : System.Windows.Window
             if (template.FindName(iconName, MuteButton) is System.Windows.Shapes.Path iconPath)
                 iconPath.Visibility = muted ? Visibility.Visible : Visibility.Collapsed;
 
-        MuteButton.ToolTip = muted ? "通知ミュート: ON（クリックで解除）" : "通知ミュート: OFF";
+        MuteButton.ToolTip = muted ? "通知ミュート: ON(クリックで解除)" : "通知ミュート: OFF";
     }
 
     // ===== コンパクトモードボタン =====
@@ -373,7 +376,7 @@ public partial class MainWindow : System.Windows.Window
             shrink.Visibility = enabled ? Visibility.Visible   : Visibility.Collapsed;
         if (CompactModeButton.Template?.FindName("ExpandIcon", CompactModeButton) is System.Windows.Shapes.Path expand)
             expand.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
-        CompactModeButton.ToolTip = enabled ? "コンパクトモード: ON（クリックで解除）" : "コンパクトモード: OFF";
+        CompactModeButton.ToolTip = enabled ? "コンパクトモード: ON(クリックで解除)" : "コンパクトモード: OFF";
     }
 
     // ===== ピンボタン =====
@@ -394,7 +397,7 @@ public partial class MainWindow : System.Windows.Window
     {
         if (PinButton.Template?.FindName("PinIcon", PinButton) is System.Windows.Shapes.Path icon)
             SetDynamicBrush(icon, System.Windows.Shapes.Path.StrokeProperty, pinned ? "ErrorBrush" : "SidebarTextBrush");
-        PinButton.ToolTip = pinned ? "常に前面に表示: ON（クリックで解除）" : "常に前面に表示: OFF";
+        PinButton.ToolTip = pinned ? "常に前面に表示: ON(クリックで解除)" : "常に前面に表示: OFF";
     }
 
     private void MonitorToggleButton_Click(object sender, RoutedEventArgs e)

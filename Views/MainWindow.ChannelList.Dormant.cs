@@ -66,28 +66,28 @@ public partial class MainWindow : System.Windows.Window
         var categories = SettingsService.Instance.Channels.DormantCategories.OrderBy(c => c.SortOrder);
         var settings = SettingsService.Instance.Settings;
 
-        if (settings.NoCategoryMode || !categories.Any())
+        // カテゴリなし表示（NoCategoryMode）、または休眠カテゴリが1件もない場合は、
+        // 見出し行を出さず折りたたみ状態も無視して、カテゴリ表示と同じ並び
+        // （カテゴリ順 → カテゴリ内はリスト順 → 未分類）ですべて表示する
+        var noCategoryMode = settings.NoCategoryMode || !categories.Any();
+
+        foreach (var cat in categories)
         {
-            foreach (var ch in dormantChannels)
-                DormantChannelList.Children.Add(CreateDormantChannelRow(ch));
-        }
-        else
-        {
-            foreach (var cat in categories)
-            {
-                var catChannels = dormantChannels.Where(c => c.CategoryId == cat.CategoryId).ToList();
+            var catChannels = dormantChannels.Where(c => c.CategoryId == cat.CategoryId).ToList();
+            if (!noCategoryMode)
                 DormantChannelList.Children.Add(CreateDormantCategoryRow(cat));
-                if (!cat.IsCollapsed)
-                    foreach (var ch in catChannels) DormantChannelList.Children.Add(CreateDormantChannelRow(ch));
-            }
-            var dormantCatIds = new HashSet<string>(categories.Select(c => c.CategoryId));
-            var uncategorized = dormantChannels.Where(c => string.IsNullOrEmpty(c.CategoryId) || !dormantCatIds.Contains(c.CategoryId)).ToList();
-            if (uncategorized.Count > 0)
-            {
+            if (noCategoryMode || !cat.IsCollapsed)
+                foreach (var ch in catChannels) DormantChannelList.Children.Add(CreateDormantChannelRow(ch));
+        }
+
+        var dormantCatIds = new HashSet<string>(categories.Select(c => c.CategoryId));
+        var uncategorized = dormantChannels.Where(c => string.IsNullOrEmpty(c.CategoryId) || !dormantCatIds.Contains(c.CategoryId)).ToList();
+        if (noCategoryMode || uncategorized.Count > 0)
+        {
+            if (!noCategoryMode)
                 DormantChannelList.Children.Add(CreateDormantUncategorizedRow());
-                if (!_dormantUncategorizedCollapsed)
-                    foreach (var ch in uncategorized) DormantChannelList.Children.Add(CreateDormantChannelRow(ch));
-            }
+            if (noCategoryMode || !_dormantUncategorizedCollapsed)
+                foreach (var ch in uncategorized) DormantChannelList.Children.Add(CreateDormantChannelRow(ch));
         }
 
         if (_dormantEditMode)
@@ -137,6 +137,7 @@ public partial class MainWindow : System.Windows.Window
     private ContextMenu BuildDormantChannelContextMenu(ChannelInfo ch)
     {
         var menu = new ContextMenu();
+        WindowScaleService.ApplyScaleToContextMenu(menu, _scaleTransform);
 
         var activateItem = new MenuItem { Header = "▶ チャンネルリストへ移動" };
         activateItem.Click += (_, _) => MoveChannelToActive(ch);
@@ -235,6 +236,7 @@ public partial class MainWindow : System.Windows.Window
     private ContextMenu BuildDormantCategoryContextMenu(CategoryInfo cat)
     {
         var menu = new ContextMenu();
+        WindowScaleService.ApplyScaleToContextMenu(menu, _scaleTransform);
 
         var renameItem = new MenuItem { Header = "✏ カテゴリ名を変更" };
         renameItem.Click += (_, _) =>

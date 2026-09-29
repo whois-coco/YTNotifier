@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using ComboBox    = System.Windows.Controls.ComboBox;
 using Brush       = System.Windows.Media.Brush;
@@ -14,6 +15,7 @@ using VerticalAlignment   = System.Windows.VerticalAlignment;
 using YTNotifier.Constants;
 using YTNotifier.Models;
 using YTNotifier.Services;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace YTNotifier.Views;
 
@@ -39,6 +41,7 @@ public partial class ChannelDetailWindow : Window
     public ChannelDetailWindow(ChannelInfo channel, Window owner)
     {
         InitializeComponent();
+        WindowScaleService.ApplyToNewWindow(this);
         Owner    = owner;
         _channel = channel;
         WindowCornerHelper.ApplyOnLoaded(this);
@@ -222,6 +225,11 @@ public partial class ChannelDetailWindow : Window
     private void CloseButton_Click(object sender, RoutedEventArgs e)  => RevertAndClose();
     private void Cancel_Click(object sender, RoutedEventArgs e) => RevertAndClose();
 
+    private void ChannelDetailWindow_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape) RevertAndClose();
+    }
+
     private void UpdateEstimate()
     {
         if (EstimateText == null || DetailQuotaBarBg == null) return;
@@ -321,9 +329,9 @@ public partial class ChannelDetailWindow : Window
 
         if (daily > ApiQuotaHelper.DailyLimit)
         {
-            var msg = $"この設定では1日のAPIクォータ（{ApiQuotaHelper.DailyLimit:N0}ユニット）を超過します。\n\n" +
-                      $"推定使用量: {daily:N0} ユニット/日（{pct:F0}%）\n\n" +
-                      "それでも保存しますか？（設定で間隔を調整してください）";
+            var msg = $"この設定では1日のAPIクォータ({ApiQuotaHelper.DailyLimit:N0}ユニット)を超過します。\n\n" +
+                      $"推定使用量: {daily:N0} ユニット/日({pct:F0}%)\n\n" +
+                      "それでも保存しますか？(設定で間隔を調整してください)";
             if (ConfirmDialog.Show(this, "クォータ超過の警告", msg, "保存する") != true)
                 return;
             AppLogger.Log(LogMsg.QuotaExceededOnSave, _channel.ChannelName, _channel.ChannelName, (int)Math.Round(pct));
@@ -410,7 +418,7 @@ public partial class ChannelDetailWindow : Window
             MonitorMode.Focus   => BuildFocusDesc(slot),
             _ => slot.SlotNormalIntervalMinutes > 0
                 ? $"通常 {slot.SlotNormalIntervalMinutes}分"
-                : $"通常 {globalIntervalMinutes}分（グローバル）",
+                : $"通常 {globalIntervalMinutes}分(グローバル)",
         };
     }
 
@@ -810,7 +818,7 @@ internal class FocusTabPanel
                 Style      = (Style)res["ModernComboBoxItem"],
                 IsEnabled  = !tooShort,
                 Opacity    = tooShort ? 0.4 : 1.0,
-                ToolTip    = tooShort ? $"グローバル設定（{globalInterval}分）より短い間隔は設定できません" : null,
+                ToolTip    = tooShort ? $"グローバル設定({globalInterval}分)より短い間隔は設定できません" : null,
             });
         }
         // 保存済み値がグローバルより短い場合は「一括で設定に従う」へフォールバック
@@ -878,7 +886,9 @@ internal class FocusTabPanel
         _addTimeRowButton = new System.Windows.Controls.Button
         {
             Style               = (Style)res["SecondaryButton"],
-            HorizontalAlignment = HorizontalAlignment.Stretch
+            Padding             = (Thickness)res["OperationButtonPadding"],
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Content             = TimeRowAddButtonLabel
         };
         _addTimeRowButton.Click += (_, _) => AddTimeRow();
         _focusPanel.Children.Add(_addTimeRowButton);

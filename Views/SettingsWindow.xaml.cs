@@ -20,14 +20,31 @@ public partial class SettingsWindow : Window
     /// <summary>設定コントロールの初期化中はイベントハンドラを黙らせるためのフラグ（MainWindow と同じ考え方の独立フィールド）。</summary>
     private bool _loadingSettings = false;
 
+    /// <summary>設定画面を開いた時点の拡大率。閉じた時にこの値と比較し、変化していればメイン画面へ反映する。</summary>
+    private readonly int _scalePercentAtOpen;
+
     public SettingsWindow(Window owner)
     {
         InitializeComponent();
+        WindowScaleService.ApplyToNewWindow(this);
         Owner   = owner;
         WindowCornerHelper.ApplyOnLoaded(this);
 
+        _scalePercentAtOpen = SettingsService.Instance.Settings.WindowScalePercent;
+
         LoadSettings();
         SelectCategory(CategoryNavBasic);
+
+        Closed += SettingsWindow_Closed;
+    }
+
+    private void SettingsWindow_Closed(object? sender, EventArgs e)
+    {
+        if (SettingsService.Instance.Settings.WindowScalePercent != _scalePercentAtOpen
+            && Owner is MainWindow mainWindow)
+        {
+            mainWindow.ApplyWindowScaleChange();
+        }
     }
 
     // ===== タイトルバー =====
@@ -139,6 +156,12 @@ public partial class SettingsWindow : Window
             i => i.Tag?.ToString() == settings.CheckIntervalMinutes.ToString()) ?? items[1];
         _loadingSettings = false;
 
+        _loadingSettings = true;
+        var scaleItems = WindowScaleComboBox.Items.Cast<ComboBoxItem>().ToList();
+        WindowScaleComboBox.SelectedItem = scaleItems.FirstOrDefault(
+            i => i.Tag?.ToString() == settings.WindowScalePercent.ToString()) ?? scaleItems[2];
+        _loadingSettings = false;
+
         UpdateIntervalAvailability();
 
         _loadingSettings = true;
@@ -152,7 +175,7 @@ public partial class SettingsWindow : Window
         RefreshLogStats();
 
         AboutVersionText.Text = $"v{AppConstants.AppVersion}";
-        AboutGeminiApiText.Text = $"Gemini API（{AppConstants.GeminiModelName}）使用";
+        AboutGeminiApiText.Text = $"Gemini API({AppConstants.GeminiModelName})使用";
 
         if (Owner is MainWindow mainWindow && mainWindow.UpdateAvailableBtn.Visibility == Visibility.Visible)
             CheckForUpdateBtn.IsEnabled = false;
@@ -240,7 +263,7 @@ public partial class SettingsWindow : Window
             if (recItem != null && recItem != item)
             {
                 IntervalComboBox.SelectedItem = recItem;
-                ConfirmDialog.Show(this, "API クォータ超過防止", $"チャンネル数 {channels.Count} 件では {minutes} 分間隔だと\n1日のAPIクォータ（10,000ユニット）を超過します。\n\n自動的に {recommended} 分間隔に調整しました。", "OK", showCancel: false);
+                ConfirmDialog.Show(this, "API クォータ超過防止", $"チャンネル数 {channels.Count} 件では {minutes} 分間隔だと\n1日のAPIクォータ(10,000ユニット)を超過します。\n\n自動的に {recommended} 分間隔に調整しました。", "OK", showCancel: false);
                 return;
             }
         }
@@ -251,6 +274,18 @@ public partial class SettingsWindow : Window
         MonitorService.Instance.ResetNormalChannels(minutes);
         MonitorService.Instance.RestartWithNewInterval();
         UpdateIntervalAvailability();
+    }
+
+    // ===== 拡大率 =====
+    private void WindowScaleComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        if (WindowScaleComboBox.SelectedItem is not ComboBoxItem item) return;
+        if (!int.TryParse(item.Tag?.ToString(), out var percent)) return;
+
+        SettingsService.Instance.Settings.WindowScalePercent = percent;
+        SettingsService.Instance.MarkDirty();
+        AppLogger.Log(LogMsg.SettingWindowScale, null, percent);
     }
 
     // ===== 通知テスト =====
@@ -312,7 +347,7 @@ public partial class SettingsWindow : Window
                 var cost = ApiQuotaHelper.EstimateDailyUnitsForChannels(mins, channels);
                 var over = cost > ApiQuotaHelper.DailyLimit;
                 item.IsEnabled = !over;
-                item.ToolTip   = over ? $"クォータ超過（{cost:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日）" : $"{cost:N0} ユニット/日";
+                item.ToolTip   = over ? $"クォータ超過({cost:N0} / {ApiQuotaHelper.DailyLimit:N0} ユニット/日)" : $"{cost:N0} ユニット/日";
                 item.Opacity   = over ? 0.4 : 1.0;
             }
         }

@@ -28,43 +28,47 @@
             <Setter Property="BorderThickness" Value="3,0,0,0"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
         </Style>
+
+        <!-- 設定行（項目名＋トグル／ドロップダウン）の上下余白。全ページの設定行で共通 -->
+        <Thickness x:Key="SettingRowMargin">0,8</Thickness>
+
+        <!-- 左のカテゴリナビの幅。最長の項目（アイコン＋「データ管理」「プラグイン」）＋左右余白＋選択バーが収まる幅 -->
+        <GridLength x:Key="CategoryNavWidth">150</GridLength>
     </Window.Resources>
 
-    <Border CornerRadius="8" BorderThickness="1">
+    <Border CornerRadius="{StaticResource DialogCornerRadius}" BorderThickness="1"
+            Effect="{StaticResource DialogShadow}">
         <Border.Background><DynamicResource ResourceKey="SurfaceBrush"/></Border.Background>
         <Border.BorderBrush><DynamicResource ResourceKey="BorderBrush"/></Border.BorderBrush>
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="20" Opacity="0.3" ShadowDepth="4" Direction="270"/>
-        </Border.Effect>
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="48"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
             <!-- タイトルバー -->
-            <Border Grid.Row="0" CornerRadius="8,8,0,0" MouseLeftButtonDown="TitleBar_MouseDown">
+            <Border Grid.Row="0" Height="{StaticResource TitleBarHeight}" CornerRadius="{StaticResource DialogTitleBarCornerRadius}" MouseLeftButtonDown="TitleBar_MouseDown">
                 <Border.Background><DynamicResource ResourceKey="SidebarBrush"/></Border.Background>
-                <Grid Margin="16,0,12,0">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="⚙" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource TextMutedBrush}"/>
-                        <TextBlock Text="設定" FontSize="13" FontWeight="SemiBold"
-                                   VerticalAlignment="Center"
-                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <Grid>
+                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TitleBarContentMargin}" VerticalAlignment="Center">
+                        <Viewbox Style="{StaticResource TitleBarIconBox}">
+                            <Canvas Width="24" Height="24">
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/>
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="M 9 12 A 3 3 0 0 0 15 12 A 3 3 0 0 0 9 12"/>
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock Text="設定" Style="{StaticResource TitleBarTitleText}"/>
                     </StackPanel>
-                    <Button HorizontalAlignment="Right" VerticalAlignment="Center"
-                            Width="28" Height="28" Content="✕"
-                            Background="Transparent" BorderThickness="0"
-                            Cursor="Hand" Click="CloseButton_Click"
-                            FontSize="12" Foreground="{DynamicResource TextMutedBrush}"/>
+                    <Button HorizontalAlignment="Right" Content="✕"
+                            Style="{StaticResource TitleBarCloseButton}"
+                            Click="CloseButton_Click"/>
                 </Grid>
             </Border>
 
             <!-- コンテンツ：左カテゴリナビ＋右コンテンツエリア -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="190"/>
+                    <ColumnDefinition Width="{StaticResource CategoryNavWidth}"/>
                     <ColumnDefinition Width="1"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
@@ -159,8 +163,7 @@
                                          Foreground="{DynamicResource TextMutedBrush}"/>
                                 <Button x:Name="SaveApiKeyButton" Grid.Column="1"
                                         Style="{StaticResource PrimaryButton}"
-                                        Content="保存" Padding="12,5"
-                                        FontSize="11"
+                                        Content="保存" Padding="{StaticResource InlineButtonPadding}"
                                         Click="SaveApiKey_Click"/>
                             </Grid>
                             <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,0">
@@ -172,7 +175,7 @@
                             <Separator Style="{StaticResource HorizontalSeparator}" Margin="0,12,0,8"/>
 
                             <!-- チェック間隔 -->
-                            <Grid Margin="0,8">
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -193,7 +196,7 @@
                                 </ComboBox>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -208,7 +211,7 @@
                                           Unchecked="TrayToggle_Changed"/>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid>
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -222,6 +225,31 @@
                                           Checked="StartupToggle_Changed"
                                           Unchecked="StartupToggle_Changed"/>
                             </Grid>
+                            <Separator Style="{StaticResource HorizontalSeparator}"/>
+                            <Grid Margin="{StaticResource SettingRowMargin}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="拡大率" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox x:Name="WindowScaleComboBox" Grid.Column="1"
+                                          Style="{StaticResource ModernComboBox}"
+                                          SelectionChanged="WindowScaleComboBox_SelectionChanged">
+                                    <ComboBoxItem Content="80%"  Tag="80"  Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="90%"  Tag="90"  Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="100%" Tag="100" Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="110%" Tag="110" Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="120%" Tag="120" Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="130%" Tag="130" Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="140%" Tag="140" Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="150%" Tag="150" Style="{StaticResource ModernComboBoxItem}"/>
+                                </ComboBox>
+                            </Grid>
+                            <TextBlock Text="設定ウィンドウを閉じた時に反映されます" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,4,0,0"/>
                         </StackPanel>
                     </ScrollViewer>
 
@@ -229,7 +257,7 @@
                     <ScrollViewer x:Name="CategoryPageDisplay" Style="{StaticResource SlimScrollViewer}" Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto" Margin="24,20">
                         <StackPanel>
-                            <Grid Margin="0,8">
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -256,7 +284,7 @@
                                 </ComboBox>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid Margin="0,8">
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -306,7 +334,7 @@
                                 </Popup>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid Margin="0,8">
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -327,7 +355,7 @@
                     <ScrollViewer x:Name="CategoryPageNotification" Style="{StaticResource SlimScrollViewer}" Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto" Margin="24,20">
                         <StackPanel>
-                            <Grid Margin="0,8">
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -342,7 +370,7 @@
                                           Unchecked="NotificationToggle_Changed"/>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid Margin="0,8">
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -360,7 +388,7 @@
                                 </ComboBox>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid Margin="0,8">
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -375,7 +403,7 @@
                                           Unchecked="NotificationSoundToggle_Changed"/>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid Margin="0,8">
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -388,7 +416,7 @@
                                           SelectionChanged="NotificationSoundSetComboBox_Changed"/>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid Margin="0,8">
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -412,7 +440,7 @@
                                            Foreground="{DynamicResource TextPrimaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
-                                        Content="🔔 送信" Padding="14,7"
+                                        Content="🔔 送信" Padding="{StaticResource OperationButtonPadding}"
                                         VerticalAlignment="Center"
                                         Click="TestNotification_Click"/>
                             </Grid>
@@ -423,7 +451,7 @@
                     <ScrollViewer x:Name="CategoryPageLog" Style="{StaticResource SlimScrollViewer}" Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto" Margin="24,20">
                         <StackPanel>
-                            <Grid Margin="0,8">
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -438,7 +466,7 @@
                                           Unchecked="TraceLogToggle_Changed"/>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid Margin="0,8">
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -449,7 +477,7 @@
                                 <ComboBox x:Name="LogRetentionComboBox" Grid.Column="1"
                                           Style="{StaticResource ModernComboBox}"
                                           SelectionChanged="LogRetentionComboBox_Changed">
-                                    <ComboBoxItem Content="0日（当日のみ）" Tag="0"  Style="{StaticResource ModernComboBoxItem}"/>
+                                    <ComboBoxItem Content="0日(当日のみ)" Tag="0"  Style="{StaticResource ModernComboBoxItem}"/>
                                     <ComboBoxItem Content="1日"  Tag="1"   Style="{StaticResource ModernComboBoxItem}"/>
                                     <ComboBoxItem Content="3日"  Tag="3"   Style="{StaticResource ModernComboBoxItem}"/>
                                     <ComboBoxItem Content="5日"  Tag="5"   Style="{StaticResource ModernComboBoxItem}"/>
@@ -458,7 +486,7 @@
                                 </ComboBox>
                             </Grid>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>
-                            <Grid Margin="0,8">
+                            <Grid Margin="{StaticResource SettingRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -484,12 +512,12 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
-                                        Content="🗑 ログ削除" Padding="14,7"
+                                        Content="🗑 ログ削除" Padding="{StaticResource OperationButtonPadding}"
                                         Margin="0,0,8,0"
                                         VerticalAlignment="Center"
                                         Click="CleanLogsNow_Click"/>
                                 <Button Grid.Column="2" Style="{StaticResource SecondaryButton}"
-                                        Content="📋 ログ表示" Padding="14,7"
+                                        Content="📋 ログ表示" Padding="{StaticResource OperationButtonPadding}"
                                         VerticalAlignment="Center"
                                         Click="ShowActivityLog_Click"/>
                             </Grid>
@@ -522,7 +550,7 @@
                                            Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
-                                        Content="💾 バックアップ" Padding="12,6" Width="{StaticResource BackupButtonWidth}"
+                                        Content="💾 バックアップ" Padding="{StaticResource OperationButtonPadding}" Width="{StaticResource BackupButtonWidth}"
                                         Click="ExportBackup_Click"/>
                             </Grid>
                             <Grid>
@@ -534,7 +562,7 @@
                                            Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
-                                        Content="📂 復元" Padding="12,6" Width="{StaticResource BackupButtonWidth}"
+                                        Content="📂 復元" Padding="{StaticResource OperationButtonPadding}" Width="{StaticResource BackupButtonWidth}"
                                         Click="ImportBackup_Click"/>
                             </Grid>
                             <TextBlock x:Name="BackupStatusText" FontSize="11"
@@ -569,13 +597,13 @@
                                 <Button x:Name="ShowReleaseNotesBtn"
                                         Content="📋 リリースノート"
                                         Style="{StaticResource SecondaryButton}"
-                                        Padding="12,6" FontSize="11"
+                                        Padding="{StaticResource OperationButtonPadding}"
                                         Margin="0,0,8,0"
                                         Click="ShowReleaseNotes_Click"/>
                                 <Button x:Name="CheckForUpdateBtn"
                                         Content="🔄 更新確認"
                                         Style="{StaticResource SecondaryButton}"
-                                        Padding="12,6" FontSize="11"
+                                        Padding="{StaticResource OperationButtonPadding}"
                                         Click="CheckForUpdateBtn_Click"/>
                             </StackPanel>
                             <Separator Style="{StaticResource HorizontalSeparator}"/>

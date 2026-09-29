@@ -9,6 +9,7 @@ using System.Windows.Input;
 using YTNotifier.Constants;
 using YTNotifier.Models;
 using YTNotifier.Services;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace YTNotifier.Views;
 
@@ -23,6 +24,7 @@ public partial class ActivityLogWindow : Window
     public ActivityLogWindow()
     {
         InitializeComponent();
+        WindowScaleService.ApplyToNewWindow(this);
         Loaded  += OnLoaded;
         Closed  += OnClosed;
     }
@@ -102,9 +104,11 @@ public partial class ActivityLogWindow : Window
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         => WindowTitleBarHelper.CaptionDragOnPress(this, e);
 
-    private void TitleBar_Minimize(object sender, RoutedEventArgs e)
-        => WindowState = WindowState.Minimized;
-
     private void TitleBar_Close(object sender, RoutedEventArgs e)
         => Close();
+
+    private void ActivityLogWindow_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape) Close();
+    }
 }

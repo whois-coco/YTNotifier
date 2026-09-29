@@ -8,49 +8,36 @@
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
         FontFamily="Noto Sans JP">
 
     <Border Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
-            BorderThickness="1">
+            BorderThickness="1"
+            CornerRadius="{StaticResource DialogCornerRadius}"
+            Effect="{StaticResource DialogShadow}">
         <DockPanel>
 
             <!-- タイトルバー -->
-            <Border DockPanel.Dock="Top" Height="40"
+            <Border DockPanel.Dock="Top" Height="{StaticResource TitleBarHeight}"
+                    CornerRadius="{StaticResource DialogTitleBarCornerRadius}"
                     Background="{DynamicResource SidebarBrush}"
-                    BorderBrush="{DynamicResource SidebarBorderBrush}"
-                    BorderThickness="0,0,0,1"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <DockPanel>
-                    <Button DockPanel.Dock="Right" Width="40" Height="40"
-                            Background="Transparent" BorderThickness="0"
-                            Cursor="Hand" Click="CloseButton_Click"
-                            ToolTip="閉じる" AutomationProperties.Name="閉じる">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="Bd" Background="Transparent">
-                                    <TextBlock Text="✕" FontSize="11"
-                                               Foreground="{DynamicResource SidebarTextBrush}"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CloseHoverBrush}"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0">
-                        <Border Width="16" Height="16" CornerRadius="2"
-                                Background="{DynamicResource AccentBrush}" Margin="0,0,8,0">
-                            <TextBlock Text="▶" Foreground="White" FontSize="7"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <TextBlock Text="YouTube Data API v3 キーを設定" FontSize="12" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource SidebarTextBrush}"
-                                   VerticalAlignment="Center"/>
+                    <Button DockPanel.Dock="Right" Content="✕"
+                            Style="{StaticResource TitleBarCloseButton}"
+                            Click="CloseButton_Click"
+                            ToolTip="閉じる" AutomationProperties.Name="閉じる"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="{StaticResource TitleBarContentMargin}">
+                        <Viewbox Style="{StaticResource TitleBarIconBox}">
+                            <Canvas Width="24" Height="24">
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="M2 15.5a5.5 5.5 0 1 0 11 0a5.5 5.5 0 1 0 -11 0"/>
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="m21 2-9.6 9.6"/>
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="m15.5 7.5 3 3L22 7l-3-3"/>
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock Text="YouTube Data API v3 キーを設定" Style="{StaticResource TitleBarTitleText}"/>
                     </StackPanel>
                 </DockPanel>
             </Border>
@@ -64,14 +51,14 @@
                 </Grid.ColumnDefinitions>
                 <Button x:Name="BackButton" Grid.Column="0"
                         Style="{StaticResource SecondaryButton}"
-                        Content="戻る" Padding="16,8"
+                        Content="戻る"
                         Click="BackButton_Click"/>
                 <TextBlock x:Name="ProgressText" Grid.Column="1"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            FontSize="11" Foreground="{DynamicResource TextMutedBrush}"/>
                 <Button x:Name="NextButton" Grid.Column="2"
                         Style="{StaticResource PrimaryButton}"
-                        Content="次へ" Padding="16,8"
+                        Content="次へ"
                         Click="NextButton_Click"/>
             </Grid>
 
@@ -101,7 +88,7 @@
                                    VerticalAlignment="Center"/>
                         <Button Grid.Column="1"
                                 Style="{StaticResource SecondaryButton}"
-                                Content="📂 復元" Padding="12,6"
+                                Content="📂 復元" Padding="{StaticResource OperationButtonPadding}"
                                 Click="RestoreButton_Click"/>
                     </Grid>
                 </StackPanel>
@@ -111,7 +98,7 @@
                     <TextBlock x:Name="StepTitleText" FontSize="16" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextPrimaryBrush}"
                                Margin="0,0,0,8"/>
-                    <Border Width="560" Height="300" HorizontalAlignment="Left"
+                    <Border Width="560" Height="300" HorizontalAlignment="Center"
                             Background="{DynamicResource SidebarBrush}"
                             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                         <Image x:Name="StepImage" Stretch="Uniform"/>
@@ -119,7 +106,7 @@
                     <Button x:Name="OpenConsoleButton" Margin="0,12,0,0"
                             HorizontalAlignment="Left"
                             Style="{StaticResource SecondaryButton}"
-                            Content="Google Cloud Consoleを開く" Padding="12,6"
+                            Content="Google Cloud Consoleを開く" Padding="{StaticResource OperationButtonPadding}"
                             Click="OpenConsoleButton_Click"
                             Visibility="Collapsed"/>
                     <TextBlock x:Name="StepDescriptionText" Margin="0,12,0,0"
@@ -147,11 +134,12 @@
                         </Grid.ColumnDefinitions>
                         <TextBox x:Name="ApiKeyBox" Grid.Column="0"
                                  Style="{StaticResource ModernTextBox}"
+                                 Padding="10,4"
                                  Margin="0,0,8,0"
                                  KeyDown="ApiKeyBox_KeyDown"/>
                         <Button Grid.Column="1" x:Name="SaveButton"
                                 Style="{StaticResource PrimaryButton}"
-                                Content="保存" Padding="16,8"
+                                Content="保存" Padding="{StaticResource InlineButtonPadding}"
                                 Click="SaveButton_Click"/>
                     </Grid>
                 </StackPanel>

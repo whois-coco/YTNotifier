@@ -9,6 +9,7 @@ using YTNotifier.Services;
 using Brush   = System.Windows.Media.Brush;
 using Cursors = System.Windows.Input.Cursors;
 using Image   = System.Windows.Controls.Image;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace YTNotifier.Views;
 
@@ -58,8 +59,9 @@ public partial class VideoListPopupWindow : Window
     public VideoListPopupWindow(Window owner, ChannelInfo channel, VideoKind kind, List<PendingVideoEntry> entries, bool allowSummary = true)
     {
         InitializeComponent();
-        MinWidth                = RecentUploadsWindowMinWidth;
-        MaxWidth                = RecentUploadsWindowMaxWidth;
+        WindowScaleService.ApplyToNewWindow(this);
+        MinWidth                = RecentUploadsWindowMinWidth * WindowScaleService.GetScaleFactor();
+        MaxWidth                = RecentUploadsWindowMaxWidth * WindowScaleService.GetScaleFactor();
         EntriesScroll.MaxHeight = RecentUploadsListMaxHeight;
         WindowCornerHelper.ApplyOnLoaded(this);
         Owner         = owner;
@@ -79,8 +81,9 @@ public partial class VideoListPopupWindow : Window
     public VideoListPopupWindow(Window owner, ChannelInfo channel, List<RecentUploadEntry> entries)
     {
         InitializeComponent();
-        MinWidth                = RecentUploadsWindowMinWidth;
-        MaxWidth                = RecentUploadsWindowMaxWidth;
+        WindowScaleService.ApplyToNewWindow(this);
+        MinWidth                = RecentUploadsWindowMinWidth * WindowScaleService.GetScaleFactor();
+        MaxWidth                = RecentUploadsWindowMaxWidth * WindowScaleService.GetScaleFactor();
         EntriesScroll.MaxHeight = RecentUploadsListMaxHeight;
         WindowCornerHelper.ApplyOnLoaded(this);
         Owner         = owner;
@@ -338,4 +341,9 @@ public partial class VideoListPopupWindow : Window
         => WindowTitleBarHelper.DragMoveOnPress(this, e);
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void VideoListPopupWindow_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape) Close();
+    }
 }

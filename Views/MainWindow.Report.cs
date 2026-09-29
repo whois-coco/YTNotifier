@@ -28,7 +28,7 @@ public partial class MainWindow : System.Windows.Window
     private const string ReportHeatmapCountFormat = "集計対象: {0:N0} 件";
 
     // API使用量ドーナツのタイトル・内訳ラベル
-    private const string QuotaDonutTitleEstimate        = "API使用量（見積り）";
+    private const string QuotaDonutTitleEstimate        = "API使用量(見積り)";
     private const string QuotaDonutTitleActual          = "本日の実使用量";
     private const string QuotaDonutLabelEstimateNormal  = "通常";
     private const string QuotaDonutLabelEstimateLowFreq = "低頻度";
@@ -46,7 +46,7 @@ public partial class MainWindow : System.Windows.Window
     private const string QuotaDonutBrushActualLiveStatus = "QuotaActualLiveStatusBrush";
 
     // Gemini API使用量ドーナツのタイトル・ラベル・色・単位文言
-    private const string QuotaDonutTitleGemini         = "Gemini API使用量（本日）";
+    private const string QuotaDonutTitleGemini         = "Gemini API使用量(本日)";
     private const string QuotaDonutLabelGeminiRequests = "要約リクエスト";
     private const string QuotaDonutBrushGeminiRequests = "QuotaActualNormalBrush";
     private const string QuotaDonutUnitLabelGemini     = "回/日";

@@ -666,6 +666,7 @@ public partial class MainWindow : System.Windows.Window
     private ContextMenu BuildChannelContextMenu(ChannelInfo ch)
     {
         var menu = new ContextMenu();
+        WindowScaleService.ApplyScaleToContextMenu(menu, _scaleTransform);
         var items = CreateChannelContextMenuItems(ch);
 
         menu.Items.Add(items.ClearNew);

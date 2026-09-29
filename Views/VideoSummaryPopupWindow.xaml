@@ -5,26 +5,30 @@
         AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         SizeToContent="WidthAndHeight" MinWidth="360"
-        FontFamily="Noto Sans JP">
+        FontFamily="Noto Sans JP"
+        KeyDown="VideoSummaryPopupWindow_KeyDown">
 
     <Border Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
-            BorderThickness="1" CornerRadius="6">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.3" Direction="270"/>
-        </Border.Effect>
+            BorderThickness="1" CornerRadius="{StaticResource DialogCornerRadius}"
+            Effect="{StaticResource DialogShadow}">
         <StackPanel>
             <!-- タイトルバー -->
-            <Border x:Name="TitleBar" Height="38" CornerRadius="6,6,0,0"
+            <Border x:Name="TitleBar" Height="{StaticResource TitleBarHeight}" CornerRadius="{StaticResource DialogTitleBarCornerRadius}"
                     Background="{DynamicResource SidebarBrush}"
                     MouseLeftButtonDown="TitleBar_MouseDown">
                 <Grid>
-                    <TextBlock Text="動画情報" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{DynamicResource SidebarTextBrush}"
-                               VerticalAlignment="Center" Margin="16,0"/>
+                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TitleBarContentMargin}" VerticalAlignment="Center">
+                        <Viewbox Style="{StaticResource TitleBarIconBox}">
+                            <Canvas Width="24" Height="24">
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="M10 8l6 4-6 4z"/>
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock Text="動画情報" Style="{StaticResource TitleBarTitleText}"/>
+                    </StackPanel>
                     <Button x:Name="CloseButton" Content="✕" HorizontalAlignment="Right"
-                            Width="38" Height="38" Background="Transparent" BorderThickness="0"
-                            Foreground="{DynamicResource SidebarTextBrush}" Cursor="Hand"
+                            Style="{StaticResource TitleBarCloseButton}"
                             Click="Close_Click"/>
                 </Grid>
             </Border>
@@ -79,28 +83,10 @@
                     <!-- 要約ボタン + プラグインボタン（同じ行） -->
                     <StackPanel x:Name="ActionButtonsRow" Orientation="Horizontal" Margin="0,10,0,0">
                         <Button x:Name="SummaryButton" Content="要約" VerticalAlignment="Top"
-                                Style="{StaticResource SecondaryButton}" Padding="12,6" Margin="0,0,8,0"
+                                Style="{StaticResource SecondaryButton}" Padding="{StaticResource OperationButtonPadding}" Margin="0,0,8,0"
                                 Visibility="Collapsed"
                                 Click="SummaryButton_Click"/>
                         <WrapPanel x:Name="PluginActionsButtons"/>
-                    </StackPanel>
-
-                    <!-- Gemini要約（状態・結果） -->
-                    <StackPanel x:Name="SummaryPanel" Visibility="Collapsed">
-                        <TextBlock x:Name="SummaryStatusText" FontSize="12" Margin="0,10,0,0"
-                                   TextWrapping="Wrap" Visibility="Collapsed"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
-                        <TextBlock x:Name="SummaryErrorText" FontSize="12" Margin="0,10,0,0"
-                                   TextWrapping="Wrap" Visibility="Collapsed"
-                                   Foreground="{DynamicResource ErrorBrush}"/>
-                        <StackPanel x:Name="SummaryResultPanel" Margin="0,10,0,0" Visibility="Collapsed">
-                            <TextBlock x:Name="SummaryHeadlineText" FontSize="13" FontWeight="SemiBold"
-                                       TextWrapping="Wrap"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            <TextBlock x:Name="SummaryDetailText" FontSize="12" Margin="0,6,0,0"
-                                       TextWrapping="Wrap"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        </StackPanel>
                     </StackPanel>
 
                     <!-- プラグインアクション領域（plugin.json の contributes 由来。汎用描画・インライン結果） -->
@@ -127,8 +113,8 @@
                                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
                             <Button x:Name="SidePanelCloseButton" Grid.Column="1" Content="✕"
-                                    Width="28" Height="28" Background="Transparent" BorderThickness="0"
-                                    Foreground="{DynamicResource TextSecondaryBrush}" Cursor="Hand"
+                                    Width="28" Height="28" Style="{StaticResource IconButton}" Padding="0"
+                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                     Click="SidePanelClose_Click"/>
                         </Grid>
                         <TextBlock x:Name="SidePanelStatusText" DockPanel.Dock="Top"

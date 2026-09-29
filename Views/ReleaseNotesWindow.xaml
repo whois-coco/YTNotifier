@@ -6,7 +6,8 @@
         AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Width="700" Height="620"
-        FontFamily="Noto Sans JP">
+        FontFamily="Noto Sans JP"
+        KeyDown="ReleaseNotesWindow_KeyDown">
 
     <Window.Resources>
         <Style TargetType="ScrollBar" BasedOn="{StaticResource SlimScrollBar}"/>
@@ -14,10 +15,8 @@
 
     <Border Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
-            BorderThickness="1" CornerRadius="6">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.3" Direction="270"/>
-        </Border.Effect>
+            BorderThickness="1" CornerRadius="{StaticResource DialogCornerRadius}"
+            Effect="{StaticResource DialogShadow}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -25,16 +24,22 @@
             </Grid.RowDefinitions>
 
             <!-- タイトルバー -->
-            <Border Grid.Row="0" x:Name="TitleBar" Height="38" CornerRadius="6,6,0,0"
+            <Border Grid.Row="0" x:Name="TitleBar" Height="{StaticResource TitleBarHeight}" CornerRadius="{StaticResource DialogTitleBarCornerRadius}"
                     Background="{DynamicResource SidebarBrush}"
                     MouseLeftButtonDown="TitleBar_MouseDown">
                 <Grid>
-                    <TextBlock x:Name="HeaderText" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{DynamicResource SidebarTextBrush}"
-                               VerticalAlignment="Center" Margin="16,0"/>
+                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TitleBarContentMargin}" VerticalAlignment="Center">
+                        <Viewbox Style="{StaticResource TitleBarIconBox}">
+                            <Canvas Width="24" Height="24">
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="M14 2v4a2 2 0 0 0 2 2h4"/>
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="M12 11l1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z"/>
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock x:Name="HeaderText" Style="{StaticResource TitleBarTitleText}"/>
+                    </StackPanel>
                     <Button x:Name="CloseButton" Content="✕" HorizontalAlignment="Right"
-                            Width="38" Height="38" Background="Transparent" BorderThickness="0"
-                            Foreground="{DynamicResource SidebarTextBrush}" Cursor="Hand"
+                            Style="{StaticResource TitleBarCloseButton}"
                             Click="Close_Click"/>
                 </Grid>
             </Border>

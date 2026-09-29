@@ -1,0 +1,279 @@
+<Window x:Class="YTNotifier.Views.MuteWordSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        WindowStyle="None" AllowsTransparency="True"
+        Background="Transparent"
+        Width="760" Height="600"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        FontFamily="Noto Sans JP"
+        KeyDown="MuteWordSettingsWindow_KeyDown">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <!-- ミュートワード入力欄のプレースホルダー位置合わせ。
+             左24 = ModernTextBox の BorderThickness(1) + Padding左(10) + WPF TextBox内部のテキスト表示インセット（実測値。
+             AddChannelWindow の FieldContentAlignedPlaceholderMargin と同一フォントサイズ13・同一左Paddingのため同じ値を流用）。
+             右11 = BorderThickness(1) + Padding右(10)。本画面の入力欄はペーストボタンを持たないため
+             AddChannelWindow のような広い右余白（右50）は不要 -->
+        <Thickness x:Key="MuteWordInputPlaceholderMargin">24,0,11,0</Thickness>
+
+        <!-- タイトルバー下の左右分割領域の上余白 -->
+        <Thickness x:Key="ContentAreaMargin">0,16,0,0</Thickness>
+
+        <!-- 地球儀アイコンの絵柄（24×24 の線画）。左の共通枠と右の見出し（コード側で FindResource）の両方で使う -->
+        <Geometry x:Key="GlobeIconGeometry">M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0 M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20 M2 12h20</Geometry>
+        <sys:Double x:Key="GlobeIconCanvasSize">24</sys:Double>
+        <Style x:Key="GlobeIconPath" TargetType="Path" BasedOn="{StaticResource TitleBarIconPath}">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
+
+        <!-- 左側：共通の固定枠（チャンネル行の余白 10,7 よりやや大きくする） -->
+        <CornerRadius x:Key="CommonEntryRowCornerRadius">6</CornerRadius>
+        <Thickness x:Key="CommonEntryRowPadding">12,10</Thickness>
+        <sys:Double x:Key="CommonEntryIconSize">22</sys:Double>
+        <Thickness x:Key="CommonEntryIconMargin">0,0,8,0</Thickness>
+        <sys:Double x:Key="CommonEntryTitleFontSize">12</sys:Double>
+        <sys:Double x:Key="CommonEntrySubtitleFontSize">11</sys:Double>
+
+        <!-- 右側：見出し行 -->
+        <sys:Double x:Key="TargetNameFontSize">13</sys:Double>
+        <Thickness x:Key="TargetHeaderMargin">0,0,0,8</Thickness>
+        <CornerRadius x:Key="ScopeBadgeCornerRadius">8</CornerRadius>
+        <Thickness x:Key="ScopeBadgePadding">8,1</Thickness>
+        <Thickness x:Key="ScopeBadgeMargin">8,0,0,0</Thickness>
+        <sys:Double x:Key="ScopeBadgeFontSize">11</sys:Double>
+
+        <!-- 右側：説明文・単語札の領域・お知らせ行 -->
+        <sys:Double x:Key="TargetDescriptionFontSize">12</sys:Double>
+        <Thickness x:Key="TargetDescriptionMargin">0,0,0,10</Thickness>
+        <Thickness x:Key="MuteWordInputRowMargin">0,0,0,10</Thickness>
+        <CornerRadius x:Key="MuteWordsAreaCornerRadius">4</CornerRadius>
+        <Thickness x:Key="MuteWordsAreaPadding">8,8,2,2</Thickness>
+        <sys:Double x:Key="MuteWordsEmptyFontSize">12</sys:Double>
+        <Thickness x:Key="CommonNoticeMargin">0,8,0,0</Thickness>
+        <sys:Double x:Key="CommonNoticeFontSize">11</sys:Double>
+        <Thickness x:Key="CommonNoticeLinkMargin">8,0,0,0</Thickness>
+    </Window.Resources>
+
+    <Border CornerRadius="{StaticResource DialogCornerRadius}" BorderThickness="1"
+            Effect="{StaticResource DialogShadow}">
+        <Border.Background><DynamicResource ResourceKey="SurfaceBrush"/></Border.Background>
+        <Border.BorderBrush><DynamicResource ResourceKey="BorderBrush"/></Border.BorderBrush>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- タイトルバー -->
+            <Border Grid.Row="0" Height="{StaticResource TitleBarHeight}" CornerRadius="{StaticResource DialogTitleBarCornerRadius}" MouseLeftButtonDown="TitleBar_MouseDown">
+                <Border.Background><DynamicResource ResourceKey="SidebarBrush"/></Border.Background>
+                <Grid>
+                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TitleBarContentMargin}" VerticalAlignment="Center">
+                        <Viewbox Style="{StaticResource TitleBarIconBox}">
+                            <Canvas Width="24" Height="24">
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="M11 3h5a2 2 0 0 1 2 2v5L8 20 2 14z"/>
+                                <Ellipse Canvas.Left="13.7" Canvas.Top="6.7" Width="2.6" Height="2.6"
+                                         Fill="{DynamicResource SidebarTextBrush}"/>
+                                <Path Style="{StaticResource TitleBarIconPath}" Data="M4 5L20 21"/>
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock Text="ミュートワード設定" Style="{StaticResource TitleBarTitleText}"/>
+                    </StackPanel>
+                    <Button HorizontalAlignment="Right" Content="✕"
+                            Style="{StaticResource TitleBarCloseButton}"
+                            Click="CloseButton_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- コンテンツ（左右分割） -->
+            <Grid Grid.Row="1" Margin="{StaticResource ContentAreaMargin}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="240"/>
+                    <ColumnDefinition Width="1"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- 左：共通の固定枠＋チャンネル検索＋一覧 -->
+                <Grid Grid.Column="0" Margin="20,0,10,16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 共通の固定枠（検索・スクロールの対象外） -->
+                    <Border Grid.Row="0" x:Name="CommonEntryRow"
+                            Background="{DynamicResource SurfaceAltBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                            CornerRadius="{StaticResource CommonEntryRowCornerRadius}"
+                            Padding="{StaticResource CommonEntryRowPadding}"
+                            Cursor="Hand"
+                            MouseLeftButtonUp="CommonEntryRow_Click">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Viewbox Grid.Column="0"
+                                     Width="{StaticResource CommonEntryIconSize}" Height="{StaticResource CommonEntryIconSize}"
+                                     Margin="{StaticResource CommonEntryIconMargin}"
+                                     VerticalAlignment="Center">
+                                <Canvas Width="{StaticResource GlobeIconCanvasSize}" Height="{StaticResource GlobeIconCanvasSize}">
+                                    <Path Style="{StaticResource GlobeIconPath}" Data="{StaticResource GlobeIconGeometry}"/>
+                                </Canvas>
+                            </Viewbox>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="共通ミュートワード"
+                                           FontSize="{StaticResource CommonEntryTitleFontSize}" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="全チャンネルに適用"
+                                           FontSize="{StaticResource CommonEntrySubtitleFontSize}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextMutedBrush}"/>
+                            </StackPanel>
+                            <!-- 件数の札（チャンネル行と同じ見た目をコード側で生成して入れる。0件なら非表示） -->
+                            <Border Grid.Column="2" x:Name="CommonCountBadgeHost" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <Separator Grid.Row="1" Style="{StaticResource HorizontalSeparator}"/>
+
+                    <TextBlock Grid.Row="2" Text="チャンネル別" Style="{StaticResource SectionHeader}"/>
+                    <TextBox Grid.Row="3" x:Name="ChannelSearchBox" Style="{StaticResource ModernTextBox}"
+                             Margin="0,0,0,8" ToolTip="チャンネル名で検索"
+                             Padding="10,4"
+                             TextChanged="ChannelSearchBox_TextChanged"/>
+                    <ScrollViewer Grid.Row="4" Style="{StaticResource SlimScrollViewer}" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="ChannelListPanel"/>
+                    </ScrollViewer>
+                </Grid>
+
+                <Border Grid.Column="1" Background="{DynamicResource BorderBrush}" Margin="0,0,0,16"/>
+
+                <!-- 右：選択中の対象（共通 or チャンネル）のミュートワード -->
+                <Grid Grid.Column="2" Margin="10,0,20,16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 見出し行：アイコン／名前／範囲の札 -->
+                    <DockPanel Grid.Row="0" Margin="{StaticResource TargetHeaderMargin}" LastChildFill="True">
+                        <Border DockPanel.Dock="Left" x:Name="SelectedTargetIconHost" VerticalAlignment="Center"/>
+                        <Border DockPanel.Dock="Right" x:Name="ScopeBadge"
+                                Background="{DynamicResource SurfaceElevatedBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="{StaticResource ScopeBadgeCornerRadius}"
+                                Padding="{StaticResource ScopeBadgePadding}"
+                                Margin="{StaticResource ScopeBadgeMargin}"
+                                VerticalAlignment="Center">
+                            <TextBlock x:Name="ScopeBadgeText"
+                                       FontSize="{StaticResource ScopeBadgeFontSize}" FontWeight="Bold"/>
+                        </Border>
+                        <TextBlock x:Name="SelectedTargetNameText"
+                                   FontSize="{StaticResource TargetNameFontSize}" FontWeight="Bold"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </DockPanel>
+
+                    <!-- 説明文 -->
+                    <TextBlock Grid.Row="1" x:Name="TargetDescriptionText"
+                               FontSize="{StaticResource TargetDescriptionFontSize}" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="{StaticResource TargetDescriptionMargin}"/>
+
+                    <!-- 入力行 -->
+                    <Grid Grid.Row="2" Margin="{StaticResource MuteWordInputRowMargin}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="MuteWordInput" Grid.Column="0"
+                                 Style="{StaticResource ModernTextBox}" Margin="0,0,8,0"
+                                 Padding="10,4"
+                                 KeyDown="MuteWordInput_KeyDown"
+                                 TextChanged="MuteWordInput_TextChanged"/>
+                        <TextBlock x:Name="MuteWordInputPlaceholder" Grid.Column="0"
+                                   Text="ミュートワードを入力してEnterまたは追加"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="13" Margin="{StaticResource MuteWordInputPlaceholderMargin}"
+                                   VerticalAlignment="Center"
+                                   IsHitTestVisible="False"/>
+                        <Button Grid.Column="1" Content="追加" Style="{StaticResource SecondaryButton}"
+                                Padding="{StaticResource InlineButtonPadding}" Click="AddMuteWord_Click"/>
+                    </Grid>
+
+                    <!-- 単語札の領域（残りの高さをすべて使う） -->
+                    <Border Grid.Row="3"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                            CornerRadius="{StaticResource MuteWordsAreaCornerRadius}">
+                        <Grid>
+                            <ScrollViewer Style="{StaticResource SlimScrollViewer}" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl x:Name="MuteWordsItems" Margin="{StaticResource MuteWordsAreaPadding}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{DynamicResource SurfaceElevatedBrush}"
+                                                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                                    CornerRadius="12" Padding="10,4" Margin="0,0,6,6">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding}" FontSize="12"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                                               VerticalAlignment="Center"/>
+                                                    <Button Content="✕" Width="16" Height="16" Margin="6,0,0,0"
+                                                            Style="{StaticResource IconButton}" Padding="0"
+                                                            FontSize="10" Foreground="{DynamicResource TextMutedBrush}"
+                                                            Tag="{Binding}" Click="RemoveMuteWord_Click"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            <TextBlock x:Name="MuteWordsEmptyText"
+                                       Text="まだ登録されていません"
+                                       FontSize="{StaticResource MuteWordsEmptyFontSize}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       IsHitTestVisible="False"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- 共通の適用のお知らせ（チャンネル選択時かつ共通が1件以上のときのみ表示） -->
+                    <Grid Grid.Row="4" x:Name="CommonNoticeRow" Margin="{StaticResource CommonNoticeMargin}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" x:Name="CommonNoticeText"
+                                   FontSize="{StaticResource CommonNoticeFontSize}" TextWrapping="Wrap"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <TextBlock Grid.Column="1" Text="共通を見る →"
+                                   FontSize="{StaticResource CommonNoticeFontSize}"
+                                   Margin="{StaticResource CommonNoticeLinkMargin}"
+                                   VerticalAlignment="Center"
+                                   Cursor="Hand"
+                                   Foreground="{DynamicResource PrimaryBrush}"
+                                   MouseLeftButtonUp="ViewCommonLink_Click"/>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

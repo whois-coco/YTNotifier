@@ -311,6 +311,7 @@ public partial class VideoSummaryPopupWindow
     private Button CreateOverflowButton(List<ActionCommand> overflow)
     {
         var menu = new ContextMenu();
+        WindowScaleService.ApplyScaleToContextMenu(menu, _scaleTransform);
         foreach (var entry in overflow)
         {
             var item = new MenuItem { Header = RoundTitleToWidthBudget(entry.Command.Title), Tag = entry };
@@ -381,6 +382,7 @@ public partial class VideoSummaryPopupWindow
         SidePanelResultPanel.Children.Clear();
         SidePanelResultPanel.Visibility = Visibility.Collapsed;
         SidePanelStatusText.Visibility  = Visibility.Collapsed;
+        SidePanelStatusText.SetResourceReference(TextBlock.ForegroundProperty, TextSecondaryBrushKey);
 
         SidePanelScroll.MaxHeight = Owner is { ActualHeight: > 0 } owner
             ? owner.ActualHeight * SidePanelHeightRatio

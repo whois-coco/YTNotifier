@@ -44,16 +44,25 @@ public partial class MainWindow : System.Windows.Window
     private int     _animDropIndex  = -1;
     private Border? _dragSourceRow  = null;
 
-    // カテゴリなし表示モードでドラッグ対象を全チャンネルに広げるためのセンチネル値
-    private const string AllChannelsCatSentinel = "\x00all";
+    // チャンネルの実効カテゴリID（表示上の分類基準）を返す。
+    // カテゴリIDが未設定、またはそのチャンネル側のカテゴリ一覧（休眠なら DormantCategories、
+    // それ以外なら Categories）に存在しない場合は null（未分類）として扱う。
+    // 一覧の未分類表示・ドラッグの仲間判定の両方でこの基準を共通で使う。
+    private static string? GetEffectiveCatId(ChannelInfo ch)
+    {
+        var categories = ch.IsDormant
+            ? SettingsService.Instance.Channels.DormantCategories
+            : SettingsService.Instance.Channels.Categories;
+        return categories.Any(cat => cat.CategoryId == ch.CategoryId) ? ch.CategoryId : null;
+    }
 
-    // ドラッグ時のカテゴリIDを返す（カテゴリなし表示モードでは全チャンネル対象のセンチネルを返す）
+    // ドラッグ時のカテゴリIDを返す（表示モードに関係なく、チャンネルの実効カテゴリIDを返す）
     private static string? GetDragCatId(ChannelInfo ch)
-        => IsNoCategoryMode ? AllChannelsCatSentinel : ch.CategoryId;
+        => GetEffectiveCatId(ch);
 
-    // catId がセンチネルの場合は全チャンネル行にマッチする
+    // チャンネルの実効カテゴリIDが、渡されたカテゴリIDと一致するかどうかを判定する
     private static bool MatchesCatId(ChannelInfo ch, string? catId)
-        => catId == AllChannelsCatSentinel || ch.CategoryId == catId;
+        => GetEffectiveCatId(ch) == catId;
 
     private static Border BuildDragHandle(bool compact, bool editMode)
     {

@@ -17,7 +17,11 @@ namespace YTNotifier.Views;
 public partial class AddChannelWindow : Window
 {
     private readonly YouTubeApiClient _youtubeClient = new();
+    // 追加候補。チャンネルが見つかり、かつ未登録の場合だけ保持する（登録済み・見つからない・エラー時は null）
     private ChannelInfo? _previewChannel;
+    // 二重実行防止：検索中／追加処理中（確認ダイアログ表示中を含む）
+    private bool _isSearching;
+    private bool _isAdding;
     private readonly Action? _onChannelAdded;
     private readonly bool _isDormant;
 
@@ -33,6 +37,10 @@ public partial class AddChannelWindow : Window
 
     /// <summary>プレビューサムネイルのデコード幅（px）</summary>
     private const int PreviewIconDecodeWidth = 76;
+
+    // 検索／追加ボタンの表示（候補の有無で切り替える）
+    private const string SearchButtonLabel = "検索";
+    private const string AddButtonLabel    = "追加";
 
     private const string DormantKindMonitoringUnavailableTooltip = "休眠リストでは種別ごとの監視を行わないため設定できません";
 
@@ -50,6 +58,7 @@ public partial class AddChannelWindow : Window
     public AddChannelWindow(Action? onChannelAdded = null, bool isDormant = false)
     {
         InitializeComponent();
+        WindowScaleService.ApplyToNewWindow(this);
         WindowCornerHelper.ApplyOnLoaded(this);
         _onChannelAdded = onChannelAdded;
         _isDormant      = isDormant;
@@ -81,7 +90,7 @@ public partial class AddChannelWindow : Window
         CategoryComboBox.Items.Clear();
         CategoryComboBox.Items.Add(new System.Windows.Controls.ComboBoxItem
         {
-            Content = "（未設定）", Tag = null
+            Content = "(未設定)", Tag = null
         });
         var categories = _isDormant ? svc.Channels.DormantCategories : svc.Channels.Categories;
         foreach (var cat in categories.OrderBy(c => c.SortOrder))
@@ -120,8 +129,15 @@ public partial class AddChannelWindow : Window
 
     private void NewCategoryInput_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (e.Key == System.Windows.Input.Key.Enter)  CreateNewCategory();
-        if (e.Key == System.Windows.Input.Key.Escape) NewCategoryCancel_Click(sender, e);
+        if (e.Key == System.Windows.Input.Key.Enter)
+        {
+            CreateNewCategory();
+        }
+        if (e.Key == System.Windows.Input.Key.Escape)
+        {
+            NewCategoryCancel_Click(sender, e);
+            e.Handled = true;
+        }
     }
 
     private void CreateNewCategory()
@@ -151,10 +167,9 @@ public partial class AddChannelWindow : Window
         Close();
     }
 
-    private void ChannelInputBox_KeyDown(object sender, KeyEventArgs e)
+    private void AddChannelWindow_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter) PreviewChannel_Click(sender, e);
-        if (e.Key == Key.Escape) Close();
+        if (e.Key == Key.Escape) CloseButton_Click(sender, e);
     }
 
     private void ChannelInputBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
@@ -162,6 +177,50 @@ public partial class AddChannelWindow : Window
         if (ChannelInputPlaceholder != null)
             ChannelInputPlaceholder.Visibility =
                 string.IsNullOrEmpty(ChannelInputBox.Text) ? Visibility.Visible : Visibility.Collapsed;
+
+        // 入力が変わったら候補を取り消す（手入力・貼り付け・連続追加後の自動クリアすべて）
+        ResetCandidate();
+    }
+
+    /// <summary>
+    /// 候補を取り消し、検索前の状態に戻す。
+    /// 候補の破棄・ボタンを「検索」表示へ・アイコンプレビューを初期表示へ・拡張エリアを閉じて詳細設定をリセット・ステータス文言を空にする
+    /// </summary>
+    private void ResetCandidate()
+    {
+        _previewChannel = null;
+        UpdateSearchOrAddButton();
+
+        PreviewThumbnail.Visibility  = Visibility.Collapsed;
+        PreviewEmptyState.Visibility = Visibility.Visible;
+        ExpandedArea.Visibility      = Visibility.Collapsed;
+        DetailExpander.IsExpanded    = false;
+        _detailTabPanels.Clear();
+        DetailFocusTabNav.Children.Clear();
+        DetailFocusTabContent.Children.Clear();
+        PreviewStatusText.Text = "";
+    }
+
+    /// <summary>候補の有無と処理中フラグに応じて、検索／追加ボタンの表示と押せる状態を更新する</summary>
+    private void UpdateSearchOrAddButton()
+    {
+        SearchOrAddButton.Content   = _previewChannel != null ? AddButtonLabel : SearchButtonLabel;
+        SearchOrAddButton.IsEnabled = !_isSearching && !_isAdding;
+    }
+
+    /// <summary>追加処理中は入力欄と貼り付けボタンを操作できないようにする（途中で候補が取り消されるのを防ぐ）</summary>
+    private void SetChannelInputEnabled(bool isEnabled)
+    {
+        ChannelInputBox.IsEnabled = isEnabled;
+        PasteButton.IsEnabled     = isEnabled;
+    }
+
+    /// <summary>追加処理を終えて、ボタン・入力欄を操作できる状態に戻す</summary>
+    private void EndAdding()
+    {
+        _isAdding = false;
+        SetChannelInputEnabled(true);
+        UpdateSearchOrAddButton();
     }
 
     private void PasteButton_Click(object sender, RoutedEventArgs e)
@@ -183,13 +242,32 @@ public partial class AddChannelWindow : Window
         AppLogger.Log(LogMsg.ContinuousAddModeChanged, null, AppLogger.OnOffText(enabled));
     }
 
-    private async void PreviewChannel_Click(object sender, RoutedEventArgs e)
+    private void SearchOrAddButton_Click(object sender, RoutedEventArgs e)
     {
+        // 候補ありなら追加、それ以外なら検索
+        if (_previewChannel != null)
+        {
+            AddChannel();
+        }
+        else
+        {
+            SearchChannel();
+        }
+    }
+
+    private async void SearchChannel()
+    {
+        if (_isSearching) return;
+
         var input = ChannelInputBox.Text.Trim();
         if (string.IsNullOrEmpty(input)) return;
         AppLogger.Log(LogMsg.AddChannelPreviewClicked, null, input);
 
-        PreviewButton.IsEnabled      = false;
+        // 検索中に入力欄が書き換えられたかを結果到着時に判定するため、開始時の入力を控える
+        var searchStartInputText = ChannelInputBox.Text;
+        _isSearching = true;
+        UpdateSearchOrAddButton();
+
         PreviewStatusText.Text       = "🔍 チャンネル情報を取得中...";
         PreviewThumbnail.Visibility  = Visibility.Collapsed;
         PreviewEmptyState.Visibility = Visibility.Visible;
@@ -203,21 +281,24 @@ public partial class AddChannelWindow : Window
                 return;
             }
 
-            _previewChannel = await _youtubeClient.FetchChannelInfoAsync(input);
-            if (_previewChannel == null)
+            var fetchedChannel = await _youtubeClient.FetchChannelInfoAsync(input);
+
+            // 検索中に入力欄が書き換えられていたら結果を捨てる（候補にもせず画面にも反映しない）
+            if (ChannelInputBox.Text != searchStartInputText) return;
+
+            if (fetchedChannel == null)
             {
-                PreviewStatusText.Text     = "❌ チャンネルが見つかりませんでした。";
-                AddChannelButton.IsEnabled = false;
+                PreviewStatusText.Text = "❌ チャンネルが見つかりませんでした。";
                 return;
             }
 
-            if (!string.IsNullOrEmpty(_previewChannel.ThumbnailUrl))
+            if (!string.IsNullOrEmpty(fetchedChannel.ThumbnailUrl))
             {
                 try
                 {
                     var bmp = new BitmapImage();
                     bmp.BeginInit();
-                    bmp.UriSource        = new Uri(_previewChannel.ThumbnailUrl);
+                    bmp.UriSource        = new Uri(fetchedChannel.ThumbnailUrl);
                     bmp.CacheOption      = BitmapCacheOption.OnLoad;
                     bmp.DecodePixelWidth = PreviewIconDecodeWidth;
                     bmp.EndInit();
@@ -228,17 +309,17 @@ public partial class AddChannelWindow : Window
                 catch (Exception ex) { AppLogger.Log(LogMsg.AddChannelPreviewIconFailed, null, ex.Message); }
             }
 
-            bool exists = SettingsService.Instance.Channels.GetChannelsSnapshot().Any(c => c.ChannelId == _previewChannel.ChannelId);
+            var exists = SettingsService.Instance.Channels.GetChannelsSnapshot().Any(c => c.ChannelId == fetchedChannel.ChannelId);
             PreviewStatusText.Text = exists
                 ? "⚠ このチャンネルは既に追加されています。"
                 : "✅ 見つかりました。";
             var brushKey = exists ? "WarningBrush" : "SuccessBrush";
             PreviewStatusText.SetResourceReference(TextBlock.ForegroundProperty, brushKey);
-            AddChannelButton.IsEnabled = !exists;
 
-            // チャンネル発見時に拡張エリアを表示
+            // 未登録の場合だけ候補として保持し、拡張エリアを表示
             if (!exists)
             {
+                _previewChannel = fetchedChannel;
                 PopulateCategoryComboBox();
                 _notifyVideo = true;
                 _notifyShort = true;
@@ -261,15 +342,25 @@ public partial class AddChannelWindow : Window
         }
         catch (Exception ex)
         {
-            PreviewStatusText.Text     = $"❌ エラー: {ex.Message}";
-            AddChannelButton.IsEnabled = false;
+            // 検索中に入力欄が書き換えられていたらエラーも反映しない
+            if (ChannelInputBox.Text == searchStartInputText)
+                PreviewStatusText.Text = $"❌ エラー: {ex.Message}";
         }
-        finally { PreviewButton.IsEnabled = true; }
+        finally
+        {
+            _isSearching = false;
+            UpdateSearchOrAddButton();
+        }
     }
 
-    private async void AddChannel_Click(object sender, RoutedEventArgs e)
+    private async void AddChannel()
     {
-        if (_previewChannel == null) return;
+        if (_isAdding || _previewChannel == null) return;
+
+        // 登録完了まで、ボタン・入力欄・貼り付けボタンを操作できないようにする
+        _isAdding = true;
+        SetChannelInputEnabled(false);
+        UpdateSearchOrAddButton();
 
         // カテゴリ設定（未選択または未設定 → null）
         var selectedCat = CategoryComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem;
@@ -326,18 +417,26 @@ public partial class AddChannelWindow : Window
             if (daily > ApiQuotaHelper.DailyLimit)
             {
                 var (_, recommended) = ApiQuotaHelper.ValidateInterval(settings.CheckIntervalMinutes, allChannels);
-                var msg = $"このチャンネルを追加すると、現在の監視間隔（{settings.CheckIntervalMinutes}分）では\n" +
-                          $"1日のAPIクォータ（{ApiQuotaHelper.DailyLimit:N0}ユニット）を超過します。\n\n" +
-                          $"推定使用量: {daily:N0} ユニット/日（{pct:F0}%）\n" +
+                var msg = $"このチャンネルを追加すると、現在の監視間隔({settings.CheckIntervalMinutes}分)では\n" +
+                          $"1日のAPIクォータ({ApiQuotaHelper.DailyLimit:N0}ユニット)を超過します。\n\n" +
+                          $"推定使用量: {daily:N0} ユニット/日({pct:F0}%)\n" +
                           $"追加すると監視間隔が {recommended}分 に変更されます";
                 if (ConfirmDialog.Show(this, "クォータ超過の警告", msg, "追加する") != true)
+                {
+                    // 取りやめた場合は「追加」を押せる状態に戻す
+                    EndAdding();
                     return;
+                }
             }
             else if (pct >= ApiQuotaHelper.QuotaWarnLowThresholdPct)
             {
                 var msg = $"追加後のAPI推定使用量が {pct:F0}% になります。\n追加しますか？";
                 if (ConfirmDialog.Show(this, "クォータ使用量の警告", msg, "追加する") != true)
+                {
+                    // 取りやめた場合は「追加」を押せる状態に戻す
+                    EndAdding();
                     return;
+                }
             }
         }
 
@@ -359,18 +458,11 @@ public partial class AddChannelWindow : Window
 
         if (ContinuousAddCheckBox.IsChecked == true)
         {
-            // 連続追加: リセットして次の入力を待つ
-            _previewChannel              = null;
-            ChannelInputBox.Text         = "";
-            PreviewStatusText.Text       = "✅ 追加しました。次のチャンネルを入力してください。";
-            PreviewThumbnail.Visibility  = Visibility.Collapsed;
-            PreviewEmptyState.Visibility = Visibility.Visible;
-            AddChannelButton.IsEnabled   = false;
-            ExpandedArea.Visibility      = Visibility.Collapsed;
-            DetailExpander.IsExpanded    = false;
-            _detailTabPanels.Clear();
-            DetailFocusTabNav.Children.Clear();
-            DetailFocusTabContent.Children.Clear();
+            // 連続追加: 操作できる状態に戻し、入力欄を空にして次の入力を待つ
+            // （入力欄を空にすると ResetCandidate が走り「検索」状態に戻る。完了文言はその後に表示して消えないようにする）
+            EndAdding();
+            ChannelInputBox.Text   = "";
+            PreviewStatusText.Text = "✅ 追加しました。次のチャンネルを入力してください。";
             ChannelInputBox.Focus();
         }
         else
