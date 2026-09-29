@@ -197,15 +197,15 @@ public partial class MonitorService
         return FilterByKind(channel, video, channel.NotifyVideo);
     }
 
-    /// <summary>タイトルが共通NGワード・チャンネル個別NGワードのいずれかに部分一致するか判定する（大文字小文字は区別しない）。</summary>
-    private static bool MatchesNgWord(ChannelInfo channel, string title)
+    /// <summary>タイトルが共通ミュートワード・チャンネル個別ミュートワードのいずれかに部分一致するか判定する（大文字小文字は区別しない）。</summary>
+    private static bool MatchesMuteWord(ChannelInfo channel, string title)
     {
         if (string.IsNullOrEmpty(title)) return false;
 
         bool ContainsAny(IEnumerable<string> words) =>
             words.Any(w => !string.IsNullOrWhiteSpace(w) && title.Contains(w, StringComparison.OrdinalIgnoreCase));
 
-        return ContainsAny(SettingsService.Instance.Settings.NgWords) || ContainsAny(channel.NgWords);
+        return ContainsAny(SettingsService.Instance.Settings.MuteWords) || ContainsAny(channel.MuteWords);
     }
 
     /// <summary>通知フィルターを適用し、スキップ時はログを出力する。</summary>
@@ -216,9 +216,9 @@ public partial class MonitorService
             AppLogger.Log(LogMsg.KindFilterSkipped, channel.ChannelName, video.KindLabel, video.Title);
             return null;
         }
-        if (MatchesNgWord(channel, video.Title))
+        if (MatchesMuteWord(channel, video.Title))
         {
-            AppLogger.Log(LogMsg.NgWordFilterSkipped, channel.ChannelName, video.Title);
+            AppLogger.Log(LogMsg.MuteWordFilterSkipped, channel.ChannelName, video.Title);
             return null;
         }
         return video;

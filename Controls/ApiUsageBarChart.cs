@@ -42,9 +42,9 @@ public class ApiUsageBarChart : UserControl
     private const string TotalLabelFormat     = "{0:N0}";
     private const string LimitLabelFormat     = "{0:N0}";
     // {0}=日付(M/d) {1}=曜日
-    private const string TooltipHeaderFormat  = "{0}（{1}）";
+    private const string TooltipHeaderFormat  = "{0}({1})";
     // {0}=ラベル {1}=消費ユニット数 {2}=日次上限に対する割合(%)
-    private const string TooltipRowFormat     = "{0}: {1:N0} ユニット（{2:F1}%）";
+    private const string TooltipRowFormat     = "{0}: {1:N0} ユニット({2:F1}%)";
 
     // 内訳のラベル
     private const string LabelNormal     = "通常巡回";

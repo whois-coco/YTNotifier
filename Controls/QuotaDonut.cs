@@ -57,7 +57,7 @@ public class QuotaDonut : UserControl
     // {0}=消費量 {1}=上限 {2}=単位文言
     private const string TotalRowFormat       = "{0:N0} / {1:N0} {2}";
     // {0}=ラベル {1}=消費ユニット数 {2}=日次上限に対する割合(%)
-    private const string SegTooltipFormat     = "{0}: {1:N0} ユニット（{2:F1}%）";
+    private const string SegTooltipFormat     = "{0}: {1:N0} ユニット({2:F1}%)";
 
     /// <summary>単位文言のデフォルト値（既存呼び出し元向け）</summary>
     private const string DefaultUnitLabel     = "ユニット/日";

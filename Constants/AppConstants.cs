@@ -3,7 +3,7 @@ namespace YTNotifier.Constants;
 internal static class AppConstants
 {
     public const string AppName          = "YTNotifier";
-    public const string AppVersion       = "0.9.5";
+    public const string AppVersion       = "0.9.6";
     public const string DirLogs          = "logs";
     public const string DirSounds        = "Sounds";
     public const string FileApiKey              = "api_key.dat";
@@ -69,7 +69,7 @@ internal static class AppConstants
     public const string UncategorizedLabel = "未分類";
 
     /// <summary>「カテゴリを移動」メニューの、未分類へ移す項目の表記（値は「（未分類）」）</summary>
-    public const string UncategorizedMenuLabel = "（" + UncategorizedLabel + "）";
+    public const string UncategorizedMenuLabel = "(" + UncategorizedLabel + ")";
 
     /// <summary>
     /// プラグイン拡張リージョンID → 設定画面・ログで見せる日本語名。

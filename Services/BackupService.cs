@@ -104,7 +104,7 @@ public sealed class BackupService
             }
             else
             {
-                return (false, "対応していないファイル形式です（.ytbk）。");
+                return (false, "対応していないファイル形式です(.ytbk)。");
             }
 
             // ZIPバイナリを展開

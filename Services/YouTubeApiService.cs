@@ -76,12 +76,12 @@ public class YouTubeApiClient : IYouTubeApiClient
     {
         var reason = ex.Error?.Errors?.FirstOrDefault()?.Reason ?? "";
         if (reason is "quotaExceeded" or "dailyLimitExceeded")
-            return "APIクォータ上限に達しました（本日の残り枠が不足しています）";
+            return "APIクォータ上限に達しました(本日の残り枠が不足しています)";
         if (reason is "keyInvalid" or "forbidden" || (int)ex.HttpStatusCode == 403)
-            return $"APIキーが無効または権限がありません（{reason})";
+            return $"APIキーが無効または権限がありません({reason})";
         if ((int)ex.HttpStatusCode >= HttpStatusServerError)
-            return $"YouTube サーバーエラー（HTTP {(int)ex.HttpStatusCode}）";
-        return $"YouTube API エラー（HTTP {(int)ex.HttpStatusCode}: {ex.Message}）";
+            return $"YouTube サーバーエラー(HTTP {(int)ex.HttpStatusCode})";
+        return $"YouTube API エラー(HTTP {(int)ex.HttpStatusCode}: {ex.Message})";
     }
 
     private static string ClassifyNetworkException(Exception ex) => ex switch

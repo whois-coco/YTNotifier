@@ -155,6 +155,7 @@ public enum LogMsg
     SettingTraceLogEnabled     = 5129,  // {0}=ON/OFF
     SettingAutoCleanLogs       = 5040,  // {0}=ON/OFF
     SettingLogRetention        = 5041,  // {0}=days
+    SettingWindowScale         = 5153,  // {0}=拡大率(%)
     SettingBackupExported      = 5042,  // {0}=filename
     SettingBackupImported      = 5043,  // {0}=filename
     // チャンネル一覧・編集
@@ -241,12 +242,12 @@ public enum LogMsg
     PluginOrderChanged                 = 5141,  // {0}=移動したプラグイン名
     PluginInvokeError                  = 5142,  // {0}=仕事の名前 {1}=message
     PluginContributionRejected         = 5143,  // {0}=フォルダ名 {1}=理由
-    // NGワード
-    NgWordFilterSkipped                = 5144,  // {0}=title
-    NgWordAddedCommon                  = 5145,  // {0}=word
-    NgWordRemovedCommon                = 5146,  // {0}=word
-    NgWordAddedChannel                 = 5147,  // {0}=word
-    NgWordRemovedChannel               = 5148,  // {0}=word
+    // ミュートワード
+    MuteWordFilterSkipped              = 5144,  // {0}=title
+    MuteWordAddedCommon                = 5145,  // {0}=word
+    MuteWordRemovedCommon              = 5146,  // {0}=word
+    MuteWordAddedChannel               = 5147,  // {0}=word
+    MuteWordRemovedChannel             = 5148,  // {0}=word
     ChannelContextBanRecheck           = 5149,  // {0}=channelName
     // APIキーウィンドウ
     ApiKeyEditStarted          = 5067,
@@ -286,14 +287,14 @@ public static class AppLogger
         [LogMsg.AutoLogDeleted]            = new(LogLevel.System,  LogCategory.Log,          "起動時ログ自動削除: {0}件"),
         // クォータ
         [LogMsg.QuotaResumed]              = new(LogLevel.System,  LogCategory.Quota,        "APIクォータをリセットしました。監視を再開します。"),
-        [LogMsg.QuotaStillSuspended]       = new(LogLevel.System,  LogCategory.Quota,        "APIクォータ超過のため監視は停止中です（{0} に再開予定）。"),
+        [LogMsg.QuotaStillSuspended]       = new(LogLevel.System,  LogCategory.Quota,        "APIクォータ超過のため監視は停止中です({0} に再開予定)。"),
         // 設定
         [LogMsg.SettingTraceLogEnabled]    = new(LogLevel.Debug,   LogCategory.Settings,     "トレースログの取得: {0}"),
         [LogMsg.SettingBackupExported]      = new(LogLevel.System,  LogCategory.Settings,     "バックアップをエクスポートしました: {0}"),
         [LogMsg.SettingBackupImported]      = new(LogLevel.System,  LogCategory.Settings,     "バックアップをインポートしました: {0}"),
         // プラグイン
-        [LogMsg.PluginDetected]             = new(LogLevel.System,  LogCategory.Startup,      "プラグインを検出しました: {0}（{1}）"),
-        [LogMsg.PluginHostStarted]          = new(LogLevel.System,  LogCategory.Startup,      "プラグインホストを起動しました（{0}件のプラグイン）"),
+        [LogMsg.PluginDetected]             = new(LogLevel.System,  LogCategory.Startup,      "プラグインを検出しました: {0}({1})"),
+        [LogMsg.PluginHostStarted]          = new(LogLevel.System,  LogCategory.Startup,      "プラグインホストを起動しました({0}件のプラグイン)"),
 
         // INFO ────────────────────────────────────────────────────────
         // 監視・通知
@@ -310,7 +311,7 @@ public static class AppLogger
         [LogMsg.DormantListBanCheckStarted]   = new(LogLevel.Info,    LogCategory.Channel,      "休眠リスト内の全チャンネル確認開始"),
         [LogMsg.DormantListBanCheckCompleted] = new(LogLevel.Info,    LogCategory.Channel,      "休眠リスト内の全チャンネル確認完了"),
         [LogMsg.NoVideosDetected]           = new(LogLevel.Info,    LogCategory.Monitor,      "投稿された動画が見つからなくなったことを検知しました"),
-        [LogMsg.NoVideosRecovered]          = new(LogLevel.Info,    LogCategory.Monitor,      "投稿された動画が見つかるようになりました（復帰）"),
+        [LogMsg.NoVideosRecovered]          = new(LogLevel.Info,    LogCategory.Monitor,      "投稿された動画が見つかるようになりました(復帰)"),
         // APIキー
         [LogMsg.ApiKeySaved]               = new(LogLevel.Info,    LogCategory.ApiKeyWindow, "APIキーを保存しました"),
         [LogMsg.ApiKeyChanged]              = new(LogLevel.Info,    LogCategory.ApiKeyWindow, "APIキーを変更しました"),
@@ -326,12 +327,12 @@ public static class AppLogger
         // クォータ
         [LogMsg.QuotaRiskAdjusted]         = new(LogLevel.Warning, LogCategory.Quota,        "チャンネル数増加によりAPI超過リスク → 監視間隔を{0}分に自動調整"),
         [LogMsg.QuotaAutoIntervalAdjusted]  = new(LogLevel.Warning, LogCategory.Quota,        "クォータ超過のためチェック間隔を自動調整: {0}分"),
-        [LogMsg.QuotaWarningOnSave]        = new(LogLevel.Warning, LogCategory.ChannelDetailWindow, "詳細設定保存: クォータ使用量警告 {1}%（チャンネル: {0}）"),
-        [LogMsg.QuotaExceededOnSave]       = new(LogLevel.Warning, LogCategory.ChannelDetailWindow, "詳細設定保存: クォータ超過 {1}%（チャンネル: {0}）"),
+        [LogMsg.QuotaWarningOnSave]        = new(LogLevel.Warning, LogCategory.ChannelDetailWindow, "詳細設定保存: クォータ使用量警告 {1}%(チャンネル: {0})"),
+        [LogMsg.QuotaExceededOnSave]       = new(LogLevel.Warning, LogCategory.ChannelDetailWindow, "詳細設定保存: クォータ超過 {1}%(チャンネル: {0})"),
         // 通知
         [LogMsg.NotifiedRecordLoadFailed]  = new(LogLevel.Warning, LogCategory.Notification, "通知済み記録の読み込みに失敗しました: {0}"),
         // その他
-        [LogMsg.AutoRestored]              = new(LogLevel.Warning, LogCategory.Backup,       "自動復元を実行しました（理由: {0}）"),
+        [LogMsg.AutoRestored]              = new(LogLevel.Warning, LogCategory.Backup,       "自動復元を実行しました(理由: {0})"),
         [LogMsg.InvalidChannelId]          = new(LogLevel.Warning, LogCategory.Channel,       "不正なチャンネルID: '{0}'"),
 
         // ERROR ───────────────────────────────────────────────────────
@@ -356,9 +357,9 @@ public static class AppLogger
         [LogMsg.PluginJobFailed]            = new(LogLevel.Debug,  LogCategory.VideoSummaryPopup, "プラグイン処理に失敗しました({0}): {1}"),
         [LogMsg.PluginHostStartFailed]      = new(LogLevel.Error,  LogCategory.Startup,           "プラグインホストの起動に失敗しました: {0}"),
         [LogMsg.PluginHostExited]           = new(LogLevel.Error,  LogCategory.Startup,           "プラグインホストが終了しました"),
-        [LogMsg.PluginHostVersionMismatch]  = new(LogLevel.Error,  LogCategory.Startup,           "PluginHost.exe が本体と一致しないため使用しません（本体 {0} / ホスト {1}）"),
-        [LogMsg.PluginManifestInvalid]      = new(LogLevel.Error,  LogCategory.Startup,           "plugin.json を読み込めませんでした: {0}（{1}）"),
-        [LogMsg.PluginJobTimeout]           = new(LogLevel.Error,  LogCategory.VideoSummaryPopup, "プラグイン処理が時間切れになりました: {0}（{1}）"),
+        [LogMsg.PluginHostVersionMismatch]  = new(LogLevel.Error,  LogCategory.Startup,           "PluginHost.exe が本体と一致しないため使用しません(本体 {0} / ホスト {1})"),
+        [LogMsg.PluginManifestInvalid]      = new(LogLevel.Error,  LogCategory.Startup,           "plugin.json を読み込めませんでした: {0}({1})"),
+        [LogMsg.PluginJobTimeout]           = new(LogLevel.Error,  LogCategory.VideoSummaryPopup, "プラグイン処理が時間切れになりました: {0}({1})"),
         // 通知
         [LogMsg.NotifyFailed]              = new(LogLevel.Error,   LogCategory.Notification, "通知送信失敗: {0}"),
         [LogMsg.TestNotifyFailed]          = new(LogLevel.Error,   LogCategory.Notification, "テスト通知失敗: {0}"),
@@ -385,25 +386,25 @@ public static class AppLogger
         // DEBUG ───────────────────────────────────────────────────────
         // 監視・通知
         [LogMsg.NotificationSent]          = new(LogLevel.Debug,   LogCategory.Notification, "通知送信: {0}"),
-        [LogMsg.NotifyDuplicateSkipped]    = new(LogLevel.Debug,   LogCategory.Notification, "通知済みのため送信を省略しました（{0}）"),
+        [LogMsg.NotifyDuplicateSkipped]    = new(LogLevel.Debug,   LogCategory.Notification, "通知済みのため送信を省略しました({0})"),
         // 監視フロー
         [LogMsg.NoNew]                     = new(LogLevel.Debug,   LogCategory.Monitor,      "新着なし"),
-        [LogMsg.GracePeriodStarted]        = new(LogLevel.Debug,   LogCategory.Monitor,      "猶予開始（残{1}回）: {0}"),
+        [LogMsg.GracePeriodStarted]        = new(LogLevel.Debug,   LogCategory.Monitor,      "猶予開始(残{1}回): {0}"),
         [LogMsg.VideoNotFound]             = new(LogLevel.Debug,   LogCategory.Monitor,      "対象動画が見つかりませんでした"),
         // 動画通知フィルター
         [LogMsg.LiveSkipped]               = new(LogLevel.Debug,   LogCategory.VideoFilter,  "ライブ待機所スキップ → {0}: {1}"),
-        [LogMsg.LiveReSkipped]             = new(LogLevel.Debug,   LogCategory.VideoFilter,  "ライブ待機所再スキップ（通知済）: {0}"),
+        [LogMsg.LiveReSkipped]             = new(LogLevel.Debug,   LogCategory.VideoFilter,  "ライブ待機所再スキップ(通知済): {0}"),
         [LogMsg.PremiereSkipped]           = new(LogLevel.Debug,   LogCategory.VideoFilter,  "プレミア待機所スキップ → {0}: {1}"),
-        [LogMsg.PremiereReSkipped]         = new(LogLevel.Debug,   LogCategory.VideoFilter,  "プレミア待機所再スキップ（通知済）: {0}"),
+        [LogMsg.PremiereReSkipped]         = new(LogLevel.Debug,   LogCategory.VideoFilter,  "プレミア待機所再スキップ(通知済): {0}"),
         [LogMsg.KindFilterSkipped]         = new(LogLevel.Debug,   LogCategory.VideoFilter,  "種別フィルタースキップ [{0}]: {1}"),
-        [LogMsg.LiveStartSkipped]          = new(LogLevel.Debug,   LogCategory.VideoFilter,  "ライブ開始スキップ（待機所通知済）: {0}"),
-        [LogMsg.PremiereStartSkipped]      = new(LogLevel.Debug,   LogCategory.VideoFilter,  "プレミア開始スキップ（待機所通知済）: {0}"),
+        [LogMsg.LiveStartSkipped]          = new(LogLevel.Debug,   LogCategory.VideoFilter,  "ライブ開始スキップ(待機所通知済): {0}"),
+        [LogMsg.PremiereStartSkipped]      = new(LogLevel.Debug,   LogCategory.VideoFilter,  "プレミア開始スキップ(待機所通知済): {0}"),
         [LogMsg.OldLiveDiscarded]          = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いライブ破棄: {0}"),
-        [LogMsg.OldLiveDiscardedNew]       = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いライブ破棄（新着ライブ優先）: {0}"),
-        [LogMsg.OldLiveDiscardedTrans]     = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いライブ破棄（遷移済）: {0}"),
+        [LogMsg.OldLiveDiscardedNew]       = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いライブ破棄(新着ライブ優先): {0}"),
+        [LogMsg.OldLiveDiscardedTrans]     = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いライブ破棄(遷移済): {0}"),
         [LogMsg.OldPremiereDiscarded]      = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いプレミア破棄: {0}"),
-        [LogMsg.OldPremiereDiscardedNew]   = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いプレミア破棄（新着プレミア優先）: {0}"),
-        [LogMsg.OldPremiereDiscardedTrans] = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いプレミア破棄（遷移済）: {0}"),
+        [LogMsg.OldPremiereDiscardedNew]   = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いプレミア破棄(新着プレミア優先): {0}"),
+        [LogMsg.OldPremiereDiscardedTrans] = new(LogLevel.Debug,   LogCategory.VideoFilter,  "古いプレミア破棄(遷移済): {0}"),
         [LogMsg.ArchivedLiveNotNotified]   = new(LogLevel.Debug,   LogCategory.VideoFilter,  "アーカイブのため通知せず: {0}"),
         [LogMsg.UpcomingQueued]             = new(LogLevel.Debug,   LogCategory.VideoFilter,  "待機所キュー追加 → {0}: {1}"),
         [LogMsg.UpcomingQueueUpdated]       = new(LogLevel.Debug,   LogCategory.VideoFilter,  "待機所キュー更新 → {0}: {1}"),
@@ -412,10 +413,10 @@ public static class AppLogger
         [LogMsg.SchedulerGracePeriodStarted] = new(LogLevel.Debug,   LogCategory.VideoFilter,  "スケジューラー集中監視起動: {0}"),
         [LogMsg.SchedulerWakeUp]             = new(LogLevel.Debug,   LogCategory.VideoFilter,  "スケジューラー再計算"),
         [LogMsg.PendingWindowExpired]        = new(LogLevel.Debug,   LogCategory.VideoFilter,  "監視ウィンドウ終了により予約状態解除: {0}"),
-        [LogMsg.NgWordFilterSkipped]         = new(LogLevel.Debug,   LogCategory.VideoFilter,  "NGワードフィルタースキップ: {0}"),
+        [LogMsg.MuteWordFilterSkipped]       = new(LogLevel.Debug,   LogCategory.VideoFilter,  "ミュートワードフィルタースキップ: {0}"),
         // 動画検索・表示
         [LogMsg.SearchingVideo]            = new(LogLevel.Debug,   LogCategory.Monitor,      "最新動画を検索中..."),
-        [LogMsg.OpenChannelPage]           = new(LogLevel.Debug,   LogCategory.Monitor,      "チャンネルページを開きます（全種別オフ）"),
+        [LogMsg.OpenChannelPage]           = new(LogLevel.Debug,   LogCategory.Monitor,      "チャンネルページを開きます(全種別オフ)"),
         [LogMsg.OpenLatestVideo]           = new(LogLevel.Debug,   LogCategory.Monitor,      "最新{0}を開きます"),
         // 通知テスト
         [LogMsg.TestNotifySent]            = new(LogLevel.Debug,   LogCategory.Notification, "テスト通知を送信しました"),
@@ -439,8 +440,9 @@ public static class AppLogger
         [LogMsg.SettingAccentColor]        = new(LogLevel.Debug,   LogCategory.Settings,     "差し色: {0}"),
         [LogMsg.SettingAutoCleanLogs]       = new(LogLevel.Debug,   LogCategory.Settings,     "自動ログ削除: {0}"),
         [LogMsg.SettingLogRetention]        = new(LogLevel.Debug,   LogCategory.Settings,     "ログ保持期間変更: {0}日"),
-        [LogMsg.NgWordAddedCommon]          = new(LogLevel.Debug,   LogCategory.Settings,     "共通NGワード追加: {0}"),
-        [LogMsg.NgWordRemovedCommon]        = new(LogLevel.Debug,   LogCategory.Settings,     "共通NGワード削除: {0}"),
+        [LogMsg.SettingWindowScale]         = new(LogLevel.Debug,   LogCategory.Settings,     "拡大率: {0}%"),
+        [LogMsg.MuteWordAddedCommon]        = new(LogLevel.Debug,   LogCategory.Settings,     "共通ミュートワード追加: {0}"),
+        [LogMsg.MuteWordRemovedCommon]      = new(LogLevel.Debug,   LogCategory.Settings,     "共通ミュートワード削除: {0}"),
         // チャンネル一覧・編集
         [LogMsg.EditModeOn]                = new(LogLevel.Debug,   LogCategory.ChannelListUi, "編集モード開始"),
         [LogMsg.EditModeOff]               = new(LogLevel.Debug,   LogCategory.ChannelListUi, "編集モード終了"),
@@ -455,8 +457,8 @@ public static class AppLogger
         [LogMsg.ChannelContextManualCheck]  = new(LogLevel.Debug,   LogCategory.ChannelListUi, "最新情報を取得: {0}"),
         [LogMsg.ChannelContextBanRecheck]   = new(LogLevel.Debug,   LogCategory.ChannelListUi, "BAN状態を再確認: {0}"),
         [LogMsg.ChannelMovedToCategory]     = new(LogLevel.Debug,   LogCategory.ChannelListUi, "カテゴリ移動: {0} → {1}"),
-        [LogMsg.NgWordAddedChannel]         = new(LogLevel.Debug,   LogCategory.ChannelListUi, "NGワード追加: {0}"),
-        [LogMsg.NgWordRemovedChannel]       = new(LogLevel.Debug,   LogCategory.ChannelListUi, "NGワード削除: {0}"),
+        [LogMsg.MuteWordAddedChannel]       = new(LogLevel.Debug,   LogCategory.ChannelListUi, "ミュートワード追加: {0}"),
+        [LogMsg.MuteWordRemovedChannel]     = new(LogLevel.Debug,   LogCategory.ChannelListUi, "ミュートワード削除: {0}"),
         // カテゴリ操作
         [LogMsg.CategoryCollapsed]          = new(LogLevel.Debug,   LogCategory.CategoryUi,    "カテゴリ{1}: {0}"),
         [LogMsg.CategoryContextClearNew]    = new(LogLevel.Debug,   LogCategory.CategoryUi,    "カテゴリ内NEWバッジ一括消去: {0}"),
@@ -503,23 +505,23 @@ public static class AppLogger
         [LogMsg.FavoriteToggleChanged]              = new(LogLevel.Debug,   LogCategory.ChannelListUi,       "お気に入り変更: {0}"),
         [LogMsg.LatestVideoDeletedDetected]          = new(LogLevel.Debug,   LogCategory.Channel,           "表示中の動画が削除されたことを検知しました: {0}"),
         [LogMsg.LatestVideoRecovered]                = new(LogLevel.Debug,   LogCategory.Channel,           "表示中の動画が復帰したことを検知しました: {0}"),
-        [LogMsg.LatestVideoTitleChanged]             = new(LogLevel.Debug,   LogCategory.Channel,           "表示中の動画のタイトルが変更されたことを検知しました: {0}（{1} → {2}）"),
+        [LogMsg.LatestVideoTitleChanged]             = new(LogLevel.Debug,   LogCategory.Channel,           "表示中の動画のタイトルが変更されたことを検知しました: {0}({1} → {2})"),
         [LogMsg.ChannelListAllAlive]                 = new(LogLevel.Debug,   LogCategory.Channel,           "チャンネルリスト内の全てのチャンネルの生存を確認。"),
         [LogMsg.DormantListAllAlive]                 = new(LogLevel.Debug,   LogCategory.Channel,           "休眠リスト内の全てのチャンネルの生存を確認。"),
-        [LogMsg.RecentUploadsPopupOpened]            = new(LogLevel.Debug,   LogCategory.Channel,           "動画一覧を開きました: {0}（{1}件）"),
+        [LogMsg.RecentUploadsPopupOpened]            = new(LogLevel.Debug,   LogCategory.Channel,           "動画一覧を開きました: {0}({1}件)"),
         [LogMsg.RecentUploadThumbnailOpened]         = new(LogLevel.Debug,   LogCategory.Channel,           "動画一覧のサムネイルから動画を開きました: {0}"),
         // 動画要約ポップアップ
         [LogMsg.VideoSummaryPopupOpened]           = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "動画情報ポップアップを開きました: {0}"),
-        [LogMsg.VideoListPopupOpened]              = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "動画一覧ポップアップを開きました: {0}（{1}件）"),
+        [LogMsg.VideoListPopupOpened]              = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "動画一覧ポップアップを開きました: {0}({1}件)"),
         [LogMsg.GeminiSummaryRequested]            = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約リクエスト送信: {0}"),
         [LogMsg.GeminiSummarySucceeded]             = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "Gemini要約成功: {0}"),
         // プラグイン
-        [LogMsg.PluginJobRequested]                  = new(LogLevel.Info,    LogCategory.VideoSummaryPopup,   "プラグインへ仕事を依頼しました: {0}（{1}）"),
+        [LogMsg.PluginJobRequested]                  = new(LogLevel.Info,    LogCategory.VideoSummaryPopup,   "プラグインへ仕事を依頼しました: {0}({1})"),
         [LogMsg.PluginLog]                           = new(LogLevel.Info,    LogCategory.VideoSummaryPopup,   "プラグインログ[{0}]: {1}"),
         [LogMsg.PluginInvokeError]                   = new(LogLevel.Info,    LogCategory.VideoSummaryPopup,   "プラグイン処理でエラーが発生しました({0}): {1}"),
         [LogMsg.PluginEnabledChanged]                = new(LogLevel.Debug,   LogCategory.Startup,             "プラグイン「{0}」を{1}にしました"),
         [LogMsg.PluginOrderChanged]                  = new(LogLevel.Debug,   LogCategory.Startup,             "プラグインの優先順位を変更しました: {0}"),
-        [LogMsg.PluginContributionRejected]          = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "プラグインの画面項目を1件無視しました: {0}（{1}）"),
+        [LogMsg.PluginContributionRejected]          = new(LogLevel.Debug,   LogCategory.VideoSummaryPopup,   "プラグインの画面項目を1件無視しました: {0}({1})"),
         [LogMsg.ChannelDetailTabSwitched]   = new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "詳細設定タブ切替: {0}"),
         [LogMsg.ChannelDetailEnabledChanged]= new(LogLevel.Debug,   LogCategory.ChannelDetailWindow, "詳細設定 有効/無効: {1} → {2}"),
         // APIキーウィンドウ

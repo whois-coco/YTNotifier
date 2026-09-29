@@ -56,9 +56,9 @@ public class ChannelInfo
     [JsonProperty("notifyLive")]
     public bool NotifyLive { get; set; } = true;
 
-    /// <summary>このチャンネルにのみ適用するNGワード（共通NGワードとはOR判定）</summary>
+    /// <summary>このチャンネルにのみ適用するミュートワード（共通ミュートワードとはOR判定）</summary>
     [JsonProperty("ngWords")]
-    public List<string> NgWords { get; set; } = new();
+    public List<string> MuteWords { get; set; } = new();
 
     /// <summary>ライブ/プレミア待機所の通知方法（移行後は UpcomingNotifyMode を使用）</summary>
     [JsonProperty("notifyUpcoming")]

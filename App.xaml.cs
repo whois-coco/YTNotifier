@@ -124,7 +124,7 @@ public partial class App : System.Windows.Application
                 sb.AppendLine("---");
                 currentException = currentException.InnerException;
             }
-            LogError("ウィンドウ初期化エラー（詳細）", sb.ToString());
+            LogError("ウィンドウ初期化エラー(詳細)", sb.ToString());
             ShowFatalError("ウィンドウの初期化に失敗しました", ex);
             Shutdown();
         }

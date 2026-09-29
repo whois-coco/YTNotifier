@@ -72,6 +72,9 @@ public class AppSettings
     [JsonProperty("windowTop")]
     public double WindowTop { get; set; } = -1;
 
+    [JsonProperty("windowScalePercent")]
+    public int WindowScalePercent { get; set; } = 100;
+
     [JsonProperty("alwaysOnTop")]
     public bool AlwaysOnTop { get; set; } = false;
 
@@ -113,7 +116,7 @@ public class AppSettings
     public bool ContinuousAddMode { get; set; } = false;  // 連続追加モード（デフォルトOFF）
 
     [JsonProperty("ngWords")]
-    public List<string> NgWords { get; set; } = new();
+    public List<string> MuteWords { get; set; } = new();
 
     [JsonProperty("lastStartupCheckDate")]
     public string LastStartupCheckDate { get; set; } = "";

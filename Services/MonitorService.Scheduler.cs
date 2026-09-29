@@ -142,9 +142,9 @@ public partial class MonitorService
             var kind     = isPendingLive ? VideoKind.Live : VideoKind.Premiere;
             var notifyOn = kind == VideoKind.Live ? ch.NotifyLive : ch.NotifyVideo;
             if (!notifyOn) return;
-            if (MatchesNgWord(ch, entry.Title))
+            if (MatchesMuteWord(ch, entry.Title))
             {
-                AppLogger.Log(LogMsg.NgWordFilterSkipped, ch.ChannelName, entry.Title);
+                AppLogger.Log(LogMsg.MuteWordFilterSkipped, ch.ChannelName, entry.Title);
                 return;
             }
 

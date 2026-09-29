@@ -17,7 +17,7 @@ public static class GeminiSummaryService
     /// <summary>Gemini 要約リクエストのプロンプト（1行目=主題、2行目以降=詳細要約）</summary>
     private const string GeminiSummaryPromptText =
         "この動画の内容を要約してください。1行目に「ざっくり言うとどんな動画か」が一言でわかる見出しを、" +
-        "2行目以降に箇条書き（「・」始まり）で3〜5行程度の要約を記載してください。" +
+        "2行目以降に箇条書き（「・」始まり）で8〜10行程度の要約を記載してください。" +
         "1行目は「要約しますと」「この動画の内容は以下の通りです」のような前置きを含めず、内容そのものを直接書いてください。";
 
     /// <summary>Gemini 要約リクエストの思考レベル（Minimal=最小限の思考で高速化。gemini-3.x は thinkingBudget 非対応のため thinkingLevel を使う）</summary>
@@ -52,17 +52,17 @@ public static class GeminiSummaryService
 
     private static string ClassifyClientError(ClientError ex)
     {
-        if (ex.StatusCode == HttpStatusForbidden) return $"Gemini APIキーが無効または権限がありません（HTTP {ex.StatusCode}）";
+        if (ex.StatusCode == HttpStatusForbidden) return $"Gemini APIキーが無効または権限がありません(HTTP {ex.StatusCode})";
         if (ex.StatusCode == HttpStatusTooManyRequests)
         {
             var resetAt = QuotaResetTimeHelper.GetNextQuotaResetTime();
             return $"Gemini APIの利用上限に達しました。{resetAt.ToString(GeminiQuotaResetTimeDisplayFormat)}頃にリセットされる見込みです。しばらく時間をおくか、翌日以降に再試行してください";
         }
-        return $"Gemini API エラー（HTTP {ex.StatusCode}: {ex.Message}）";
+        return $"Gemini API エラー(HTTP {ex.StatusCode}: {ex.Message})";
     }
 
     private static string ClassifyServerError(ServerError ex)
-        => $"Gemini サーバーエラー（HTTP {ex.StatusCode}）";
+        => $"Gemini サーバーエラー(HTTP {ex.StatusCode})";
 
     private static string ClassifyNetworkException(Exception ex) => ex switch
     {
